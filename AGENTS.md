@@ -46,7 +46,11 @@ Both agents must read this before starting any task.
 - Before an experiment, state the provider, model, sample count, and estimated
   number of requests.
 
-## Safety boundaries (hard constraints — never violate)
+## Safety boundaries (enforced project policy)
+> These are mandatory project policies, not technically enforced access
+> controls. Real enforcement (GitHub branch protection, permission limits,
+> hooks, CI secret scanning, budget gates) is to be configured separately.
+
 - Defensive red-team only. Measure/understand; do not create usable exploits.
 - Use only approved, clearly-licensed **public benchmark datasets**.
   Candidate datasets, including MultiJail, require human review of their
@@ -54,7 +58,7 @@ Both agents must read this before starting any task.
 - Do NOT develop automated novel-attack-optimization algorithms.
 - Data-processing steps (translation, back-translation, encoding or template
   transforms) must be reviewed before use in real experiments to decide
-  whether they count as authored attack content; this test run is unaffected.
+  whether they count as authored attack content.
 - NEVER commit directly-reusable high-risk outputs, jailbreak payloads,
   or exploits to the repo.
 - Raw model outputs live in a git-ignored local directory. The repo stores
