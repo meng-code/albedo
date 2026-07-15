@@ -24,6 +24,8 @@ This semester's 2D pipeline may provide groundwork for future research on religh
 
 **Open research decisions:** input domain; model and training strategy; datasets; relighting formulation; evaluation metrics; and whether a user study is feasible. Record decisions in `docs/decisions.md`; model or dataset additions require an Issue and human sign-off.
 
+**Default approach:** build on pretrained models; from-scratch training enters the plan only with explicit human sign-off.
+
 **Non-goals (this semester):** 3D scene relighting; real-time mobile deployment; and committing to the possible 3DGS/NeRF extension before the 2D study is evaluated.
 
 **Course deadlines the repo must serve (NZST):**
