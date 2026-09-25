@@ -223,3 +223,9 @@ weights/
 
 # third_party/IDArb 的数据读取代码放在 idarbdiffusion/data/ 里,会被上面的 data/ 规则误伤,这里放行
 !third_party/IDArb/idarbdiffusion/data/
+
+# IDArb 在服务器上运行时产生的文件:原始照片、日志(训练数据 data/ 和输出 output/ 已被其他规则忽略)
+third_party/IDArb/mydata/
+third_party/IDArb/logs/
+# normal_to_mesh.py 默认的输出目录
+outputs/
