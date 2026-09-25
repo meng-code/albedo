@@ -16,6 +16,8 @@
 ## 1. 服务器:图片分解
 
 以下命令在 `third_party/IDArb/` 目录下、IDArb 的 conda 环境(Python 3.8、torch 2.2.1)里运行。
+这个环境的安装方法和已验证可用的版本见 `requirements-server.txt`。官方的
+`third_party/IDArb/requirements.txt` 里有几个用不到、也不好装的包,不建议直接用。
 
 `prepare_images.py` 用 rembg 去掉背景,把前景信息写进 alpha 通道。如果图片本身已经带有可用的透明通道,
 就直接沿用,不再重新抠图。
