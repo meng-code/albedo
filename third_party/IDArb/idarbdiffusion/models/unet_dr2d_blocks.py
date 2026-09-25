@@ -1,3 +1,31 @@
+# ==============================================================================
+#  unet_dr2d_blocks.py —— 学习注释版(注释是后加的,代码一行没改;原始版本在 git 里)
+# ==============================================================================
+#
+# 一、这个文件是干什么的
+#
+#   这个文件里是 UNet 用的块:down block、mid block、up block 各一个类,再加两个按名字创建块的函数。
+#   它们全部是从 diffusers 的 unet_2d_blocks.py 复制来的。IDArb 在每个类里只改了两件事:
+#     1. 块内部的注意力模块,从 diffusers 的 Transformer2DModel 换成 IDArb 的 TransformerDR2DModel。
+#     2. forward 多接 pose 和 num_views 两个参数,并原样传给注意力模块。
+#   这个文件里没有任何算法。它存在的原因是:diffusers 原版的块不接受 pose 和 num_views 这两个参数,
+#   作者只能把用到的几个类复制一份,各自加上这两个参数。
+#
+#   每个块的内部结构都是"卷积层、注意力模块、卷积层、注意力模块……"交替。
+#   卷积层(ResnetBlock2D)是原版的,负责提取局部特征;注意力模块是 IDArb 的,负责"互相看"。
+#
+# 二、标签的意思
+#   🔴 算法  IDArb 的改动。   ⚪ 管道  原版代码。   ⚫ 跳过  这次推理不会执行到的代码。
+#
+# 三、改动位置(原始行号。插入注释之后编辑器里的行号会变,注释里一律写"原 N 行")
+#   原 23          导入 TransformerDR2DModel
+#   原 136-160     get_down_block 里新增 CrossAttnDownBlockDR2D 分支
+#   原 342-367     get_up_block 里新增 CrossAttnUpBlockDR2D 分支
+#   原 533-544     mid block 里用 TransformerDR2DModel
+#   原 586-587     mid block 的 forward 传 num_views、pose
+#   原 734-735     up block 的 forward 传 pose、num_views
+#   原 887-888     down block 的 forward 传 pose、num_views
+# ------------------------------------------------------------------------------
 # Copyright 2023 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,8 +48,11 @@ from torch import nn
 
 from diffusers.utils import is_torch_version, logging
 from diffusers.models.resnet import Downsample2D, ResnetBlock2D, Upsample2D
+# 🔴 导入 IDArb 的注意力模块。这一行决定了块内部用的是 IDArb 的版本。
 from idarbdiffusion.models.transformer_dr2d import TransformerDR2DModel
 
+# ⚫ 从 diffusers 导入 21 种块。推理时只用到 DownBlock2D 和 UpBlock2D 两种(UNet 最深处那两个没有注意力的块),
+#   其余 19 种只是为了让下面的 if/elif 能运行。
 from diffusers.models.unets.unet_2d_blocks import DownBlock2D, ResnetDownsampleBlock2D, AttnDownBlock2D, CrossAttnDownBlock2D, SimpleCrossAttnDownBlock2D, SkipDownBlock2D, AttnSkipDownBlock2D, DownEncoderBlock2D, AttnDownEncoderBlock2D, KDownBlock2D, KCrossAttnDownBlock2D
 from diffusers.models.unets.unet_2d_blocks import UpBlock2D, ResnetUpsampleBlock2D, CrossAttnUpBlock2D, SimpleCrossAttnUpBlock2D, AttnUpBlock2D, SkipUpBlock2D, AttnSkipUpBlock2D, UpDecoderBlock2D, AttnUpDecoderBlock2D, KUpBlock2D, KCrossAttnUpBlock2D
 
@@ -38,6 +69,9 @@ def get_down_block(
     add_downsample,
     resnet_eps,
     resnet_act_fn,
+    # 🔴 get_down_block 新增的参数 num_domains(还有原 57-58 行的两个开关)。
+    #   这个函数根据传入的名字创建对应的 down block。原 32-253 行是一条很长的 if/elif,
+    #   推理时只会命中 CrossAttnDownBlockDR2D 和 DownBlock2D 两个分支,其余分支可以跳过。
     num_domains,
     transformer_layers_per_block=1,
     num_attention_heads=None,
@@ -133,6 +167,9 @@ def get_down_block(
             resnet_time_scale_shift=resnet_time_scale_shift,
         )
     # custom MV2D attention block
+    # 🔴 IDArb 新增的分支:创建 CrossAttnDownBlockDR2D,并把 num_domains 和两个开关传进去。
+    #   原 138 行报错信息里写的 CrossAttnDownBlockMV2D 是 Wonder3D 项目里的类名。这说明作者是在 Wonder3D 的代码
+    #   基础上改的,忘了改这个字符串。
     elif down_block_type == "CrossAttnDownBlockDR2D":
         if cross_attention_dim is None:
             raise ValueError("cross_attention_dim must be specified for CrossAttnDownBlockMV2D")
@@ -340,6 +377,7 @@ def get_up_block(
             resnet_time_scale_shift=resnet_time_scale_shift,
         )
     # custom MV2D attention block
+    # 🔴 IDArb 新增的分支:创建 CrossAttnUpBlockDR2D。和上面 down block 的分支一样。
     elif up_block_type == "CrossAttnUpBlockDR2D":
         if cross_attention_dim is None:
             raise ValueError("cross_attention_dim must be specified for CrossAttnUpBlockMV2D")
@@ -481,6 +519,11 @@ def get_up_block(
     raise ValueError(f"{up_block_type} does not exist.")
 
 
+# ==============================================================================
+# 🔴 类 UNetMidBlockDR2DCrossAttn:UNet 最深处(8×8)的块。结构是"卷积、注意力、卷积"。
+#   和原版的区别只有三处:__init__ 多收 num_domains、attn1_cd、attn_mid_cv(原 489、504-505 行);
+#   注意力模块用 TransformerDR2DModel(原 533 行);forward 多收并传递 pose、num_views(原 572-573、586-587 行)。
+# ==============================================================================
 class UNetMidBlockDR2DCrossAttn(nn.Module):
     def __init__(
         self,
@@ -530,6 +573,7 @@ class UNetMidBlockDR2DCrossAttn(nn.Module):
         for _ in range(num_layers):
             if not dual_cross_attention:
                 attentions.append(
+                    # 🔴 用 IDArb 的 TransformerDR2DModel。注意 num_domains 是第一个位置参数。
                     TransformerDR2DModel(
                         num_domains,
                         num_attention_heads,
@@ -544,6 +588,7 @@ class UNetMidBlockDR2DCrossAttn(nn.Module):
                         attn_mid_cv=attn_mid_cv,
                     )
                 )
+            # ⚫ dual_cross_attention 这次是 False,不会走到这里。作者没有移植这个分支,直接报错。
             else:
                 raise NotImplementedError
             resnets.append(
@@ -564,6 +609,7 @@ class UNetMidBlockDR2DCrossAttn(nn.Module):
         self.attentions = nn.ModuleList(attentions)
         self.resnets = nn.ModuleList(resnets)
 
+    # 🔴 forward:多了 pose 和 num_views 两个参数,在原 586-587 行原样传给注意力模块 attn。
     def forward(
         self,
         hidden_states: torch.FloatTensor,
@@ -592,6 +638,12 @@ class UNetMidBlockDR2DCrossAttn(nn.Module):
         return hidden_states
 
 
+# ==============================================================================
+# 🔴 类 CrossAttnUpBlockDR2D:上采样块。结构是"卷积、注意力"重复 3 次,然后上采样。
+#   改动和 mid block 一样:__init__ 多收三个参数,注意力模块换成 TransformerDR2DModel(原 649 行),
+#   forward 多收 pose、num_views 并传给 attn(原 734-735 行)。
+#   forward 里有两个分支:原 713-725 行是训练时开"梯度检查点"(一种省显存的技术)才走的,推理走原 727-737 行。
+# ==============================================================================
 class CrossAttnUpBlockDR2D(nn.Module):
     def __init__(
         self,
@@ -710,6 +762,9 @@ class CrossAttnUpBlockDR2D(nn.Module):
                     temb,
                     **ckpt_kwargs,
                 )
+                # ⚫ 训练时省显存用的分支,推理不走。
+                #   注意这里 pose 和 num_views 是按位置传的,所以它们在 TransformerDR2DModel.forward 参数表里的位置
+                #   (原 237-238 行)必须和这里一致。这解释了为什么那两个参数被插在 encoder_hidden_states 和 timestep 之间。
                 hidden_states = torch.utils.checkpoint.checkpoint(
                     create_custom_forward(attn, return_dict=False),
                     hidden_states,
@@ -725,6 +780,7 @@ class CrossAttnUpBlockDR2D(nn.Module):
                 )[0]
             else:
                 hidden_states = resnet(hidden_states, temb)
+                # 🔴 推理走这条:调用注意力模块,原 734-735 行传入 pose 和 num_views。
                 hidden_states = attn(
                     hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
@@ -743,6 +799,10 @@ class CrossAttnUpBlockDR2D(nn.Module):
         return hidden_states
 
 
+# ==============================================================================
+# 🔴 类 CrossAttnDownBlockDR2D:下采样块。结构是"卷积、注意力"重复 2 次,然后下采样。
+#   改动和上面两个类一样。推理走原 880-890 行,其中原 887-888 行传入 pose 和 num_views。
+# ==============================================================================
 class CrossAttnDownBlockDR2D(nn.Module):
     def __init__(
         self,
@@ -863,6 +923,7 @@ class CrossAttnDownBlockDR2D(nn.Module):
                     temb,
                     **ckpt_kwargs,
                 )
+                # ⚫ 训练时的梯度检查点分支,推理不走。
                 hidden_states = torch.utils.checkpoint.checkpoint(
                     create_custom_forward(attn, return_dict=False),
                     hidden_states,
@@ -878,6 +939,7 @@ class CrossAttnDownBlockDR2D(nn.Module):
                 )[0]
             else:
                 hidden_states = resnet(hidden_states, temb)
+                # 🔴 推理走这条,原 887-888 行传入 pose 和 num_views。
                 hidden_states = attn(
                     hidden_states,
                     encoder_hidden_states=encoder_hidden_states,

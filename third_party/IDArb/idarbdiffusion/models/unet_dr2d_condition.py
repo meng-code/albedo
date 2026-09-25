@@ -1,3 +1,43 @@
+# ==============================================================================
+#  unet_dr2d_condition.py —— 学习注释版(注释是后加的,代码一行没改;原始版本在 git 里)
+# ==============================================================================
+#
+# 一、这个文件是干什么的
+#
+#   这是 UNet 的主体。它是从 diffusers 库里 Stable Diffusion 2 的 UNet(UNet2DConditionModel)复制来的,
+#   1455 行里 IDArb 只改了大约 75 行。改动只有三类:
+#     1. 把 UNet 里的块(down block、mid block、up block)换成 IDArb 自己的版本,名字里带 DR2D。
+#        这些块内部用的注意力模块是 transformer_dr2d.py 里的。
+#     2. forward 多接两个参数 pose 和 num_views,并把它们传给每一个块。
+#     3. 训练用的 from_pretrained_2d 方法,把 SD 的 4 通道输入层改造成 8 通道。推理时不用它。
+#
+#   UNet 的整体结构(右边的数字是特征图的边长,以 64×64 的 latent 输入为例):
+#     conv_in         8 通道变 320 通道                64
+#     down_blocks[0]  2 个注意力模块,然后下采样        64 变 32
+#     down_blocks[1]  2 个注意力模块,然后下采样        32 变 16
+#     down_blocks[2]  2 个注意力模块,然后下采样        16 变 8
+#     down_blocks[3]  只有卷积,没有注意力              8
+#     mid_block       1 个注意力模块                    8
+#     up_blocks[0]    只有卷积,没有注意力              8 变 16
+#     up_blocks[1]    3 个注意力模块,然后上采样        16 变 32
+#     up_blocks[2]    3 个注意力模块,然后上采样        32 变 64
+#     up_blocks[3]    3 个注意力模块                    64
+#     conv_out        320 通道变 4 通道                64
+#   一共 16 个注意力模块。IDArb 的创新点在这 16 个模块的内部(见 transformer_dr2d.py),UNet 的骨架没有变。
+#   下采样时保存下来的特征会通过"跳跃连接"直接传给对应的上采样层,这是 UNet 的标准设计,和 IDArb 无关。
+#
+# 二、标签的意思
+#   🔴 算法  IDArb 的改动,需要理解。
+#   ⚪ 管道  diffusers 原版代码,知道它的作用就够了。
+#   ⚫ 跳过  这次推理不会执行到的代码。
+#
+# 三、IDArb 改动的位置(原始行号。插入注释之后编辑器里的行号会变,注释里一律写"原 N 行")
+#   原 59-65        导入 IDArb 自己的块
+#   原 233-235      __init__ 新增三个参数:num_domains、attn1_cd、attn_mid_cv
+#   原 758-759      forward 新增两个参数:pose、num_views
+#   原 974-975、1006-1007、1034-1035   把 pose 和 num_views 传给三类块
+#   原 1316-1322    训练时把输入层从 4 通道改成 8 通道(推理不执行)
+# ------------------------------------------------------------------------------
 # Copyright 2023 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -56,6 +96,8 @@ from diffusers.utils import (
     logging,
 )
 from diffusers import __version__
+# 🔴 从 IDArb 自己的文件导入块。get_down_block 和 get_up_block 是两个按名字创建块的函数,
+#   UNet 构造时通过它们创建每一个块。因为这里导入的是 IDArb 的版本,创建出来的块就是 DR2D 版本。
 from idarbdiffusion.models.unet_dr2d_blocks import (
     CrossAttnDownBlockDR2D,
     CrossAttnUpBlockDR2D,
@@ -177,6 +219,8 @@ class UNetDR2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixi
 
     _supports_gradient_checkpointing = True
 
+    # ⚪ __init__:按 config.json 里的参数搭建 UNet。原 180-748 行几乎全部是 diffusers 原版代码。
+    #   下面只标出 IDArb 改动的几行。
     @register_to_config
     def __init__(
         self,
@@ -186,6 +230,7 @@ class UNetDR2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixi
         center_input_sample: bool = False,
         flip_sin_to_cos: bool = True,
         freq_shift: int = 0,
+        # ⚪ 三组块类型的默认值改成了 DR2D 版本。实际使用的是 config.json 里的值,和这里的默认值相同。
         down_block_types: Tuple[str] = (
             "CrossAttnDownBlockDR2D",
             "CrossAttnDownBlockDR2D",
@@ -230,6 +275,9 @@ class UNetDR2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixi
         mid_block_only_cross_attention: Optional[bool] = None,
         cross_attention_norm: Optional[str] = None,
         addition_embed_type_num_heads=64,
+        # 🔴 IDArb 新增的三个参数。训练好的模型的 config.json 里:num_domains=3,attn1_cd=True,attn_mid_cv=True。
+        #   num_domains 是分量数;attn1_cd 打开跨分量注意力;attn_mid_cv 打开跨视角注意力。
+        #   这三个参数会经过各个块,一路传到 transformer_dr2d.py 里。
         num_domains: int = 1,
         attn1_cd: bool = False,
         attn_mid_cv: bool = False,
@@ -288,6 +336,9 @@ class UNetDR2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixi
             )
 
         # input
+        # ⚪ 输入层 conv_in。这几行是原版代码,但 in_channels 来自 config.json,值是 8(SD 原版是 4)。
+        #   所以这一层的权重形状是 [320, 8, 3, 3]:它接收 8 通道输入(4 通道带噪 latent 加 4 通道输入图 latent),
+        #   输出 320 通道。经过这一层之后,UNet 内部就不再区分"带噪 latent"和"输入图"了。
         conv_in_padding = (conv_in_kernel - 1) // 2
         self.conv_in = nn.Conv2d(
             in_channels, block_out_channels[0], kernel_size=conv_in_kernel, padding=conv_in_padding
@@ -355,6 +406,9 @@ class UNetDR2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixi
             self.encoder_hid_proj = None
 
         # class embedding
+        # ⚫ 原 358-384 行:class_embedding 的构造。config.json 里 class_embed_type 是 null,num_class_embeds 也是 null,
+        #   所以会走最后的 else,class_embedding 是 None。这意味着 forward 里原 863-879 行不会执行,
+        #   config.json 里的 projection_class_embeddings_input_dim=6 也没有被用到。相机位姿不是从这里进入模型的。
         if class_embed_type is None and num_class_embeds is not None:
             self.class_embedding = nn.Embedding(num_class_embeds, time_embed_dim)
         elif class_embed_type == "timestep":
@@ -750,11 +804,25 @@ class UNetDR2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixi
         if isinstance(module, (CrossAttnDownBlock2D, CrossAttnDownBlockDR2D, DownBlock2D, CrossAttnUpBlock2D, CrossAttnUpBlockDR2D, UpBlock2D)):
             module.gradient_checkpointing = value
 
+    # ------------------------------------------------------------------------------
+    # 🔴 forward:pipeline 每一圈调用 UNet 时执行的函数。
+    #   pipeline 传进来的参数:sample 是 8 通道的 latent,形状 [B·Nv·3, 8, 64, 64];timestep 是当前的噪声等级 t;
+    #   encoder_hidden_states 是任务词向量,形状 [B·Nv·3, 77, 1024];pose 是相机位姿 [B, Nv, 4];num_views 是视角数。
+    #   forward 的步骤(作者用 # 1. 到 # 6. 标注了):
+    #     1. 把时间步 t 编码成向量 emb(原 838-860 行,原版代码)
+    #     2. conv_in(原 955 行)
+    #     3. 依次经过 down_blocks(原 970 行)
+    #     4. mid_block(原 1002 行)
+    #     5. 依次经过 up_blocks(原 1029 行)
+    #     6. conv_out(原 1050 行)
+    #   IDArb 在第 3、4、5 步多传了 pose 和 num_views,其余和原版一样。
+    # ------------------------------------------------------------------------------
     def forward(
         self,
         sample: torch.FloatTensor,
         timestep: Union[torch.Tensor, float, int],
         encoder_hidden_states: torch.Tensor,
+        # 🔴 IDArb 新增的两个参数。
         pose: Optional[torch.Tensor] = None,
         num_views: int = None,
         class_labels: Optional[torch.Tensor] = None,
@@ -850,6 +918,7 @@ class UNetDR2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixi
         # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
         timesteps = timesteps.expand(sample.shape[0])
 
+        # ⚪ 原 853-860 行:把时间步 t 变成一个向量 emb。每个块里的卷积层都会用到 emb,以此知道当前的噪声等级。原版代码。
         t_emb = self.time_proj(timesteps)
 
         # `Timesteps` does not contain any weights and will always return f32 tensors
@@ -860,6 +929,7 @@ class UNetDR2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixi
         emb = self.time_embedding(t_emb, timestep_cond)
         aug_emb = None
 
+        # ⚫ 这个 if 不会执行,因为 class_embedding 是 None(见原 384 行的注释)。
         if self.class_embedding is not None:
             if class_labels is None:
                 raise ValueError("class_labels should be provided when num_class_embeds > 0")
@@ -952,6 +1022,7 @@ class UNetDR2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixi
             image_embeds = added_cond_kwargs.get("image_embeds")
             encoder_hidden_states = self.encoder_hid_proj(image_embeds)
         # 2. pre-process
+        # ⚪ 第 2 步:conv_in,8 通道变 320 通道。
         sample = self.conv_in(sample)
 
         # 3. down
@@ -967,6 +1038,7 @@ class UNetDR2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixi
                 if is_adapter and len(down_block_additional_residuals) > 0:
                     additional_residuals["additional_residuals"] = down_block_additional_residuals.pop(0)
 
+                # 🔴 第 3 步:调用每一个 down block。原 974-975 行把 num_views 和 pose 传进去,这两行是 IDArb 加的。
                 sample, res_samples = downsample_block(
                     hidden_states=sample,
                     temb=emb,
@@ -999,6 +1071,7 @@ class UNetDR2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixi
 
         # 4. mid
         if self.mid_block is not None:
+            # 🔴 第 4 步:mid block。原 1006-1007 行同样多传了 num_views 和 pose。
             sample = self.mid_block(
                 sample,
                 emb,
@@ -1026,6 +1099,7 @@ class UNetDR2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixi
                 upsample_size = down_block_res_samples[-1].shape[2:]
 
             if hasattr(upsample_block, "has_cross_attention") and upsample_block.has_cross_attention:
+                # 🔴 第 5 步:up block。原 1034-1035 行同样多传了 num_views 和 pose。
                 sample = upsample_block(
                     hidden_states=sample,
                     temb=emb,
@@ -1043,6 +1117,7 @@ class UNetDR2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixi
                     hidden_states=sample, temb=emb, res_hidden_states_tuple=res_samples, upsample_size=upsample_size
                 )
 
+        # ⚪ 第 6 步:归一化、激活函数、conv_out(320 通道变 4 通道),得到预测结果,形状 [B·Nv·3, 4, 64, 64]。
         # 6. post-process
         if self.conv_norm_out:
             sample = self.conv_norm_out(sample)
@@ -1054,6 +1129,16 @@ class UNetDR2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixi
 
         return UNetDR2DConditionOutput(sample=sample)
 
+    # ==============================================================================
+    # ⚫ 从这里到文件结尾:from_pretrained_2d 和 _load_pretrained_model_2d。
+    #   这两个方法只在训练开始时用一次,作用是把 Stable Diffusion 的原版权重装进 IDArb 的结构里。
+    #   推理时 main.py 用的是标准的 from_pretrained,不会执行这里。
+    #   其中只有一小段值得看,就是原 1316-1322 行:
+    #     SD 的输入层 conv_in 是 4 通道,IDArb 需要 8 通道,权重形状对不上。作者的做法是:
+    #     前 4 个通道(带噪 latent)直接复制 SD 的权重;后 4 个通道(输入图 latent)全部设为 0。
+    #     设为 0 的效果是:训练刚开始时,输入图相当于不存在,模型的行为和原版 SD 一样,然后再慢慢学会利用输入图。
+    #     训练好的模型里,后 4 个通道的权重平均大小是 0.020,前 4 个通道是 0.035,说明它确实从 0 学出了东西。
+    # ==============================================================================
     @classmethod
     def from_pretrained_2d(
             cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]],
@@ -1313,6 +1398,7 @@ class UNetDR2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixi
                 pretrained_model_name_or_path,
                 ignore_mismatched_sizes=True,
             )
+            # 🔴 上面说的那一段:前 4 个通道复制 SD 的权重,后 4 个通道设为 0。
             if any([key == 'conv_in.weight' for key, _, _ in mismatched_keys]):
                 # initialize from the original SD structure
                 model.conv_in.weight.data[:,:4] = conv_in_weight
