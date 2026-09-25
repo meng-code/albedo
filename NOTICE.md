@@ -10,3 +10,21 @@ Add each future dependency with its source URL, version or commit, license, inte
 - **Use:** Intrinsic decomposition of images into albedo, normal, metallic and roughness (inference), plus a small training smoke test.
 - **Modifications:** The first commit that adds this directory is an unmodified copy of upstream. Later commits that touch `third_party/IDArb/` are local changes; see `git log -- third_party/IDArb`.
 - **Paper:** Li et al., "IDArb: Intrinsic Decomposition for Arbitrary Number of Input Views and Illuminations", arXiv:2412.12083.
+
+## IDArb pretrained weights (not included)
+
+- **Source:** https://huggingface.co/lizb6626/IDArb, revision `1d00fda59f`
+- **License:** Not declared on the model card as of 2026-09-25.
+- **Use:** Default weights loaded by `third_party/IDArb/main.py` (downloaded at run time, not stored in this repository).
+
+## Stable Diffusion 2.1 base, zero-SNR (not included)
+
+- **Source:** https://huggingface.co/ByteDance/sd2.1-base-zsnr-laionaes5, revision `77c78cc958`
+- **License:** CreativeML Open RAIL++-M (`openrail++`)
+- **Use:** Initial weights for the IDArb training smoke test (`third_party/IDArb/configs/my_train_smoke.yaml`). Downloaded at run time.
+
+## Arb-Objaverse dataset (not included)
+
+- **Source:** https://huggingface.co/datasets/lizb6626/Arb-Objaverse, revision `0840f781c7`
+- **License:** MIT (as declared on the dataset card)
+- **Use:** Three objects from `data/000-000.zip`, listed in `third_party/IDArb/datalist/my_train.json`, used for the training smoke test. Fetched with `scripts/idarb/fetch_arbobjaverse_subset.py`; stored under the git-ignored `third_party/IDArb/data/`.

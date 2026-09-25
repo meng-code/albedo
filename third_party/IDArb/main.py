@@ -115,18 +115,18 @@ def save_image(out, name):
 #     scheduler         DDIM 去噪节奏表:决定每一步加/减多少噪,无可学习参数
 #     unet              🔴 大脑:自定义的 UNetDR2DConditionModel(不是 diffusers 原版),第 4、5 部分讲
 # ══════════════════════════════════════════════════════════════════════════════
-def load_pipeline():
+def load_pipeline(path="lizb6626/IDArb"):
     """
     load pipeline from hub
     or load from local ckpts: pipeline = IDArbDiffusionPipeline.from_pretrained("./pipeckpts")
     """
-    text_encoder = CLIPTextModel.from_pretrained("lizb6626/IDArb", subfolder="text_encoder")
-    tokenizer = CLIPTokenizer.from_pretrained("lizb6626/IDArb", subfolder="tokenizer")
-    feature_extractor = CLIPImageProcessor.from_pretrained("lizb6626/IDArb", subfolder="feature_extractor")
-    vae = AutoencoderKL.from_pretrained("lizb6626/IDArb", subfolder="vae")
-    scheduler = DDIMScheduler.from_pretrained("lizb6626/IDArb", subfolder="scheduler")
+    text_encoder = CLIPTextModel.from_pretrained(path, subfolder="text_encoder")
+    tokenizer = CLIPTokenizer.from_pretrained(path, subfolder="tokenizer")
+    feature_extractor = CLIPImageProcessor.from_pretrained(path, subfolder="feature_extractor")
+    vae = AutoencoderKL.from_pretrained(path, subfolder="vae")
+    scheduler = DDIMScheduler.from_pretrained(path, subfolder="scheduler")
     # 🔴 注意这里用的是 IDArb 自己的 UNetDR2DConditionModel(原 14 行 import 的),不是 diffusers 的标准 UNet —— 魔改就在这个类里
-    unet = UNetDR2DConditionModel.from_pretrained("lizb6626/IDArb", subfolder="unet")
+    unet = UNetDR2DConditionModel.from_pretrained(path, subfolder="unet")
     # 把 6 个零件装进 IDArbDiffusionPipeline(pipeline 文件的 __init__);safety_checker=None 关掉 SD 的内容安全检查
     pipeline = IDArbDiffusionPipeline(
         text_encoder=text_encoder,
@@ -153,6 +153,9 @@ parser.add_argument('--num_views', type=int, default=4, help='Number of views')
 #   它唯一的作用是 custom_mv_dataset.py 原 112 行那个 if:决定用 json 里的相机矩阵算位姿,还是用默认位姿
 parser.add_argument('--cam', default=False, action='store_true', help='Enable to use camera pose')
 parser.add_argument('--output_dir', type=str, default='output', help='Output directory')
+# 新增参数:权重的位置。默认是官方训练好的 HuggingFace 仓库;也可以填自己训练出来的本地目录,
+#   例如 output/train_smoke/pipeckpts(train.py 训练结束时保存的完整模型,子文件夹结构和官方仓库一样)
+parser.add_argument('--pretrained', type=str, default='lizb6626/IDArb', help='HF repo id or local pipeckpts dir')
 # 解析完成。之后 args.data_dir、args.input_type、args.num_views、args.cam、args.output_dir 就是你敲的值
 args = parser.parse_args()
 
@@ -164,7 +167,7 @@ args = parser.parse_args()
 weight_dtype = torch.float16
 
 # 调上面的 load_pipeline():下载/加载 6 个零件 → 完整 pipeline 对象
-pipeline = load_pipeline()
+pipeline = load_pipeline(args.pretrained)
 
 # xformers:加速 attention、省显存的库。IDArb 的跨视角/跨分量注意力只实现了 xformers 版本(第 5 部分),
 #   所以它是硬依赖 —— 这就是你搭环境时必须验证 import xformers 成功的原因

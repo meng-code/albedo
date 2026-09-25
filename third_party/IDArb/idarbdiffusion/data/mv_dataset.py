@@ -338,6 +338,8 @@ class MVDataset(Dataset):
         # orm -> mro
         img[..., 0] = img[..., -1]
         img[..., -1] = 0
+        # 修复:原代码缺少下面这一行,out_imgs 未创建就被使用,读取 ABO / Arb-Objaverse 的材质图时会报 UnboundLocalError
+        out_imgs = []
         out_imgs.append(img)
 
         if alpha.shape[-1] != 1:
