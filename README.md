@@ -1,52 +1,40 @@
 # albedo-relight
 
-AI-based single-image albedo estimation and controllable image relighting for
-Massey University's 159.333 Programming Project.
+Single-image albedo estimation and controllable relighting.
 
-The repository is at its initial engineering stage. Model, dataset, training,
-and evaluation choices remain open until literature and feasibility review.
-The current pipeline is deliberately dependency-light and exists only to prove
-that the package and RGB input/output path work end to end.
+## Current state
 
-## Development setup
+- **Intrinsic decomposition.** IDArb, vendored at `third_party/IDArb/`, is the working baseline. It runs on
+  a GPU and splits an image into albedo, normal, metallic and roughness.
+- **Geometry.** `scripts/idarb/normal_to_mesh.py` turns an IDArb normal map into a mesh, using Poisson
+  normal integration and screened Poisson surface reconstruction. It runs on a laptop without a GPU.
+- **Relighting.** Not implemented yet. `src/relight/` only contains a placeholder pipeline, which treats
+  the input image as albedo and multiplies it by a constant light, so that the package and tests exist.
 
-Python 3.11 or newer is required.
+How to run IDArb, the training smoke test and the mesh tool: `scripts/idarb/README.md`.
+
+## Layout
+
+| Path | Contents |
+|---|---|
+| `src/relight/` | our Python package (placeholder for now) |
+| `tests/` | pytest tests |
+| `scripts/idarb/` | IDArb helper scripts |
+| `third_party/IDArb/` | vendored IDArb code and our changes to it |
+| `results/` | small results and sample data |
+| `docs/decisions.md` | dated technical decisions |
+| `docs/diary.md` | progress log |
+| `NOTICE.md` | sources and licenses of third-party code, models and data |
+
+## Package and tests
+
+Python 3.11 or newer.
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install -e ".[dev]"
-```
-
-Run the smoke demo:
-
-```bash
-python -m relight
-```
-
-Run the checks:
-
-```bash
 pytest tests/ -q
 ruff check .
+python -m relight   # runs the placeholder pipeline on a two-pixel image
 ```
-
-## Current smoke pipeline
-
-`relight.run_relighting_pipeline` validates a normalized RGB image, treats the
-input as placeholder albedo, applies a constant controllable light, and returns
-albedo, shading, and relit outputs with matching dimensions. It is not a
-scientific albedo or relighting method and will be replaced through later
-model-selection Issues.
-
-## IDArb (third-party baseline)
-
-The official IDArb code is vendored at `third_party/IDArb/` (see `NOTICE.md`). Helper scripts live in
-`scripts/idarb/`: preparing RGBA inputs and running IDArb on the GPU cluster, a small training smoke
-test, and a normal-map-to-mesh tool that runs on a laptop. See `scripts/idarb/README.md`.
-
-## Project records
-
-- `docs/decisions.md`: dated technical and scope decisions.
-- `docs/diary.md`: human-owned weekly course diary.
-- `NOTICE.md`: provenance and licenses for third-party code, models, and data.

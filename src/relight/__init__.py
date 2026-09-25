@@ -1,4 +1,4 @@
-"""Core package for the albedo-relight capstone project."""
+"""Core package for albedo-relight. For now it only holds a placeholder smoke pipeline."""
 
 from relight.pipeline import RelightingResult, run_relighting_pipeline
 
