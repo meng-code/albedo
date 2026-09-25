@@ -21,6 +21,8 @@ testpaths = ["tests"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+# third_party/ 里是原样引入的第三方代码,保持原作者的写法,不做风格检查
+extend-exclude = ["third_party"]
 
 [tool.ruff.lint]
 select = ["B", "E", "F", "I", "UP"]

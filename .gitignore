@@ -220,3 +220,6 @@ __marimo__/
 # Project-local datasets and model weights
 data/
 weights/
+
+# third_party/IDArb 的数据读取代码放在 idarbdiffusion/data/ 里,会被上面的 data/ 规则误伤,这里放行
+!third_party/IDArb/idarbdiffusion/data/
