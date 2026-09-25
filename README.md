@@ -39,6 +39,12 @@ albedo, shading, and relit outputs with matching dimensions. It is not a
 scientific albedo or relighting method and will be replaced through later
 model-selection Issues.
 
+## IDArb (third-party baseline)
+
+The official IDArb code is vendored at `third_party/IDArb/` (see `NOTICE.md`). Helper scripts live in
+`scripts/idarb/`: preparing RGBA inputs and running IDArb on the GPU cluster, a small training smoke
+test, and a normal-map-to-mesh tool that runs on a laptop. See `scripts/idarb/README.md`.
+
 ## Project records
 
 - `docs/decisions.md`: dated technical and scope decisions.
