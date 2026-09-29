@@ -4,14 +4,16 @@
 
 ## 分工
 
-- **服务器(有 NVIDIA 显卡)**:运行 IDArb,把图片分解成 albedo、normal、metallic、roughness;训练冒烟测试。
+- **服务器(有 NVIDIA 显卡)**:运行 IDArb,把图片分解成 albedo、normal、metallic、roughness;
+  用深度模型生成深度图;训练冒烟测试。
 - **自己的电脑(不需要显卡,也不需要 PyTorch)**:用分解出来的法线图重建三维网格。
 
 | 脚本 | 在哪里运行 | 作用 |
 |---|---|---|
 | `prepare_images.py` | 服务器 | 把普通照片处理成 IDArb 要求的 RGBA 四通道 PNG |
 | `fetch_arbobjaverse_subset.py` | 服务器 | 从 Arb-Objaverse 数据集里只下载指定的几个物体,用于训练冒烟测试 |
-| `normal_to_mesh.py` | 自己的电脑或服务器 | 把 IDArb 的法线图重建成三维网格 |
+| `estimate_depth.py` | 服务器 | 用 Depth Anything V2 生成相对深度图,给网格重建做深度先验 |
+| `normal_to_mesh.py` | 自己的电脑或服务器 | 把 IDArb 的法线图重建成三维网格,可选加入深度先验 |
 
 ## 1. 服务器:图片分解
 
@@ -30,6 +32,15 @@ python main.py --data_dir mydata/my_single --output_dir output/my_single --input
 分解结果保存在 `output/my_single/<名字>_00.png`,每张是四张图横向拼接:albedo、normal、metallic、roughness。
 
 `main.py` 默认使用官方训练好的权重。加上 `--pretrained output/train_smoke/pipeckpts` 可以换成自己训练的权重。
+
+需要深度先验时,再为同一批输入图生成深度图(在仓库根目录运行,默认用 Depth-Anything-V2-Small):
+
+```bash
+python scripts/idarb/estimate_depth.py --input_dir results/idarb_single/inputs --out_dir results/idarb_single/depth
+```
+
+深度图是 16 位灰度 PNG,和 IDArb 的输出逐像素对齐,越亮越靠近相机。把它和分解结果一起推到 GitHub,
+在自己电脑上做网格时就不需要 PyTorch。
 
 ## 2. 服务器:训练冒烟测试
 
@@ -75,7 +86,12 @@ python scripts/idarb/normal_to_mesh.py \
     --result_dir results/idarb_single/decomposition --input_dir results/idarb_single/inputs \
     --out_dir outputs/mesh_z2 --z_scale 2
 
-# 用理想半球检查算法是否正确(不需要任何输入文件)
+# 加入深度先验(推荐):补回前后部件之间的距离,纠正整体倾斜
+python scripts/idarb/normal_to_mesh.py \
+    --result_dir results/idarb_single/decomposition --input_dir results/idarb_single/inputs \
+    --depth_dir results/idarb_single/depth --out_dir outputs/mesh_depth
+
+# 检查算法是否正确(不需要任何输入文件):理想半球,以及有遮挡断崖的两个球
 python scripts/idarb/normal_to_mesh.py --selftest
 ```
 
@@ -94,18 +110,31 @@ python scripts/idarb/normal_to_mesh.py --selftest
 
 方法 B 用的 Open3D 泊松重建内部是多线程计算,同样的输入跑两次,三角形数量会有几个的差别,这是正常的。
 
-### 两种方法
+### 方法说明
 
 - **方法 A:泊松法线积分。** 法线给出的是表面每一点的倾斜方向,也就是深度的梯度。求一张深度图,
   让它的梯度尽量接近法线给出的梯度,这个最小二乘问题化简后是一个泊松方程。解出深度图后,把像素网格连成三角形。
 - **方法 B:筛选泊松表面重建**(Kazhdan & Hoppe 2013)。把方法 A 得到的三维点和网络预测的法线交给 Open3D,
   输出一个封闭曲面。单张图片看不到背面,所以背面是算法补出来的,不可信。
+- **方法 A 加深度先验(`--depth_dir`)。** 只用法线时,前后遮挡处的深度断崖会丢失(见下面的已知局限)。
+  加入 `estimate_depth.py` 生成的相对深度图 d 之后,求解
+  `min Σ(相邻深度差 − 法线给出的深度差)² + w·Σ(h − s·d)²`:法线负责表面细节,深度图负责部件之间的前后关系。
+  深度图认为有断崖的相邻像素之间,不再要求平滑相连;生成网格时再去掉跨越大深度差的三角形("墙")。
+  相关参数:`--depth_weight`(默认 0.01)、`--jump_px`(默认 3,深度差超过多少像素算断崖)、
+  `--wall_px`(默认 8,去掉深度差超过多少像素的三角形,0 表示不去)。
 
-### 已知局限
+### 已知局限和实验结果
 
 - 单张图片只能恢复朝向相机的一面。
-- 物体部件之间前后遮挡的地方(比如手臂挡在身体前面),深度上的断崖会被抹平,前面的部件会被"贴"到后面的部件上,
-  导致整体偏扁。用深度已知的合成场景测试过:真实断崖 49、99、149 像素,恢复出来都只有约 5 像素;
-  没有遮挡时(单个球)能完全准确地恢复。
+- **只用法线时**,物体部件之间前后遮挡的地方(比如手臂挡在身体前面),深度上的断崖会被抹平,
+  前面的部件会被"贴"到后面的部件上,导致整体偏扁。用深度已知的合成场景测试过:
+  真实断崖 49、99、149 像素,恢复出来都只有约 5 像素;没有遮挡时(单个球)能完全准确地恢复。
+- **加入深度先验后**,同一个合成场景的断崖(真实 99.4 像素)恢复为 99.4 像素。在示例数据上:
+  - chair1 的深度与宽度之比从 0.28 变为 0.82,座面和靠背的前后关系变对了;
+  - labubu 原本整体倾斜,现在是直立的;
+  - bird、panda、superman 这类没有明显遮挡的物体变化不大;
+  - 代价是重建表面和 IDArb 法线的偏差变大(例如 chair1 从 4.7° 变为约 11°)。
+    权重从 0.01 调到 0.2,深度比例几乎不变,偏差却继续变大,所以默认取 0.01。
+  - 对比图:`results/idarb_single/depth_prior_compare.png`。
 - 网络预测的法线有随机误差。在数据集的 16 个样本上与真值平均相差 17.2°,积分出的深度是真值的 0.43 到 1.55 倍,
   中位数 1.00,没有系统性地偏平。

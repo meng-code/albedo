@@ -21,6 +21,18 @@
     注意:单张图片只能看到物体的正面,背面没有任何点,算法会自己把背面补成一个光滑的封闭面。
     补出来的部分不可信,脚本会按点的密度把离观测点太远的部分裁掉。
 
+  方法 A 的改进:加入深度先验(可选,用 --depth_dir 打开)
+    只用法线积分有一个根本问题:物体前后遮挡的地方(比如椅子座面挡在椅子腿前面),深度是断开的,
+    但法线只描述表面局部的倾斜,不包含"断开了多远"。积分时这些断崖会被抹成平缓的坡,
+    前面的部件被"贴"到后面的部件上,整个物体看起来被压扁;法线里的小偏差还会累积成整体倾斜。
+    改进办法是再用一个单目深度估计模型(Depth Anything V2,见 estimate_depth.py)给出一张粗略的
+    相对深度图 d,和法线一起求解:
+        min  Σ (相邻两像素的深度差 − 法线给出的深度差)²  +  w · Σ (h − s·d)²
+    法线负责表面细节,深度图负责部件之间的前后关系和整体朝向。s 是把 d 换算到像素单位的比例,
+    用平滑区域里 d 的梯度和法线梯度对齐来估计。深度图认为某两个相邻像素之间有明显断崖时,
+    就不再要求这两个像素的深度平滑相连,断崖的高度交给深度图决定。
+    生成网格时再去掉跨越大深度差的三角形,避免前后部件之间被连出一片竖直的"墙"。
+
 二、坐标约定(非常重要,弄错会导致表面左右或上下翻转)
 
   IDArb 输出的法线图,三个颜色通道 R、G、B 分别对应法线的 x、y、z 分量,
@@ -47,7 +59,12 @@
     python scripts/idarb/normal_to_mesh.py \
         --result_dir results/idarb_single/decomposition --input_dir results/idarb_single/inputs
 
-  用一个理想半球做正确性测试(不需要任何输入文件):
+  加入深度先验(深度图由服务器上的 estimate_depth.py 生成,放在 results/idarb_single/depth/):
+    python scripts/idarb/normal_to_mesh.py \
+        --result_dir results/idarb_single/decomposition --input_dir results/idarb_single/inputs \
+        --depth_dir results/idarb_single/depth --out_dir outputs/mesh_depth
+
+  正确性测试(不需要任何输入文件):理想半球,以及有遮挡断崖的两个球
     python scripts/idarb/normal_to_mesh.py --selftest
 
   输出(默认在 outputs/mesh/<物体名>/ 下,这个文件夹不进 git):
@@ -79,16 +96,16 @@ def load_result(result_path):
     return albedo, normal, metallic, roughness
 
 
-def load_mask(input_path, size):
+def load_input_512(input_path):
     """
-    用和推理时完全相同的方式处理输入的 RGBA 图,得到前景掩膜。
+    用和推理时完全相同的方式处理输入的 RGBA 图,
+    返回 (白底 RGB 图 [512, 512, 3],前景掩膜 [512, 512])。
     推理时 custom_dataset.py 的 load_image 会把图片缩放到长边 512、再补边成正方形,
-    所以掩膜也必须这样处理,
-    才能和法线图的像素一一对应。
+    所以这里也必须这样处理,才能和 IDArb 输出的像素一一对应。
 
-    下面的步骤逐行照抄 custom_dataset.py 原 27-58 行,但只用 PIL 和 numpy,
+    下面的步骤逐行照抄 custom_dataset.py 原 27-61 行,但只用 PIL 和 numpy,
     不导入 PyTorch 和 idarbdiffusion,
-    这样在没有显卡、没装 PyTorch 的电脑上也能运行。两者的结果已经逐张核对过,完全一致。
+    这样在没有显卡、没装 PyTorch 的电脑上也能运行。掩膜已经和原代码逐张核对过,完全一致。
     """
     img = Image.open(input_path)
     max_length = 512
@@ -112,9 +129,28 @@ def load_mask(input_path, size):
         constant_values=0,
     )
     mask = img[:, :, 3] > 0.5
+    alpha = mask[..., None].astype(np.float32)
+    rgb = img[:, :, :3] * alpha + (1.0 - alpha)  # 背景涂白,和 custom_dataset.py 原 61 行一样
+    return rgb, mask
+
+
+def load_mask(input_path, size):
+    """得到和 IDArb 输出像素一一对应的前景掩膜。"""
+    _, mask = load_input_512(input_path)
     if mask.shape != size:
         raise ValueError(f"掩膜尺寸 {mask.shape} 和法线图尺寸 {size} 不一致")
     return mask
+
+
+def load_depth(depth_path, size):
+    """
+    读取 estimate_depth.py 保存的深度图(16 位灰度 PNG),返回 0 到 1 的相对深度,越大越靠近相机。
+    这是单目深度模型给出的相对值,单位未知,使用时再换算到像素单位。
+    """
+    d = np.asarray(Image.open(depth_path)).astype(np.float64) / 65535.0
+    if d.shape != size:
+        raise ValueError(f"深度图尺寸 {d.shape} 和法线图尺寸 {size} 不一致")
+    return d
 
 
 def decode_normal(normal_rgb):
@@ -198,6 +234,78 @@ def integrate_normals(n, mask, min_nz=0.1, max_grad=8.0, reg=1e-6):
     h[mask] = x
     h[mask] -= np.nanmin(h)  # 让最远的点深度为 0
     return h
+
+
+def integrate_normals_with_depth(n, d, mask, weight=0.01, jump_px=3.0, min_nz=0.1, max_grad=8.0):
+    """
+    法线和深度先验联合求解深度图(方法 A 的改进版)。
+    输入:n 是单位法线(x 朝右、y 朝上、z 朝相机),d 是 0 到 1 的相对深度(越大越近),mask 是掩膜。
+    输出:h 是深度图(单位是像素,掩膜外为 nan),以及一个记录中间量的字典。
+
+    求解的问题是
+        min  Σ_{保留的相邻像素对} (h_j − h_i − g_ij)²  +  weight · Σ_i (h_i − s·d_i)²
+    其中 g_ij 是法线给出的深度差,和 integrate_normals 里的定义相同。
+
+    步骤:
+      1. 估计比例 s:在平滑区域(d 的相邻差值不属于最大的 10%)里,让 s·Δd 和法线给出的 Δh 最接近,
+         最小二乘解是 s = Σ Δd·g / Σ Δd²。
+      2. 找断崖:一对相邻像素,如果深度图说它们相差超过 jump_px 像素(|s·Δd| > jump_px),
+         而且法线给出的差值和它明显对不上(|s·Δd − g| > jump_px),就认为中间是遮挡造成的断崖,
+         去掉这一对的方程,不再要求它们平滑相连。
+      3. 解线性方程组 (AᵀA + weight·I) h = Aᵀg + weight·s·d。和 integrate_normals 一样是泊松方程,
+         只是多了一项把 h 拉向 s·d。这一项同时决定了每一块被断崖隔开的区域的前后位置。
+    """
+    H, W = mask.shape
+    nz = np.clip(n[..., 2], min_nz, None)
+    p = np.clip(-n[..., 0] / nz, -max_grad, max_grad)  # 向右一格的深度变化
+    q = np.clip(n[..., 1] / nz, -max_grad, max_grad)  # 向下一格的深度变化
+
+    idx = -np.ones((H, W), dtype=np.int64)
+    idx[mask] = np.arange(mask.sum())
+    N = int(mask.sum())
+
+    # 所有相邻像素对:i 是左边或上边的像素,j 是右边或下边的像素
+    r, c = np.nonzero(mask[:, :-1] & mask[:, 1:])
+    ri, ci, rj, cj = [r], [c], [r], [c + 1]
+    g = [0.5 * (p[r, c] + p[r, c + 1])]
+    r, c = np.nonzero(mask[:-1, :] & mask[1:, :])
+    ri.append(r)
+    ci.append(c)
+    rj.append(r + 1)
+    cj.append(c)
+    g.append(0.5 * (q[r, c] + q[r + 1, c]))
+    ri, ci, rj, cj, g = (np.concatenate(x) for x in (ri, ci, rj, cj, g))
+    dd = d[rj, cj] - d[ri, ci]
+
+    # 1. 比例 s
+    smooth = np.abs(dd) < np.quantile(np.abs(dd), 0.9)
+    s = float((dd[smooth] * g[smooth]).sum() / max((dd[smooth] ** 2).sum(), 1e-12))
+    # 2. 断崖
+    jump = (np.abs(s * dd) > jump_px) & (np.abs(s * dd - g) > jump_px)
+    keep = ~jump
+    k = int(keep.sum())
+    # 3. 求解
+    rows = np.concatenate([np.arange(k), np.arange(k)])
+    cols = np.concatenate([idx[rj[keep], cj[keep]], idx[ri[keep], ci[keep]]])
+    vals = np.concatenate([np.ones(k), -np.ones(k)])
+    A = sp.csr_matrix((vals, (rows, cols)), shape=(k, N))
+    rhs = A.T @ g[keep] + weight * s * d[mask]
+    L = (A.T @ A + weight * sp.identity(N)).tocsc()
+    x = spla.spsolve(L, rhs)
+
+    h = np.full((H, W), np.nan, dtype=np.float64)
+    h[mask] = x
+    h[mask] -= np.nanmin(h)
+    return h, dict(scale=s, jump_fraction=float(jump.mean()))
+
+
+def drop_wall_faces(verts, faces, max_dz):
+    """
+    去掉跨越大深度差的三角形。深度断崖两侧的像素在图上相邻,heightmap_to_mesh 会把它们连成三角形,
+    于是前后两个部件之间被拉出一片竖直的"墙"。三个顶点的深度差超过 max_dz 的三角形就是这种墙。
+    """
+    z = verts[faces][:, :, 2]
+    return faces[(z.max(axis=1) - z.min(axis=1)) < max_dz]
 
 
 def normals_from_depth(h):
@@ -355,7 +463,18 @@ def save_mesh(path, verts, faces, vcol):
 
 
 def process_one(
-    result_path, input_path, out_dir, methods, poisson_depth=9, erode_px=2, min_nz=0.1, z_scale=1.0
+    result_path,
+    input_path,
+    out_dir,
+    methods,
+    poisson_depth=9,
+    erode_px=2,
+    min_nz=0.1,
+    z_scale=1.0,
+    depth_path=None,
+    depth_weight=0.01,
+    jump_px=3.0,
+    wall_px=8.0,
 ):
     os.makedirs(out_dir, exist_ok=True)
     albedo, normal_rgb, _, _ = load_result(result_path)
@@ -375,7 +494,17 @@ def process_one(
         "(仅作参考:对熊猫这类大致凸起的物体两者应为正;椅子、动物腿这类非凸形状接近 0 或为负也正常)"
     )
 
-    h = integrate_normals(n, m_int, min_nz=min_nz)
+    if depth_path is None:
+        h = integrate_normals(n, m_int, min_nz=min_nz)
+    else:
+        d = load_depth(depth_path, normal_rgb.shape[:2])
+        h, info = integrate_normals_with_depth(
+            n, d, m_int, weight=depth_weight, jump_px=jump_px, min_nz=min_nz
+        )
+        print(
+            f"  深度先验:深度图换算比例 {info['scale']:.0f} 像素,"
+            f"判定为断崖的相邻像素对占 {info['jump_fraction'] * 100:.1f}%"
+        )
     n_back = normals_from_depth(h)
     mean_err, med_err = angular_error(n, n_back, erode(m_int, 1))
     print(
@@ -390,6 +519,11 @@ def process_one(
     Image.fromarray((d_img * 255).astype(np.uint8)).save(os.path.join(out_dir, "depth.png"))
 
     verts, faces, vcol = heightmap_to_mesh(h, m_int, albedo)
+    if depth_path is not None and wall_px > 0:
+        # 去墙要在中心化和拉伸之前做,这时 z 坐标的单位是 2/512,wall_px 像素对应 wall_px * 2/512
+        n_faces = len(faces)
+        faces = drop_wall_faces(verts, faces, wall_px * 2.0 / max(mask.shape))
+        print(f"  去掉前后部件之间的竖直面:{n_faces - len(faces)} 个三角形")
     # 中心化:把所有顶点坐标的平均值移到原点(0, 0, 0)。
     # heightmap_to_mesh 生成的坐标里,x、y 以图片中心为原点,z 以最远的点为 0,物体本身并不在原点上。
     # 不中心化的话,在 MeshLab、Blender 里旋转查看时,物体会绕着一个偏离自身的点转。
@@ -473,6 +607,60 @@ def selftest(out_dir):
         os.path.join(out_dir, "selftest_hemisphere.png"),
     )
     print("  预览图已保存到", os.path.join(out_dir, "selftest_hemisphere.png"))
+    selftest_occlusion(out_dir)
+
+
+def selftest_occlusion(out_dir):
+    """
+    有遮挡的场景:大球(半径 90)前方悬着一个小球(半径 35),两者之间隔着一段空隙。
+    只用法线积分时,这段空隙(深度断崖)会丢失;给一张理想的深度先验(真实深度经过任意线性变换),
+    integrate_normals_with_depth 应该能把断崖恢复出来。
+    """
+    H = W = 256
+    yy, xx = np.mgrid[0:H, 0:W].astype(np.float64)
+
+    def sphere(cx, cy, R, cz, shrink=0.97):
+        x = xx - cx
+        y = -(yy - cy)
+        r2 = x**2 + y**2
+        zz = np.sqrt(np.clip(R**2 - r2, 0, None))
+        m = r2 < (shrink * R) ** 2
+        return m, np.where(m, cz + zz, -np.inf), np.stack([x / R, y / R, zz / R], -1)
+
+    mb, zb, nb = sphere(128, 128, 90, 0)
+    mf, zf, nf = sphere(165, 160, 35, 150)
+    mask = mb | mf
+    front = zf > zb
+    z = np.where(front, zf, zb)
+    n = np.where(front[..., None], nf, nb)
+    d = 0.3 + 0.5 * (z - z[mask].min()) / (z[mask].max() - z[mask].min())  # 真实深度的线性变换
+    d = np.where(mask, d, 0.0)
+
+    ring_in = mf & ~sphere(165, 160, 35, 150, 0.90)[0]  # 小球轮廓内侧一圈
+    ring_out = mb & ~mf & sphere(165, 160, 35, 150, 1.10)[0]  # 紧挨着的大球表面
+
+    def jump(h):
+        return np.nanmean(h[ring_in]) - np.nanmean(h[ring_out])
+
+    h_n = integrate_normals(n, mask, min_nz=0.02, max_grad=50)
+    h_d, _ = integrate_normals_with_depth(n, d, mask, min_nz=0.02, max_grad=50)
+    print("遮挡场景自检:小球悬在大球前方")
+    print(
+        f"  断崖高度:真实 {jump(np.where(mask, z, np.nan)):.1f} 像素,"
+        f"只用法线 {jump(h_n):.1f} 像素,法线 + 深度先验 {jump(h_d):.1f} 像素"
+        "(后者应接近真实值)"
+    )
+    panels = []
+    for h in (np.where(mask, z - z[mask].min(), np.nan), h_n, h_d):
+        verts, faces, vcol = heightmap_to_mesh(h, mask, np.ones((H, W, 3)) * 0.8)
+        faces = drop_wall_faces(verts, faces, 8 * 2.0 / H)
+        panels.append(render_fast(verts, faces, vcol, 75, res=240))
+    make_preview(
+        panels,
+        ["ground truth", "normals only", "normals + depth prior"],
+        os.path.join(out_dir, "selftest_occlusion.png"),
+    )
+    print("  预览图已保存到", os.path.join(out_dir, "selftest_occlusion.png"))
 
 
 def main():
@@ -495,6 +683,17 @@ def main():
     ap.add_argument(
         "--z_scale", type=float, default=1.0, help="沿深度方向拉伸的倍数,例如 2 表示深度放大 2 倍"
     )
+    ap.add_argument("--depth", type=str, help="单个物体的深度图(estimate_depth.py 生成的 PNG)")
+    ap.add_argument("--depth_dir", type=str, help="批量模式:深度图所在文件夹,按物体名找 <名字>.png")
+    ap.add_argument(
+        "--depth_weight", type=float, default=0.01, help="深度先验的权重,越大越贴近深度图"
+    )
+    ap.add_argument(
+        "--jump_px", type=float, default=3.0, help="深度差超过多少像素算作断崖(断开法线约束)"
+    )
+    ap.add_argument(
+        "--wall_px", type=float, default=8.0, help="去掉深度差超过多少像素的三角形;0 表示不去"
+    )
     ap.add_argument("--selftest", action="store_true")
     args = ap.parse_args()
     methods = args.methods.split(",")
@@ -506,21 +705,24 @@ def main():
     jobs = []
     if args.result:
         name = os.path.basename(args.result).rsplit("_", 1)[0]
-        jobs.append((name, args.result, args.input))
+        jobs.append((name, args.result, args.input, args.depth))
     elif args.result_dir:
         for f in sorted(os.listdir(args.result_dir)):
             if not f.endswith(".png"):
                 continue
             name = f.rsplit("_", 1)[0]
             inp = os.path.join(args.input_dir, name + ".png")
-            if os.path.exists(inp):
-                jobs.append((name, os.path.join(args.result_dir, f), inp))
-            else:
+            dep = os.path.join(args.depth_dir, name + ".png") if args.depth_dir else None
+            if not os.path.exists(inp):
                 print(f"跳过 {f}:找不到输入图 {inp}")
+            elif dep is not None and not os.path.exists(dep):
+                print(f"跳过 {f}:找不到深度图 {dep}")
+            else:
+                jobs.append((name, os.path.join(args.result_dir, f), inp, dep))
     else:
         ap.error("需要 --result 和 --input,或者 --result_dir 和 --input_dir,或者 --selftest")
 
-    for name, res, inp in jobs:
+    for name, res, inp, dep in jobs:
         print(f"[{name}]")
         process_one(
             res,
@@ -531,6 +733,10 @@ def main():
             erode_px=args.erode,
             min_nz=args.min_nz,
             z_scale=args.z_scale,
+            depth_path=dep,
+            depth_weight=args.depth_weight,
+            jump_px=args.jump_px,
+            wall_px=args.wall_px,
         )
 
 

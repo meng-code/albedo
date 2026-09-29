@@ -8,6 +8,8 @@ Single-image albedo estimation and controllable relighting.
   a GPU and splits an image into albedo, normal, metallic and roughness.
 - **Geometry.** `scripts/idarb/normal_to_mesh.py` turns an IDArb normal map into a mesh, using Poisson
   normal integration and screened Poisson surface reconstruction. It runs on a laptop without a GPU.
+  An optional depth prior from Depth Anything V2 (`scripts/idarb/estimate_depth.py`, run on the server)
+  restores the front-to-back structure that normals alone lose.
 - **Relighting.** Not implemented yet. `src/relight/` only contains a placeholder pipeline, which treats
   the input image as albedo and multiplies it by a constant light, so that the package and tests exist.
 

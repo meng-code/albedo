@@ -12,7 +12,8 @@ single RGB image, then relight the image under user-controllable lighting.
   - Intrinsic decomposition: IDArb (`third_party/IDArb/`) is the working baseline. It runs on the GPU
     cluster and splits an image into albedo, normal, metallic and roughness.
   - Geometry: `scripts/idarb/normal_to_mesh.py` reconstructs a mesh from an IDArb normal map. It runs on a
-    laptop.
+    laptop. An optional depth prior (Depth Anything V2 depth maps from `scripts/idarb/estimate_depth.py`,
+    produced on the server) restores front-to-back structure that normals alone lose.
   - Relighting: not started. `src/relight/` is still a placeholder package whose smoke pipeline treats the
     input as albedo and multiplies it by a constant light.
 - **Direction:** work on single images and build on pretrained models. Multi-view reconstruction is out of

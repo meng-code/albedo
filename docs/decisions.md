@@ -27,3 +27,11 @@ The repository will be used beyond the original course, so the owner rewrote `AG
 - **Upstream bug fixed:** `mv_dataset.py` `load_mr_abo` used `out_imgs` before creating it, so training on ABO or Arb-Objaverse crashed.
 - **Normal-to-mesh** (supervisor suggestion: Poisson reconstruction): implemented both Poisson normal integration and screened Poisson surface reconstruction in `scripts/idarb/normal_to_mesh.py`. The supervisor observed that single-view meshes look flattened. Experiments traced most of this to depth discontinuities at occlusion boundaries, which normals cannot encode (true gaps of 49/99/149 px were recovered as about 5 px). Per the supervisor, meshes are now centred at the origin and can be stretched along Z (`--z_scale`).
 - **Multi-view reconstruction** is not pursued; the supervisor considers novel-view-synthesis methods sufficient for that.
+
+## 2026-09-30 — Depth prior for normal-to-mesh
+
+- **Problem:** meshes from normal integration look flattened. The supervisor noted that even the visible surface is squashed. The cause is depth discontinuities at occlusion boundaries, which normals cannot encode, plus small normal biases that integrate into a global tilt.
+- **Change:** add a monocular depth prior. `scripts/idarb/estimate_depth.py` runs Depth Anything V2 Small on the server; `scripts/idarb/normal_to_mesh.py --depth_dir` solves `min Σ(Δh − g)² + w·Σ(h − s·d)²`, drops gradient constraints across depth jumps detected in the depth map, and removes "wall" triangles across large depth gaps. Without `--depth_dir` the behaviour is unchanged.
+- **Results:** on a synthetic two-sphere scene the recovered occlusion gap is 99.4 px (true 99.4; normals only 5.4). On samples, chair1 depth/width goes from 0.28 to 0.82 and labubu's tilt disappears; objects without occlusions change little. Surface-to-normal deviation grows (chair1 4.7° to about 11°); the weight barely changes the depth ratio between 0.01 and 0.2, so the default is 0.01.
+- **Model choice:** Small (Apache-2.0, 99 MB) instead of Large (CC-BY-NC-4.0, 1.3 GB); on five samples their depth maps correlate at 0.94 to 0.997 and give nearly identical meshes.
+- **Workflow:** depth maps are produced on the server and pushed with the decomposition results, so mesh reconstruction on the laptop still needs no PyTorch.
