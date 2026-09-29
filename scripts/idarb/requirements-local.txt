@@ -1,0 +1,10 @@
+# 在自己电脑上运行 scripts/idarb/normal_to_mesh.py 需要的库。不需要显卡,也不需要 PyTorch。
+# 建议新建一个 Python 3.10 的环境再安装:
+#   conda create -n mesh python=3.10 -y
+#   conda activate mesh
+#   pip install -r scripts/idarb/requirements-local.txt
+numpy<2          # open3d 0.18 是针对 numpy 1.x 编译的,numpy 2 会导致 open3d 无法导入
+scipy
+pillow
+trimesh
+open3d==0.18.0   # 只有方法 B(筛选泊松表面重建)需要。只用方法 A 时可以不装,运行时加 --methods relief

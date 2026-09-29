@@ -1,6 +1,7 @@
-# Weekly project diary
+# Progress log
 
-This course diary is owned by the student. Agents may propose new entries through pull requests but must not rewrite existing entries.
+Weekly notes on what was done and learned. The owner writes the entries; agents may suggest an entry but
+do not rewrite existing ones.
 
 ## Entry template
 
@@ -10,4 +11,3 @@ This course diary is owned by the student. Agents may propose new entries throug
 - **Problems or risks:**
 - **Decisions made:**
 - **Plan for next week:**
-- **AI assistance used:**

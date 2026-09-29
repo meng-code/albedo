@@ -1,0 +1,90 @@
+pretrained_model_name_or_path: ByteDance/sd2.1-base-zsnr-laionaes5
+pretrained_unet_path: null
+output_dir: output/train_smoke
+revision: null
+dataset_root:
+  gobjaverse: data/Gobjaverse
+  abo: data/ABO
+  arbobjaverse: data/Arbobjaverse
+train_dataset:
+  object_list: datalist/my_train.json
+  img_wh:
+  - 256
+  - 256
+  split: train
+  num_views: 3
+validation_train_dataset:
+  object_list: datalist/my_train.json
+  img_wh:
+  - 256
+  - 256
+  split: train
+  num_samples: 3
+  num_views: 3
+validation_dataset:
+  object_list: datalist/my_train.json
+  img_wh:
+  - 256
+  - 256
+  split: test
+  num_views: 4
+seed: 42
+train_batch_size: 1
+validation_batch_size: 1
+validation_train_batch_size: 1
+max_train_steps: 300
+gradient_accumulation_steps: 1
+gradient_checkpointing: true
+learning_rate: 0.0001
+scale_lr: false
+lr_scheduler: constant_with_warmup
+lr_warmup_steps: 20
+snr_gamma: 5.0
+use_8bit_adam: false
+allow_tf32: true
+use_ema: false
+dataloader_num_workers: 2
+adam_beta1: 0.9
+adam_beta2: 0.999
+adam_weight_decay: 0.01
+adam_epsilon: 1.0e-08
+max_grad_norm: 1.0
+vis_dir: vis
+logging_dir: logs
+mixed_precision: fp16
+report_to: tensorboard
+local_rank: -1
+checkpointing_steps: 100000
+checkpoints_total_limit: 2
+resume_from_checkpoint: latest
+enable_xformers_memory_efficient_attention: true
+validation_steps: 100
+validation_sanity_check: true
+tracker_project_name: derender-v1
+trainable_modules: null
+use_classifier_free_guidance: true
+condition_drop_rate: 0.05
+scale_input_latents: true
+pipe_kwargs:
+  camera_embedding_type: 4DoF
+pipe_validation_kwargs:
+  eta: 1.0
+unet_from_pretrained_kwargs:
+  camera_embedding_type: 4DoF
+  zero_init_conv_in: true
+  zero_init_camera_projection: false
+  attn1_cd: true
+  attn_mid_cv: true
+zero_snr: true
+linear_noise_schedule: true
+single_view_prob: 0.6
+wo_camera: false
+camera_embedding_type: 4DoF
+metrics:
+  albedo:
+  - ssim
+  - psnr
+  material:
+  - mse
+  normal:
+  - cosine_similarity

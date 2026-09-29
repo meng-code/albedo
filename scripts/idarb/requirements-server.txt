@@ -1,0 +1,49 @@
+# 在 GPU 服务器上运行 IDArb 推理和训练的环境(NVIDIA A40、CUDA 11.8、Python 3.8)。
+# 版本取自集群上已经验证可以跑通推理和训练冒烟测试的 idarb 环境(2026-09-25)。
+#
+# 为什么不直接用 third_party/IDArb/requirements.txt:官方清单里有一些推理和训练都用不到、而且不好装的包
+# (nerfacc、PyMCubes、torch_efficient_distloss、pyransac3d、decord、boto3 等),
+# 又缺少训练时实际需要的设置(见下面 opencv 的说明)。
+#
+# 安装:
+#   conda create -n idarb python=3.8 -y
+#   conda activate idarb
+#   pip install -r scripts/idarb/requirements-server.txt
+#   conda install -c conda-forge libgl -y      # 只有在服务器上运行 normal_to_mesh.py 的方法 B(open3d)时才需要
+--extra-index-url https://download.pytorch.org/whl/cu118
+
+# 模型本体
+torch==2.2.1+cu118
+torchvision==0.17.1+cu118
+xformers==0.0.25+cu118      # 必需:跨分量和跨视角注意力只实现了 xformers 版本,没有它结果会静默出错
+diffusers==0.31.0
+transformers==4.46.3
+accelerate==1.0.1
+huggingface-hub==0.26.5
+safetensors==0.5.3
+omegaconf==2.2.3
+einops==0.8.1
+
+# 图像读写和数值计算
+numpy==1.24.4
+pillow==10.4.0
+opencv-python-headless==4.10.0.84   # 不要用 5.x:5.x 不支持读取训练数据里的 .exr 法线图;headless 版不依赖 libGL
+scipy==1.10.1
+scikit-image==0.21.0
+imageio==2.35.1
+tqdm
+packaging
+
+# 训练时的验证指标和日志
+kornia==0.7.3
+kornia_rs==0.1.9
+lpips==0.1.4
+tensorboard==2.14.0
+
+# 准备输入图(去背景):scripts/idarb/prepare_images.py
+rembg==2.0.61
+onnxruntime==1.19.2
+
+# 在服务器上运行 normal_to_mesh.py(可选;在自己电脑上运行时用 requirements-local.txt)
+trimesh==4.4.9
+open3d==0.18.0
