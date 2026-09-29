@@ -31,7 +31,9 @@
     法线负责表面细节,深度图负责部件之间的前后关系和整体朝向。s 是把 d 换算到像素单位的比例,
     用平滑区域里 d 的梯度和法线梯度对齐来估计。深度图认为某两个相邻像素之间有明显断崖时,
     就不再要求这两个像素的深度平滑相连,断崖的高度交给深度图决定。
-    生成网格时再去掉跨越大深度差的三角形,避免前后部件之间被连出一片竖直的"墙"。
+    深度模型在细小结构(比如椅子腿)上估得不准,会切出很多很小的碎块,变成漂浮的碎片,
+    所以小于 --min_part 像素的碎块会被接回到与它交界最多的那个相邻块上。
+    生成网格时再去掉正好跨在断崖上的三角形,避免前后部件之间被连出一片竖直的"墙"。
 
 二、坐标约定(非常重要,弄错会导致表面左右或上下翻转)
 
@@ -82,6 +84,7 @@ import numpy as np
 import scipy.sparse as sp
 import scipy.sparse.linalg as spla
 from PIL import Image, ImageDraw
+from scipy.sparse.csgraph import connected_components
 
 # ------------------------------------------------------------------------------
 # 读取数据
@@ -236,7 +239,59 @@ def integrate_normals(n, mask, min_nz=0.1, max_grad=8.0, reg=1e-6):
     return h
 
 
-def integrate_normals_with_depth(n, d, mask, weight=0.01, jump_px=3.0, min_nz=0.1, max_grad=8.0):
+def neighbor_pairs(mask):
+    """
+    列出掩膜内所有左右相邻和上下相邻的像素对。i 是左边或上边的像素,j 是右边或下边的像素。
+    返回 (ri, ci, rj, cj, horizontal):两组像素的行号、列号,以及每一对是否是左右相邻。
+    """
+    r1, c1 = np.nonzero(mask[:, :-1] & mask[:, 1:])
+    r2, c2 = np.nonzero(mask[:-1, :] & mask[1:, :])
+    ri = np.concatenate([r1, r2])
+    ci = np.concatenate([c1, c2])
+    rj = np.concatenate([r1, r2 + 1])
+    cj = np.concatenate([c1 + 1, c2])
+    horizontal = np.concatenate([np.ones(len(r1), bool), np.zeros(len(r2), bool)])
+    return ri, ci, rj, cj, horizontal
+
+
+def merge_small_parts(jump, vi, vj, n_vertices, min_part):
+    """
+    断崖会把前景切成若干块。深度模型在细小结构(比如椅子腿)上估得不准,会切出很多很小的碎块,
+    这些碎块的位置只能靠不准的深度值决定,就成了漂浮的碎片。
+    这里把小于 min_part 像素的块接回去:每个小块只和"与它之间断崖边最多"的那一个相邻块重新连起来。
+    只连一个,是为了避免一个小块同时连向两个本应分开的大块(比如超人的披风和身体),把它们粘在一起。
+    反复进行,直到没有能接回去的小块为止。
+    jump 是每个相邻像素对是否为断崖,vi、vj 是每对两端像素的编号。返回更新后的 jump。
+    """
+    jump = jump.copy()
+    for _ in range(100):
+        keep = ~jump
+        graph = sp.coo_matrix(
+            (np.ones(int(keep.sum())), (vi[keep], vj[keep])), shape=(n_vertices, n_vertices)
+        )
+        _, label = connected_components(graph, directed=False)
+        size = np.bincount(label)
+        li, lj = label[vi], label[vj]
+        cand = np.nonzero(jump & (li != lj) & ((size[li] < min_part) | (size[lj] < min_part)))[0]
+        if len(cand) == 0:
+            break
+        i_is_small = size[li[cand]] <= size[lj[cand]]
+        small = np.where(i_is_small, li[cand], lj[cand])
+        other = np.where(i_is_small, lj[cand], li[cand])
+        base = int(label.max()) + 1
+        pair = small * base + other
+        uniq, count = np.unique(pair, return_counts=True)
+        # 按小块编号排序,同一个小块内按交界边数从多到少排,取每个小块的第一个
+        order = np.lexsort((-count, uniq // base))
+        first = np.unique(uniq[order] // base, return_index=True)[1]
+        chosen = uniq[order][first]
+        jump[cand[np.isin(pair, chosen)]] = False
+    return jump
+
+
+def integrate_normals_with_depth(
+    n, d, mask, weight=0.01, jump_px=3.0, min_part=300, min_nz=0.1, max_grad=8.0
+):
     """
     法线和深度先验联合求解深度图(方法 A 的改进版)。
     输入:n 是单位法线(x 朝右、y 朝上、z 朝相机),d 是 0 到 1 的相对深度(越大越近),mask 是掩膜。
@@ -252,6 +307,7 @@ def integrate_normals_with_depth(n, d, mask, weight=0.01, jump_px=3.0, min_nz=0.
       2. 找断崖:一对相邻像素,如果深度图说它们相差超过 jump_px 像素(|s·Δd| > jump_px),
          而且法线给出的差值和它明显对不上(|s·Δd − g| > jump_px),就认为中间是遮挡造成的断崖,
          去掉这一对的方程,不再要求它们平滑相连。
+         切出来的块如果小于 min_part 像素,用 merge_small_parts 接回去。
       3. 解线性方程组 (AᵀA + weight·I) h = Aᵀg + weight·s·d。和 integrate_normals 一样是泊松方程,
          只是多了一项把 h 拉向 s·d。这一项同时决定了每一块被断崖隔开的区域的前后位置。
     """
@@ -264,17 +320,9 @@ def integrate_normals_with_depth(n, d, mask, weight=0.01, jump_px=3.0, min_nz=0.
     idx[mask] = np.arange(mask.sum())
     N = int(mask.sum())
 
-    # 所有相邻像素对:i 是左边或上边的像素,j 是右边或下边的像素
-    r, c = np.nonzero(mask[:, :-1] & mask[:, 1:])
-    ri, ci, rj, cj = [r], [c], [r], [c + 1]
-    g = [0.5 * (p[r, c] + p[r, c + 1])]
-    r, c = np.nonzero(mask[:-1, :] & mask[1:, :])
-    ri.append(r)
-    ci.append(c)
-    rj.append(r + 1)
-    cj.append(c)
-    g.append(0.5 * (q[r, c] + q[r + 1, c]))
-    ri, ci, rj, cj, g = (np.concatenate(x) for x in (ri, ci, rj, cj, g))
+    ri, ci, rj, cj, horizontal = neighbor_pairs(mask)
+    g = np.where(horizontal, 0.5 * (p[ri, ci] + p[rj, cj]), 0.5 * (q[ri, ci] + q[rj, cj]))
+    vi, vj = idx[ri, ci], idx[rj, cj]
     dd = d[rj, cj] - d[ri, ci]
 
     # 1. 比例 s
@@ -282,11 +330,12 @@ def integrate_normals_with_depth(n, d, mask, weight=0.01, jump_px=3.0, min_nz=0.
     s = float((dd[smooth] * g[smooth]).sum() / max((dd[smooth] ** 2).sum(), 1e-12))
     # 2. 断崖
     jump = (np.abs(s * dd) > jump_px) & (np.abs(s * dd - g) > jump_px)
+    jump = merge_small_parts(jump, vi, vj, N, min_part)
     keep = ~jump
     k = int(keep.sum())
     # 3. 求解
     rows = np.concatenate([np.arange(k), np.arange(k)])
-    cols = np.concatenate([idx[rj[keep], cj[keep]], idx[ri[keep], ci[keep]]])
+    cols = np.concatenate([vj[keep], vi[keep]])
     vals = np.concatenate([np.ones(k), -np.ones(k)])
     A = sp.csr_matrix((vals, (rows, cols)), shape=(k, N))
     rhs = A.T @ g[keep] + weight * s * d[mask]
@@ -296,16 +345,30 @@ def integrate_normals_with_depth(n, d, mask, weight=0.01, jump_px=3.0, min_nz=0.
     h = np.full((H, W), np.nan, dtype=np.float64)
     h[mask] = x
     h[mask] -= np.nanmin(h)
-    return h, dict(scale=s, jump_fraction=float(jump.mean()))
+    graph = sp.coo_matrix((np.ones(k), (vi[keep], vj[keep])), shape=(N, N))
+    n_parts = connected_components(graph, directed=False)[0]
+    info = dict(
+        scale=s, jump_fraction=float(jump.mean()), parts=n_parts, cut_i=vi[jump], cut_j=vj[jump]
+    )
+    return h, info
 
 
-def drop_wall_faces(verts, faces, max_dz):
+def drop_cut_faces(faces, cut_i, cut_j, n_vertices):
     """
-    去掉跨越大深度差的三角形。深度断崖两侧的像素在图上相邻,heightmap_to_mesh 会把它们连成三角形,
-    于是前后两个部件之间被拉出一片竖直的"墙"。三个顶点的深度差超过 max_dz 的三角形就是这种墙。
+    去掉跨在断崖上的三角形。断崖两侧的像素在图上相邻,heightmap_to_mesh 会把它们连成三角形,
+    于是前后两个部件之间被拉出一片竖直的"墙"。三角形只要有一条边正好是被切断的相邻像素对,就删掉。
+    顶点编号和 integrate_normals_with_depth 里的像素编号一致,都按掩膜内像素的行优先顺序排列。
     """
-    z = verts[faces][:, :, 2]
-    return faces[(z.max(axis=1) - z.min(axis=1)) < max_dz]
+    if len(cut_i) == 0:
+        return faces
+    cut = np.unique(np.minimum(cut_i, cut_j) * n_vertices + np.maximum(cut_i, cut_j))
+    bad = np.zeros(len(faces), dtype=bool)
+    for a, b in ((0, 1), (1, 2), (0, 2)):
+        edge = np.minimum(faces[:, a], faces[:, b]) * n_vertices + np.maximum(
+            faces[:, a], faces[:, b]
+        )
+        bad |= np.isin(edge, cut)
+    return faces[~bad]
 
 
 def normals_from_depth(h):
@@ -474,7 +537,7 @@ def process_one(
     depth_path=None,
     depth_weight=0.01,
     jump_px=3.0,
-    wall_px=8.0,
+    min_part=300,
 ):
     os.makedirs(out_dir, exist_ok=True)
     albedo, normal_rgb, _, _ = load_result(result_path)
@@ -499,11 +562,12 @@ def process_one(
     else:
         d = load_depth(depth_path, normal_rgb.shape[:2])
         h, info = integrate_normals_with_depth(
-            n, d, m_int, weight=depth_weight, jump_px=jump_px, min_nz=min_nz
+            n, d, m_int, weight=depth_weight, jump_px=jump_px, min_part=min_part, min_nz=min_nz
         )
         print(
             f"  深度先验:深度图换算比例 {info['scale']:.0f} 像素,"
-            f"判定为断崖的相邻像素对占 {info['jump_fraction'] * 100:.1f}%"
+            f"判定为断崖的相邻像素对占 {info['jump_fraction'] * 100:.1f}%,"
+            f"物体被断崖分成 {info['parts']} 块"
         )
     n_back = normals_from_depth(h)
     mean_err, med_err = angular_error(n, n_back, erode(m_int, 1))
@@ -519,11 +583,10 @@ def process_one(
     Image.fromarray((d_img * 255).astype(np.uint8)).save(os.path.join(out_dir, "depth.png"))
 
     verts, faces, vcol = heightmap_to_mesh(h, m_int, albedo)
-    if depth_path is not None and wall_px > 0:
-        # 去墙要在中心化和拉伸之前做,这时 z 坐标的单位是 2/512,wall_px 像素对应 wall_px * 2/512
+    if depth_path is not None:
         n_faces = len(faces)
-        faces = drop_wall_faces(verts, faces, wall_px * 2.0 / max(mask.shape))
-        print(f"  去掉前后部件之间的竖直面:{n_faces - len(faces)} 个三角形")
+        faces = drop_cut_faces(faces, info["cut_i"], info["cut_j"], len(verts))
+        print(f"  去掉跨在断崖上的竖直面:{n_faces - len(faces)} 个三角形")
     # 中心化:把所有顶点坐标的平均值移到原点(0, 0, 0)。
     # heightmap_to_mesh 生成的坐标里,x、y 以图片中心为原点,z 以最远的点为 0,物体本身并不在原点上。
     # 不中心化的话,在 MeshLab、Blender 里旋转查看时,物体会绕着一个偏离自身的点转。
@@ -643,17 +706,29 @@ def selftest_occlusion(out_dir):
         return np.nanmean(h[ring_in]) - np.nanmean(h[ring_out])
 
     h_n = integrate_normals(n, mask, min_nz=0.02, max_grad=50)
-    h_d, _ = integrate_normals_with_depth(n, d, mask, min_nz=0.02, max_grad=50)
+    h_d, info = integrate_normals_with_depth(n, d, mask, min_nz=0.02, max_grad=50)
     print("遮挡场景自检:小球悬在大球前方")
     print(
         f"  断崖高度:真实 {jump(np.where(mask, z, np.nan)):.1f} 像素,"
         f"只用法线 {jump(h_n):.1f} 像素,法线 + 深度先验 {jump(h_d):.1f} 像素"
         "(后者应接近真实值)"
     )
+    # 真实深度的网格按真实断崖(相邻像素深度差超过 3 像素)去掉竖直面;只用法线的结果没有断崖
+    idx = -np.ones((H, W), dtype=np.int64)
+    idx[mask] = np.arange(mask.sum())
+    ri, ci, rj, cj, _ = neighbor_pairs(mask)
+    true_jump = np.abs(z[rj, cj] - z[ri, ci]) > 3
+    cuts = [
+        (idx[ri, ci][true_jump], idx[rj, cj][true_jump]),
+        (np.zeros(0, np.int64), np.zeros(0, np.int64)),
+        (info["cut_i"], info["cut_j"]),
+    ]
+    heights = (np.where(mask, z - z[mask].min(), np.nan), h_n, h_d)
     panels = []
-    for h in (np.where(mask, z - z[mask].min(), np.nan), h_n, h_d):
+    for k, h in enumerate(heights):
+        cut_i, cut_j = cuts[k]
         verts, faces, vcol = heightmap_to_mesh(h, mask, np.ones((H, W, 3)) * 0.8)
-        faces = drop_wall_faces(verts, faces, 8 * 2.0 / H)
+        faces = drop_cut_faces(faces, cut_i, cut_j, len(verts))
         panels.append(render_fast(verts, faces, vcol, 75, res=240))
     make_preview(
         panels,
@@ -692,7 +767,10 @@ def main():
         "--jump_px", type=float, default=3.0, help="深度差超过多少像素算作断崖(断开法线约束)"
     )
     ap.add_argument(
-        "--wall_px", type=float, default=8.0, help="去掉深度差超过多少像素的三角形;0 表示不去"
+        "--min_part",
+        type=int,
+        default=300,
+        help="断崖切出的块小于多少像素时接回去(深度模型在细小结构上容易误判)",
     )
     ap.add_argument("--selftest", action="store_true")
     args = ap.parse_args()
@@ -736,7 +814,7 @@ def main():
             depth_path=dep,
             depth_weight=args.depth_weight,
             jump_px=args.jump_px,
-            wall_px=args.wall_px,
+            min_part=args.min_part,
         )
 
 
