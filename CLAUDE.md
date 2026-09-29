@@ -7,5 +7,5 @@
 - The owner is still learning this codebase. When changing code, explain what changed and why in terms
   they could explain to their supervisor.
 - Before every push, run `pytest tests/ -q` and `ruff check .`.
-- Commits use the git identity configured in this clone (the owner's name) and end with Claude Code's
-  standard `Co-Authored-By` trailer.
+- Commits use only the owner's git identity configured in this clone. Do not add a `Co-Authored-By`
+  trailer or any other Claude attribution to commit messages or pull requests.
