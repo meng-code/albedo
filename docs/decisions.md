@@ -17,6 +17,7 @@ The repository will be used beyond the original course, so the owner rewrote `AG
 - Agents may run jobs on the shared GPU cluster when the owner asks, and may commit under the owner's git identity.
 - Obsolete branches `claude/6-agents-default-strategy` and `claude/7-validation-rejection-tests` were deleted; their commits remain reachable through pull requests #9 and #10.
 - `third_party/` keeps upstream style and Python version and is excluded from ruff.
+- **Update 2026-09-30:** at the owner's request, branch names no longer carry the `claude/` prefix; they are a short hyphenated description such as `depth-prior-mesh`, and `AGENTS.md` was updated. Existing branches were renamed on GitHub: `claude/depth-prior-mesh` to `depth-prior-mesh`, and the merged `claude/idarb-integration` to `idarb-integration`. Pull request #11 still shows the old branch name; its commits are unchanged and remain in `main`.
 
 ## 2026-09-25 — IDArb as the first albedo model to reproduce
 
