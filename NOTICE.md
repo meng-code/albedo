@@ -28,3 +28,10 @@ Add each future dependency with its source URL, version or commit, license, inte
 - **Source:** https://huggingface.co/datasets/lizb6626/Arb-Objaverse, revision `0840f781c7`
 - **License:** MIT (as declared on the dataset card)
 - **Use:** Three objects from `data/000-000.zip`, listed in `third_party/IDArb/datalist/my_train.json`, used for the training smoke test. Fetched with `scripts/idarb/fetch_arbobjaverse_subset.py`; stored under the git-ignored `third_party/IDArb/data/`.
+
+## Depth Anything V2 Small (not included)
+
+- **Source:** https://huggingface.co/depth-anything/Depth-Anything-V2-Small-hf, revision `5426e4f0f3`
+- **License:** Apache-2.0. (The Base and Large variants are CC-BY-NC-4.0, non-commercial only; they can be selected with `--model` but are not the default.)
+- **Paper:** Yang et al., "Depth Anything V2", arXiv:2406.09414.
+- **Use:** Relative depth maps used as a prior for normal-to-mesh reconstruction, produced by `scripts/idarb/estimate_depth.py`. The model is downloaded at run time; the resulting depth maps for the samples are stored in `results/idarb_single/depth/`.
