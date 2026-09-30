@@ -16,10 +16,14 @@
     结果是物体朝向相机那一面的表面,输出为一个开口的网格(像一张浮雕)。
 
   方法 B:筛选泊松表面重建(Screened Poisson Surface Reconstruction,Kazhdan & Hoppe 2013)
-    这是三维重建里常说的"泊松重建"。它的输入是一组带法线的三维点,输出是一个封闭的曲面。
+    这是三维重建里常说的"泊松重建"。它的输入是一组带法线的三维点;点覆盖物体各个方向时,
+    输出是一个封闭的曲面。
     我们用方法 A 得到的三维点,加上 IDArb 预测的法线,交给 Open3D 里的实现。
-    注意:单张图片只能看到物体的正面,背面没有任何点,算法会自己把背面补成一个光滑的封闭面。
-    补出来的部分不可信,脚本会按点的密度把离观测点太远的部分裁掉。
+    注意:单张图片只能看到物体的正面,背面没有任何点,所以在我们的数据上它不会补出背面,
+    输出也不是封闭网格。实测(熊猫、chair1、鸟)得到的是物体正面,外加一大片从物体四周
+    一直延伸到包围盒边缘的平面。脚本按点的密度把这片离观测点太远的部分裁掉,剩下的正面和
+    方法 A 的表面相差不到半个像素(顶点到方法 A 的点的距离中位数约 0.45 像素),
+    只是三角形的划分不同。
 
   方法 A 的改进:加入深度先验(可选,用 --depth_dir 打开)
     只用法线积分有一个根本问题:物体前后遮挡的地方(比如椅子座面挡在椅子腿前面),深度是断开的,
@@ -71,7 +75,7 @@
 
   输出(默认在 outputs/mesh/<物体名>/ 下,这个文件夹不进 git):
     relief.ply / relief.obj   方法 A 的网格,带 albedo 颜色
-    poisson.ply               方法 B 的封闭网格
+    poisson.ply               方法 B 的网格(只有正面,和 relief 几乎相同)
     depth.png                 恢复出的深度图(越亮越靠近相机)
     preview.png               从几个角度渲染的预览图,用来检查三维形状
 """
@@ -434,7 +438,7 @@ def screened_poisson(verts, normals, colors, depth=9, trim_quantile=0.05):
     colors:[N, 3] 0~255。
     depth:八叉树深度,越大细节越多、越慢,9 对 512×512 的输入比较合适。
     trim_quantile:重建完成后,把"支撑点密度"最低的这部分顶点删掉。密度低说明附近没有观测点,
-                   这些面是算法凭空补出来的(主要是物体背面)。
+                   这些面是算法凭空推出来的。在单张图片上,主要是从物体四周延伸到包围盒边缘的那片平面。
     """
     # open3d 启动时需要 libGL.so.1。集群系统里没有这个库,我们用 conda 把它装进了环境自己的 lib 目录
     # (conda install -n idarb -c conda-forge libgl),但 open3d 不会自动去那里找,
@@ -473,6 +477,8 @@ def render_fast(verts, faces, vcol, yaw_deg, pitch_deg=15.0, res=320, shaded=Tru
     从远到近画,近的覆盖远的。
     三角形本身约一个像素大小,这个近似在预览时看不出差别。
     shaded=True 时按"光从相机方向照过来"做明暗着色,只看形状;False 时用顶点的 albedo 颜色。
+    着色用的是面法线 z 分量的绝对值,一层表面从正面看和从反面看亮度相同。所以转到 180 度时
+    看到的是同一层正面的反面,不能据此判断网格有没有背面。
     """
     ya, pa = np.radians(yaw_deg), np.radians(pitch_deg)
     Ry = np.array([[np.cos(ya), 0, np.sin(ya)], [0, 1, 0], [-np.sin(ya), 0, np.cos(ya)]])
@@ -611,7 +617,8 @@ def process_one(
         pn[:, 2] /= z_scale
         pn /= np.linalg.norm(pn, axis=1, keepdims=True)
         pv, pf, pc = screened_poisson(verts, pn, vcol, depth=poisson_depth)
-        # 方法 B 生成的封闭网格顶点和输入点不同(背面是补出来的),按它自己的顶点均值再中心化一次
+        # 方法 B 重新划分了三角形,顶点和输入点不同,裁剪后剩下的范围也略有差别,
+        # 所以按它自己的顶点均值再中心化一次
         pv = pv - pv.mean(axis=0)
         save_mesh(os.path.join(out_dir, "poisson.ply"), pv, pf, pc)
         print(f"  方法 B(筛选泊松表面重建):{len(pv)} 个顶点,{len(pf)} 个三角形")
