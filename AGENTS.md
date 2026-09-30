@@ -45,8 +45,9 @@ data/, weights/, outputs/  # git-ignored
 
 ## 4. Git workflow
 
-- Agents work on branches named `claude/<short-description>`. Never commit or push directly to `main`, and
-  never force-push `main` or rewrite its history.
+- Agents work on branches named with a short description in lowercase words joined by hyphens, for example
+  `depth-prior-mesh`. Do not add a `claude/` or any other tool prefix. Never commit or push directly to
+  `main`, and never force-push `main` or rewrite its history.
 - The owner merges into `main` through a pull request. Agents do not approve, merge or close pull requests.
 - An agent may amend or force-push its own unmerged branch only when the owner asks.
 - Keep each commit focused, with a message that says what changed and why.
