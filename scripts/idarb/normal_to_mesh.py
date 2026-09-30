@@ -454,7 +454,11 @@ def screened_poisson(verts, normals, colors, depth=9, trim_quantile=0.05):
     pcd.points = o3d.utility.Vector3dVector(verts.astype(np.float64))
     pcd.normals = o3d.utility.Vector3dVector(normals.astype(np.float64))
     pcd.colors = o3d.utility.Vector3dVector(colors.astype(np.float64) / 255.0)
-    mesh, dens = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(pcd, depth=depth)
+    # n_threads=1:只用一个线程。默认的多线程在 Mac(M 系列芯片)上经常报错 "Failed to close loop"
+    # 并直接退出,单线程则每次都成功,而且同样的输入每次得到完全相同的网格。代价是慢几秒。
+    mesh, dens = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(
+        pcd, depth=depth, n_threads=1
+    )
     dens = np.asarray(dens)
     if trim_quantile > 0:
         mesh.remove_vertices_by_mask(dens < np.quantile(dens, trim_quantile))
