@@ -4,8 +4,10 @@ Guidance for AI coding agents working in this repository. `CLAUDE.md` adds notes
 
 ## 1. Project
 
-**albedo-relight**: estimate the albedo (the intrinsic colour of a surface, with lighting removed) from a
-single RGB image, then relight the image under user-controllable lighting.
+**Textured mesh generation by single image decomposition.** From a single RGB image, decompose it into
+albedo (the intrinsic colour of a surface, with lighting removed), normal, metallic and roughness, rebuild
+a mesh of the visible surface from the normals, and colour it with the albedo. The repository and the
+Python package keep their original names, `albedo-relight` and `relight`.
 
 - **Owner:** Peiran Yu (GitHub `meng-code`). **Supervisor:** Dr Juncheng Liu.
 - **Current state:**
@@ -14,22 +16,22 @@ single RGB image, then relight the image under user-controllable lighting.
   - Geometry: `scripts/idarb/normal_to_mesh.py` reconstructs a mesh from an IDArb normal map. It runs on a
     laptop. An optional depth prior (Depth Anything V2 depth maps from `scripts/idarb/estimate_depth.py`,
     produced on the server) restores front-to-back structure that normals alone lose.
-  - Relighting: not started. `src/relight/` is still a placeholder package whose smoke pipeline treats the
-    input as albedo and multiplies it by a constant light.
+  - Relighting: dropped from the project with the supervisor's agreement (October 2026). `src/relight/`
+    is a placeholder package left from the original scope; its smoke pipeline treats the input as albedo
+    and multiplies it by a constant light, so that the package and tests exist.
 - **Direction:** work on single images and build on pretrained models. Multi-view reconstruction is out of
-  scope, because novel-view-synthesis methods already cover it. A possible longer-term extension is
-  relightable 3D scenes (3DGS / NeRF).
+  scope, because novel-view-synthesis methods already cover it.
 - Technical decisions are recorded with dates in `docs/decisions.md`.
 
 ## 2. Repository layout
 
 ```
-src/relight/               # our package (placeholder for now)
+src/relight/               # our package (placeholder left from the original relighting scope)
 tests/                     # pytest; tests/test_smoke.py must pass
-scripts/idarb/             # IDArb helpers: input preparation, dataset subset download, normal-to-mesh
+scripts/idarb/             # IDArb helpers: input preparation, depth maps, normal-to-mesh, figures
 third_party/IDArb/         # vendored IDArb: the first commit is unmodified upstream, later commits are ours
 configs/                   # experiment configs for our own code
-results/                   # small results and sample data, e.g. results/idarb_single/
+results/                   # small results and sample data, e.g. results/idarb_single/, results/analysis/
 docs/decisions.md          # dated technical decisions
 docs/diary.md              # progress log; the owner writes the entries
 NOTICE.md                  # sources and licenses of third-party code, models and data
