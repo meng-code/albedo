@@ -49,3 +49,6 @@ The repository will be used beyond the original course, so the owner rewrote `AG
 - The repository name `albedo-relight` and the placeholder package `src/relight/` are kept, to avoid
   renaming the repository, the package and the tests. `README.md` and `AGENTS.md` now describe relighting
   as dropped.
+- A failure case was recorded in `results/analysis/failure_cats.md`: on cat2, cat3 and cat4 IDArb predicts
+  normals that almost all face the camera, and because the depth-prior scale is fitted to the normals it
+  also goes to nearly zero, so the meshes stay flat. `normal_to_mesh.py` was not changed.

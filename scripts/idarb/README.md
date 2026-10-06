@@ -14,6 +14,7 @@
 | `fetch_arbobjaverse_subset.py` | 服务器 | 从 Arb-Objaverse 数据集里只下载指定的几个物体,用于训练冒烟测试 |
 | `estimate_depth.py` | 服务器 | 用 Depth Anything V2 生成相对深度图,给网格重建做深度先验 |
 | `normal_to_mesh.py` | 自己的电脑或服务器 | 把 IDArb 的法线图重建成三维网格,可选加入深度先验 |
+| `plot_failure_cases.py` | 自己的电脑 | 画失败案例图(原图、四联图、两种网格的侧面),例如 `results/analysis/failure_cats.png` |
 
 ## 1. 服务器:图片分解
 
@@ -143,6 +144,9 @@ python scripts/idarb/normal_to_mesh.py --selftest
     现在只剩主体和两条后腿 3 块。后腿仍和椅子分开,是因为照片里后腿的上半截被座面挡住,
     看不到它在哪里和椅子相连,只能按深度模型估计的位置放在后方;
   - 代价是重建表面和 IDArb 法线的偏差变大(例如 chair1 从 4.7° 变为约 11°)。
+- **法线整片失效时,深度先验也会失效。** 深度先验的比例 s 是用法线的坡度对齐估计的。IDArb 在 cat2、cat3、cat4
+  上输出的法线几乎全部正对相机,s 只有 3 到 16 像素(正常物体约 100 到 250 像素),网格从侧面看仍是一条线。
+  详见 `results/analysis/failure_cats.md`。
     权重从 0.01 调到 0.2,深度比例几乎不变,偏差却继续变大,所以默认取 0.01。
   - 对比图:`results/idarb_single/depth_prior_compare.png`。
 - 网络预测的法线有随机误差。在数据集的 16 个样本上与真值平均相差 17.2°,积分出的深度是真值的 0.43 到 1.55 倍,
