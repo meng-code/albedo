@@ -1,63 +1,78 @@
-# 失败案例:cat2、cat3、cat4 重建出来是一张薄片
+# Failure case: cat2, cat3 and cat4 reconstruct as flat sheets
 
-图:`failure_cats.png`。每行一个物体,从左到右依次是原图、IDArb 四联图(albedo、normal、metallic、roughness)、
-只用法线重建的网格、加深度先验重建的网格。两个网格都从正侧面(转 90 度)看,用来看物体有没有厚度。
+Figure: `failure_cats.png`. One row per object. From left to right: the input image, the IDArb four-panel
+output (albedo, normal, metallic, roughness), the mesh from normals only, and the mesh with the depth
+prior. Both meshes are seen from the side (rotated 90 degrees), to show whether the object has any
+thickness.
 
-重新生成这张图(在仓库根目录,`mesh` 环境):
+To regenerate the figure (from the repository root, in the `mesh` environment):
 
 ```bash
 python scripts/idarb/plot_failure_cases.py --names cat2 cat3 cat4 --out results/analysis/failure_cats.png
 ```
 
-## 现象
+## What we see
 
-三只猫从侧面看都是一条线,加不加深度先验都一样。其中 cat2 和 cat4 只用法线时那条线是斜的:
-深度范围的数字(71、46 像素)来自整张薄片的倾斜,不是物体的厚度。
+Seen from the side, all three cats are a thin line, with or without the depth prior. For cat2 and cat4
+the normals-only line is slanted. Their depth ranges (71 and 46 px) come from the whole flat sheet being
+tilted, not from thickness.
 
-## 原因一:IDArb 在这三张图上法线整片失效
+## Reason 1: IDArb's normals fail on these three images
 
-法线图里三只猫几乎是一整片均匀的蓝紫色,也就是 IDArb 认为每个点都正对相机。
-用法线的 z 分量(指向相机的分量,1 表示正对相机)来看:
+In the normal maps the three cats are an almost uniform blue-purple. That colour means IDArb predicts that
+every point faces the camera. The z component of the normal (the component towards the camera; 1 means
+facing the camera head-on) shows this:
 
-| 物体 | 平均 nz | nz 小于 0.9 的像素占比 |
+| Object | Mean nz | Pixels with nz < 0.9 |
 |---|---|---|
 | cat2 | 0.983 | 1.1% |
 | cat3 | 1.000 | 0.0% |
 | cat4 | 0.993 | 0.0% |
-| cat(对照) | 0.892 | 35.5% |
-| panda(对照) | 0.799 | 62.7% |
+| cat (reference) | 0.892 | 35.5% |
+| panda (reference) | 0.799 | 62.7% |
 
-法线说表面处处都不倾斜,所以从法线积分出来的深度也处处一样,网格就是一张平板。
-同一个模型在 cat 和 cat5 上是正常的,所以这不是"猫"这一类都会失败,而是这几张图上的失效。
-具体是什么让 IDArb 在这几张图上失效(毛发、拍摄角度、光照等),目前没有查。
+The normals say that the surface does not slope anywhere. As a result, the depth integrated from them is
+the same everywhere, and the mesh is a flat plate. The same model gives normal results on cat and cat5,
+so cats in general do not fail; the failure is specific to these images. We have not yet looked into what
+makes IDArb fail on them (fur, viewpoint, lighting or something else).
 
-## 原因二:法线失效时,深度先验的比例 s 也趋近于 0
+## Reason 2: when the normals fail, the depth-prior scale s also goes to almost zero
 
-Depth Anything 输出的深度图只有 0 到 1 的相对远近,要乘一个比例 s 换算成像素单位才能使用。
-`normal_to_mesh.py` 里的 s 不是固定值,而是在表面平滑的区域,让"深度图给出的相邻差值乘以 s"
-和"法线给出的相邻差值"尽量吻合,用最小二乘估出来的(`integrate_normals_with_depth` 的第 1 步)。
+Depth Anything gives only relative depth between 0 and 1. It must be multiplied by a scale s to convert
+it to pixels. In `normal_to_mesh.py`, s is not a fixed number. It is fitted by least squares on smooth
+regions: s is chosen so that "the depth map's difference between neighbouring pixels, times s" matches
+"the difference given by the normals" as closely as possible (step 1 of `integrate_normals_with_depth`).
 
-法线给出的坡度处处接近 0 时,要和它吻合,s 也只能接近 0。于是深度图里原本有的远近信息被压平了:
+When the slopes from the normals are close to zero everywhere, the only way to match them is an s close
+to zero. This flattens the front-to-back information that the depth map does contain:
 
-| 物体 | s(像素) | 深度范围:只用法线 | 深度范围:加深度先验 | 物体宽度 |
+| Object | s (px) | Depth range, normals only (px) | Depth range, with depth prior (px) | Object width (px) |
 |---|---|---|---|---|
 | cat2 | 15.9 | 71.4 | 15.9 | 411 |
 | cat3 | 3.0 | 7.0 | 2.5 | 175 |
 | cat4 | 3.9 | 46.3 | 4.1 | 289 |
-| cat(对照) | 102.0 | 66.8 | 59.1 | 301 |
-| panda(对照) | 186.3 | 112.5 | 97.4 | 279 |
+| cat (reference) | 102.0 | 66.8 | 59.1 | 301 |
+| panda (reference) | 186.3 | 112.5 | 97.4 | 279 |
 
-所以深度先验在这几张图上不但没有补回厚度,还因为把深度拉向一个几乎平的 s·d,
-把只用法线时的整体倾斜也去掉了,结果比只用法线更平。
+On these images the depth prior therefore does not restore any thickness. It pulls the depth towards an
+almost flat s·d, which also removes the tilt of the normals-only result, so the result is even flatter
+than with normals only.
 
-## 结论
+## Conclusion
 
-这是当前方法的一个局限:深度先验的比例依赖法线来定,法线整片失效时,深度先验也跟着失效。
-这次只作记录,`normal_to_mesh.py` 没有修改。
+This is a limitation of the current method: the depth-prior scale depends on the normals, so when the
+normals fail completely, the depth prior fails too. It is recorded here only; `normal_to_mesh.py` was not
+changed.
 
-可能的改进(都没有做):先换随机种子或调整输入处理,重跑 IDArb,确认法线失效是否稳定出现;
-如果稳定出现,在法线明显失效时不再用法线估 s,改用其他方式确定比例。
-即使确定了比例,表面细节(毛发起伏、脸部凹凸)仍然要靠法线,所以只能得到一个光滑的轮廓。
+Possible improvements (not done):
 
-数字由 `scripts/idarb/plot_failure_cases.py` 打印,参数和 `normal_to_mesh.py` 的默认值相同
-(掩膜向内收缩 2 像素,深度先验权重 0.01)。
+- Re-run IDArb with other random seeds or other input preprocessing, to check whether the normal failure
+  is consistent.
+- If the failure is consistent, stop fitting s to the normals when they have clearly failed, and set the
+  scale another way.
+
+Even with a sensible scale, surface detail (fur, the shape of the face) still has to come from the
+normals, so the result would only be a smooth outline.
+
+The numbers are printed by `scripts/idarb/plot_failure_cases.py`. It uses the same parameters as the
+defaults of `normal_to_mesh.py`: the mask is eroded by 2 px, and the depth-prior weight is 0.01.

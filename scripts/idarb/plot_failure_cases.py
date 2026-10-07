@@ -1,16 +1,20 @@
 """
-画失败案例图:每个物体一行,从左到右依次是原图、IDArb 四联图(albedo、normal、metallic、roughness)、
-只用法线重建的网格、加深度先验重建的网格。网格用和 normal_to_mesh.py 完全相同的函数和默认参数重建,
-从正侧面(绕竖直轴转 90 度)渲染,用来看物体有没有厚度。
+Draw a failure-case figure. Each object gets one row; from left to right: the input image, the
+IDArb four-panel output (albedo, normal, metallic, roughness), the mesh from normals only, and the
+mesh with the depth prior. The meshes are rebuilt with exactly the same functions and default
+parameters as normal_to_mesh.py, and rendered from the side (rotated 90 degrees about the vertical
+axis) to show whether the object has any thickness.
 
-同时在终端打印每个物体的几个诊断数字:
-  平均 nz          法线 z 分量(指向相机的分量)的平均值,1 表示整片正对相机
-  nz < 0.9 占比    法线明显倾斜的像素所占的比例
-  s                深度先验的换算比例(像素),由法线坡度和深度图对齐估计
-  深度范围         重建出的深度图最远到最近相差多少像素(只用法线 / 加深度先验)
-  宽度             物体在图片里的宽度(像素)
+The script also prints a few diagnostic numbers for each object:
+  mean nz         mean z component of the normals (the component towards the camera);
+                  1 means the whole object faces the camera
+  nz < 0.9        fraction of pixels whose normals are clearly tilted
+  s               depth-prior scale in pixels, fitted by matching the depth map to the normal slopes
+  depth range     difference between the farthest and nearest point of the reconstructed depth,
+                  in pixels (normals only / with depth prior)
+  width           width of the object in the image, in pixels
 
-用法(在仓库根目录运行,需要 normal_to_mesh.py 的环境):
+Usage (from the repository root, in the same environment as normal_to_mesh.py):
     python scripts/idarb/plot_failure_cases.py --names cat2 cat3 cat4 \
         --out results/analysis/failure_cats.png
 """
@@ -30,7 +34,10 @@ YAW = 90
 
 
 def reconstruct(name, root, erode_px=2):
-    """按 normal_to_mesh.process_one 的默认参数重建两种网格,返回渲染图和诊断数字。"""
+    """Rebuild both meshes with the defaults of normal_to_mesh.process_one.
+
+    Returns the two side-view renders and the diagnostic numbers.
+    """
     albedo, normal_rgb, _, _ = ntm.load_result(
         os.path.join(root, "decomposition", name + "_00.png")
     )
@@ -64,7 +71,10 @@ def reconstruct(name, root, erode_px=2):
 
 
 def input_on_white(path):
-    """原图按 IDArb 推理时的方式缩放、补边、背景涂白(和四联图逐像素对齐)。"""
+    """Input image resized, padded and put on white exactly as at IDArb inference.
+
+    This keeps it pixel-aligned with the IDArb output.
+    """
     rgb, _ = ntm.load_input_512(path)
     return Image.fromarray((np.clip(rgb, 0, 1) * 255).astype(np.uint8))
 
@@ -86,11 +96,11 @@ def main():
     gap, top, left = 6, 24, 0
     W = sum(widths) + gap * (len(widths) - 1)
     rows = []
-    print("物体     平均nz  nz<0.9   s(像素)  深度范围:只用法线  加深度先验  宽度")
+    print("object   mean nz  nz<0.9    s (px)  range normals only  with depth  width")
     for name in args.names:
         renders, st = reconstruct(name, args.root)
         print(
-            "{:8s} {:6.3f} {:6.1f}% {:8.1f} {:16.1f} {:11.1f} {:5d}".format(
+            "{:8s} {:7.3f} {:6.1f}% {:9.1f} {:19.1f} {:11.1f} {:6d}".format(
                 name,
                 st["nz_mean"],
                 100 * st["tilted"],
@@ -130,7 +140,7 @@ def main():
             x += widths[i] + gap
     os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
     canvas.save(args.out)
-    print("已保存", args.out)
+    print("saved", args.out)
 
 
 if __name__ == "__main__":
