@@ -14,6 +14,7 @@
 | `fetch_arbobjaverse_subset.py` | 服务器 | 从 Arb-Objaverse 数据集里只下载指定的几个物体,用于训练冒烟测试 |
 | `estimate_depth.py` | 服务器 | 用 Depth Anything V2 生成相对深度图,给网格重建做深度先验 |
 | `normal_to_mesh.py` | 自己的电脑或服务器 | 把 IDArb 的法线图重建成三维网格,可选加入深度先验 |
+| `poisson_on_depth_points.py` | laptop | Experiment: screened Poisson on points taken straight from the depth map, compared with the other variants (not adopted, see `docs/decisions.md`) |
 
 ## 1. 服务器:图片分解
 

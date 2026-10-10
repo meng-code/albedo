@@ -38,3 +38,28 @@ The repository will be used beyond the original course, so the owner rewrote `AG
 - **Model choice:** Small (Apache-2.0, 99 MB) instead of Large (CC-BY-NC-4.0, 1.3 GB); on five samples their depth maps correlate at 0.94 to 0.997 and give nearly identical meshes.
 - **Workflow:** depth maps are produced on the server and pushed with the decomposition results, so mesh reconstruction on the laptop still needs no PyTorch.
 - **Correction on screened Poisson (method B):** on single images it does not produce a closed mesh or a back side, contrary to earlier comments. On panda, chair1 and bird the raw output is the front surface plus a flat sheet extending from the object's outline to the bounding box; after density trimming only the front remains, with a median distance of about 0.45 px to the method-A surface. The preview's 180° view had looked like a back side because the preview shades both faces of a surface alike. Comments and the README were corrected.
+
+## 2026-10-10 — Tried: Poisson reconstruction on depth-map points (not adopted)
+
+- **Supervisor's suggestion:** build a point cloud directly from the Depth Anything depth map (one point
+  per pixel, z = s·d), attach IDArb's normal to every point, and run screened Poisson surface
+  reconstruction on that cloud, so that the depth map gives the front-to-back structure and the normals
+  give the surface detail.
+- **Result:** the normals have almost no effect. Mean angle between the mesh's normals and IDArb's
+  normals (smaller is better; the joint solve is the current default):
+
+  | Object | normals only | joint solve (normals + depth) | depth map alone | Poisson on depth points |
+  |---|---|---|---|---|
+  | chair1 | 4.8° | 11.0° | 17.0° | 16.9° |
+  | superman | 7.6° | 13.9° | 17.9° | 18.0° |
+  | panda | 3.3° | 7.2° | 11.9° | 11.4° |
+
+  The depth-to-width ratio is the same for all depth-based variants (chair1: 0.82). Octree depths 6 to 9
+  give 20.2° to 16.9° on chair1, so a coarser octree does not help either.
+- **Why:** screened Poisson pins the surface to the input points. With a point in every octree cell
+  (depth 9 is about one pixel), the surface passes through the depth-map points, including their noise and
+  blurred occlusion edges, and the normals only shape the surface inside each cell. The joint solve in
+  `normal_to_mesh.py` weights the depth term at 0.01, so its surface can leave the depth-map points to
+  follow the normals; in effect the Poisson variant is the joint solve with a very large depth weight.
+  Open3D 0.18 does not expose PoissonRecon's point weight, which would be the parameter to lower.
+- **Decision:** keep the joint solve. Script: `scripts/idarb/poisson_on_depth_points.py`.
