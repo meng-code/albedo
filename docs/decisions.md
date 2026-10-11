@@ -39,6 +39,20 @@ The repository will be used beyond the original course, so the owner rewrote `AG
 - **Workflow:** depth maps are produced on the server and pushed with the decomposition results, so mesh reconstruction on the laptop still needs no PyTorch.
 - **Correction on screened Poisson (method B):** on single images it does not produce a closed mesh or a back side, contrary to earlier comments. On panda, chair1 and bird the raw output is the front surface plus a flat sheet extending from the object's outline to the bounding box; after density trimming only the front remains, with a median distance of about 0.45 px to the method-A surface. The preview's 180° view had looked like a back side because the preview shades both faces of a surface alike. Comments and the README were corrected.
 
+## 2026-10-05 to 2026-10-06 — Relighting dropped; new project title
+
+- The supervisor agreed to drop relighting from the project. The title is now
+  **Textured mesh generation by single image decomposition**, replacing "AI-Based Image Albedo Estimation
+  and Relighting" from 2026-07-15.
+- Scope: decompose a single image with IDArb, rebuild the visible surface from the normals
+  (`scripts/idarb/normal_to_mesh.py`, optionally with the depth prior), and colour the mesh with the albedo.
+- The repository name `albedo-relight` and the placeholder package `src/relight/` are kept, to avoid
+  renaming the repository, the package and the tests. `README.md` and `AGENTS.md` now describe relighting
+  as dropped.
+- A failure case was recorded in `results/analysis/failure_cats.md`: on cat2, cat3 and cat4 IDArb predicts
+  normals that almost all face the camera, and because the depth-prior scale is fitted to the normals it
+  also goes to nearly zero, so the meshes stay flat. `normal_to_mesh.py` was not changed.
+
 ## 2026-10-10 — Tried: Poisson reconstruction on depth-map points (not adopted)
 
 - **Supervisor's suggestion:** build a point cloud directly from the Depth Anything depth map (one point

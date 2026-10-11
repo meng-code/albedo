@@ -1,6 +1,8 @@
 # albedo-relight
 
-Single-image albedo estimation and controllable relighting.
+**Textured mesh generation by single image decomposition.** A single RGB image is decomposed into albedo,
+normal, metallic and roughness; the normals are turned into a mesh of the visible surface, which is
+coloured with the albedo. The repository keeps its original name, `albedo-relight`.
 
 ## Current state
 
@@ -10,8 +12,11 @@ Single-image albedo estimation and controllable relighting.
   normal integration and screened Poisson surface reconstruction. It runs on a laptop without a GPU.
   An optional depth prior from Depth Anything V2 (`scripts/idarb/estimate_depth.py`, run on the server)
   restores the front-to-back structure that normals alone lose.
-- **Relighting.** Not implemented yet. `src/relight/` only contains a placeholder pipeline, which treats
-  the input image as albedo and multiplies it by a constant light, so that the package and tests exist.
+- **Relighting.** Dropped from the project with the supervisor's agreement (October 2026). `src/relight/`
+  only contains a placeholder pipeline left from the original scope, which treats the input image as
+  albedo and multiplies it by a constant light, so that the package and tests exist.
+- **Known failure cases.** `results/analysis/` records cases where the method fails, for example cat
+  images on which IDArb predicts flat normals (`results/analysis/failure_cats.md`).
 
 How to run IDArb, the training smoke test and the mesh tool: `scripts/idarb/README.md`.
 
@@ -19,11 +24,11 @@ How to run IDArb, the training smoke test and the mesh tool: `scripts/idarb/READ
 
 | Path | Contents |
 |---|---|
-| `src/relight/` | our Python package (placeholder for now) |
+| `src/relight/` | our Python package (placeholder left from the original relighting scope) |
 | `tests/` | pytest tests |
 | `scripts/idarb/` | IDArb helper scripts |
 | `third_party/IDArb/` | vendored IDArb code and our changes to it |
-| `results/` | small results and sample data |
+| `results/` | small results and sample data; `results/analysis/` holds failure-case analyses |
 | `docs/decisions.md` | dated technical decisions |
 | `docs/diary.md` | progress log |
 | `NOTICE.md` | sources and licenses of third-party code, models and data |
