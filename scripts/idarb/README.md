@@ -15,6 +15,7 @@ Scripts we added around IDArb (whose code is in `third_party/IDArb/`).
 | `estimate_depth.py` | server | Generates relative depth maps with Depth Anything V2, used as a depth prior for mesh reconstruction |
 | `normal_to_mesh.py` | laptop or server | Rebuilds a 3D mesh from an IDArb normal map, optionally with the depth prior |
 | `plot_failure_cases.py` | laptop | Draws failure-case figures (input, IDArb output, side views of both meshes), e.g. `results/analysis/failure_cats.png` |
+| `poisson_on_depth_points.py` | laptop | Experiment: screened Poisson on points taken straight from the depth map, compared with the other variants (not adopted, see `docs/decisions.md`) |
 
 ## 1. Server: image decomposition
 

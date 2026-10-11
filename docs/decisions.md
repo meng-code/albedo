@@ -52,3 +52,28 @@ The repository will be used beyond the original course, so the owner rewrote `AG
 - A failure case was recorded in `results/analysis/failure_cats.md`: on cat2, cat3 and cat4 IDArb predicts
   normals that almost all face the camera, and because the depth-prior scale is fitted to the normals it
   also goes to nearly zero, so the meshes stay flat. `normal_to_mesh.py` was not changed.
+
+## 2026-10-10 — Tried: Poisson reconstruction on depth-map points (not adopted)
+
+- **Supervisor's suggestion:** build a point cloud directly from the Depth Anything depth map (one point
+  per pixel, z = s·d), attach IDArb's normal to every point, and run screened Poisson surface
+  reconstruction on that cloud, so that the depth map gives the front-to-back structure and the normals
+  give the surface detail.
+- **Result:** the normals have almost no effect. Mean angle between the mesh's normals and IDArb's
+  normals (smaller is better; the joint solve is the current default):
+
+  | Object | normals only | joint solve (normals + depth) | depth map alone | Poisson on depth points |
+  |---|---|---|---|---|
+  | chair1 | 4.8° | 11.0° | 17.0° | 16.9° |
+  | superman | 7.6° | 13.9° | 17.9° | 18.0° |
+  | panda | 3.3° | 7.2° | 11.9° | 11.4° |
+
+  The depth-to-width ratio is the same for all depth-based variants (chair1: 0.82). Octree depths 6 to 9
+  give 20.2° to 16.9° on chair1, so a coarser octree does not help either.
+- **Why:** screened Poisson pins the surface to the input points. With a point in every octree cell
+  (depth 9 is about one pixel), the surface passes through the depth-map points, including their noise and
+  blurred occlusion edges, and the normals only shape the surface inside each cell. The joint solve in
+  `normal_to_mesh.py` weights the depth term at 0.01, so its surface can leave the depth-map points to
+  follow the normals; in effect the Poisson variant is the joint solve with a very large depth weight.
+  Open3D 0.18 does not expose PoissonRecon's point weight, which would be the parameter to lower.
+- **Decision:** keep the joint solve. Script: `scripts/idarb/poisson_on_depth_points.py`.
