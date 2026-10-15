@@ -6,8 +6,7 @@ Guidance for Claude Code (and any other AI coding agent) working in this reposit
 
 **Textured mesh generation by single image decomposition.** From a single RGB image, decompose it into
 albedo (the intrinsic colour of a surface, with lighting removed), normal, metallic and roughness, rebuild
-a mesh of the visible surface from the normals, and colour it with the albedo. The repository keeps its
-original name, `albedo-relight`; relighting has been dropped from the scope.
+a mesh of the visible surface from the normals, and colour it with the albedo.
 
 - **Owner:** Peiran Yu (GitHub `meng-code`). **Supervisor:** Dr Juncheng Liu.
 - **Current state:**
