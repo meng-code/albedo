@@ -35,3 +35,19 @@ Add each future dependency with its source URL, version or commit, license, inte
 - **License:** Apache-2.0. (The Base and Large variants are CC-BY-NC-4.0, non-commercial only; they can be selected with `--model` but are not the default.)
 - **Paper:** Yang et al., "Depth Anything V2", arXiv:2406.09414.
 - **Use:** Relative depth maps used as a prior for normal-to-mesh reconstruction, produced by `scripts/idarb/estimate_depth.py`. The model is downloaded at run time; the resulting depth maps for the samples are stored in `results/idarb_single/depth/`.
+
+## rembg (Python package)
+
+- **Source:** https://github.com/danielgatis/rembg, version 2.0.61 (from PyPI)
+- **License:** MIT
+- **Use:** Background removal in `scripts/idarb/prepare_images.py`, which turns photos into the RGBA
+  inputs IDArb expects. Installed in the server environment (`scripts/idarb/requirements-server.txt`).
+
+## U²-Net background-removal model (not included)
+
+- **Source:** https://github.com/xuebinqin/U-2-Net; rembg downloads the `u2net` ONNX weights from its own
+  GitHub releases at first use and caches them outside this repository.
+- **License:** Apache-2.0
+- **Paper:** Qin et al., "U²-Net: Going deeper with nested U-structure for salient object detection",
+  Pattern Recognition 106 (2020).
+- **Use:** The default model (`--model u2net`) used by `prepare_images.py` through rembg.
