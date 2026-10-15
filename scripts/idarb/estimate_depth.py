@@ -20,7 +20,7 @@
 模型:
     默认用 Depth-Anything-V2-Small(Apache-2.0 许可证,约 100 MB)。
     --model 可以换成 Large(depth-anything/Depth-Anything-V2-Large-hf,CC-BY-NC-4.0,只能非商业使用)。
-    在 5 个样本上测过,两者的深度图相关系数在 0.94 到 0.997 之间,重建结果几乎一样。
+    在 5 个样本上测过,两者的深度图相关系数在 0.93 到 0.996 之间(在完整掩膜内计算),重建结果几乎一样。
 
 用法(在仓库根目录):
     python scripts/idarb/estimate_depth.py \\

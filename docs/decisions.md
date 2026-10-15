@@ -95,7 +95,13 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   depth ratios 0.71 / 0.49 / 0.38 and 1.00 for a single sphere; 16 of 19 images usable, median
   depth/width 0.35 to 0.38, mean angle 5.5° to 11.2°; method B to method A median distance 0.456 /
   0.448 / 0.438 px on panda / chair1 / bird. Results are in `results/analysis/*.csv`.
-- Still to be reproduced on the GPU server: the IDArb-vs-ground-truth comparison on Arb-Objaverse (17.2°,
-  depth ratio median 1.00) and the Depth Anything Small-vs-Large correlation (0.94 to 0.997).
+- On the GPU server, `eval_idarb_gt.py` turns the inline code from the 2026-09-25 session into a script
+  (same 8 objects, views 00 and 06) and reproduces the IDArb-vs-ground-truth numbers exactly: mean angle
+  17.2°, outline n_z 0.59 vs 0.59, depth ratio median 1.00 (0.43 to 1.55). The angle is the mean of
+  per-image mean angles, and the outline n_z is the mean of per-image medians on the outline ring.
+- The Depth Anything Small-vs-Large check on the same five samples (chair1, superman, labubu, panda, bird)
+  gives correlations of 0.93 to 0.996 with `compare_depth_models.py`, which uses the full object mask.
+  The 0.94 to 0.997 in the 2026-09-30 entry came from a one-off script that used the mask shrunk by 2 px.
+  The report now quotes 0.93 to 0.996.
 - `AGENTS.md` was merged into `CLAUDE.md` and removed. `README.md` was rewritten for the current project,
   and `NOTICE.md` now lists rembg (MIT) and the U²-Net model it downloads (Apache-2.0).
