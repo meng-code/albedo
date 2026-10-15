@@ -6,9 +6,6 @@ model, IDArb, splits the photo into albedo and surface normals; the normals are 
 map by Poisson normal integration, helped by a monocular depth map from Depth Anything V2 where parts of
 the object hide each other.
 
-The repository keeps the name of the original project title, `albedo-relight`; relighting has since been
-dropped from the scope.
-
 ![Normals only versus normals plus depth prior](results/idarb_single/depth_prior_compare.png)
 
 *Left to right: input, mesh from normals only (45° and side view), mesh with the depth prior (45° and
