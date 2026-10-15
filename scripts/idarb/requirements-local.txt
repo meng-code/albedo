@@ -8,3 +8,5 @@ scipy
 pillow
 trimesh
 open3d==0.18.0   # 只有方法 B(筛选泊松表面重建)需要。只用方法 A 时可以不装,运行时加 --methods relief
+pytest>=8        # 运行 tests/(推送前跑 pytest tests/ -q)
+ruff>=0.12       # 代码风格检查(推送前跑 ruff check .)

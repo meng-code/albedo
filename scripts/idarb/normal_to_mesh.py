@@ -639,12 +639,12 @@ def process_one(
 # ------------------------------------------------------------------------------
 
 
-def selftest(out_dir):
+def hemisphere_check():
     """
     造一个半径 R 的理想半球,按 IDArb 的编码方式(lub 坐标、颜色 = (n+1)/2)生成法线图,
     再用 integrate_normals 积分,和真实的半球高度比较。这样可以验证符号和坐标约定都是对的。
+    只做计算、不打印,返回一个字典,供 selftest 和 tests/test_normal_integration.py 共用。
     """
-    os.makedirs(out_dir, exist_ok=True)
     H = W = 256
     R = 100.0
     yy, xx = np.mgrid[0:H, 0:W].astype(np.float64)
@@ -664,31 +664,27 @@ def selftest(out_dir):
     gt = z - z[mask].mean()
     est = h - np.nanmean(h[mask])
     err = np.abs(est[mask] - gt[mask])
-    print(
-        f"理想半球自检:半径 {R:.0f} 像素,"
-        f"真实最高点比边缘高 {z[mask].max() - z[mask].min():.1f} 像素"
+    return dict(
+        radius=R,
+        true_height=float(z[mask].max() - z[mask].min()),
+        recovered_height=float(np.nanmax(h[mask]) - np.nanmin(h[mask])),
+        mean_err=float(err.mean()),
+        max_err=float(err.max()),
+        center_higher=bool(h[H // 2, W // 2] > h[H // 2, int(W / 2 + R * 0.8)]),
+        h=h,
+        mask=mask,
     )
-    print(
-        f"  恢复出的高度差 {np.nanmax(h[mask]) - np.nanmin(h[mask]):.1f} 像素;"
-        f"逐像素高度误差 平均 {err.mean():.2f} 像素,最大 {err.max():.2f} 像素"
-    )
-    center_higher = h[H // 2, W // 2] > h[H // 2, int(W / 2 + R * 0.8)]
-    print(f"  中心比边缘更靠近相机:{center_higher}(应为 True,否则说明符号反了)")
-    verts, faces, vcol = heightmap_to_mesh(h, mask, np.ones((H, W, 3)) * 0.8)
-    make_preview(
-        [render_fast(verts, faces, vcol, yaw, res=240) for yaw in (0, 45, 90)],
-        [f"hemisphere yaw {a}" for a in (0, 45, 90)],
-        os.path.join(out_dir, "selftest_hemisphere.png"),
-    )
-    print("  预览图已保存到", os.path.join(out_dir, "selftest_hemisphere.png"))
-    selftest_occlusion(out_dir)
 
 
-def selftest_occlusion(out_dir):
+def occlusion_check(gap_center=150.0, with_front=True):
     """
-    有遮挡的场景:大球(半径 90)前方悬着一个小球(半径 35),两者之间隔着一段空隙。
-    只用法线积分时,这段空隙(深度断崖)会丢失;给一张理想的深度先验(真实深度经过任意线性变换),
+    有遮挡的场景:大球(半径 90)前方悬着一个小球(半径 35),小球球心比大球球心近 gap_center 像素。
+    只用法线积分时,两球之间的空隙(深度断崖)会丢失;给一张理想的深度先验(真实深度经过任意线性变换),
     integrate_normals_with_depth 应该能把断崖恢复出来。
+    with_front=False 时只有大球,没有遮挡,用作对照:只用法线也应该完全恢复。
+    只做计算、不打印,返回一个字典:
+      gap_true / gap_normals / gap_depth   小球轮廓内侧一圈和紧挨着的大球表面之间的平均深度差(像素)
+      ratio_normals / ratio_depth           恢复出的整体深度范围除以真实深度范围
     """
     H = W = 256
     yy, xx = np.mgrid[0:H, 0:W].astype(np.float64)
@@ -702,7 +698,10 @@ def selftest_occlusion(out_dir):
         return m, np.where(m, cz + zz, -np.inf), np.stack([x / R, y / R, zz / R], -1)
 
     mb, zb, nb = sphere(128, 128, 90, 0)
-    mf, zf, nf = sphere(165, 160, 35, 150)
+    if with_front:
+        mf, zf, nf = sphere(165, 160, 35, gap_center)
+    else:
+        mf, zf, nf = np.zeros_like(mb), np.full_like(zb, -np.inf), np.zeros_like(nb)
     mask = mb | mf
     front = zf > zb
     z = np.where(front, zf, zb)
@@ -710,18 +709,66 @@ def selftest_occlusion(out_dir):
     d = 0.3 + 0.5 * (z - z[mask].min()) / (z[mask].max() - z[mask].min())  # 真实深度的线性变换
     d = np.where(mask, d, 0.0)
 
-    ring_in = mf & ~sphere(165, 160, 35, 150, 0.90)[0]  # 小球轮廓内侧一圈
-    ring_out = mb & ~mf & sphere(165, 160, 35, 150, 1.10)[0]  # 紧挨着的大球表面
-
-    def jump(h):
-        return np.nanmean(h[ring_in]) - np.nanmean(h[ring_out])
-
+    h_true = np.where(mask, z - z[mask].min(), np.nan)
     h_n = integrate_normals(n, mask, min_nz=0.02, max_grad=50)
     h_d, info = integrate_normals_with_depth(n, d, mask, min_nz=0.02, max_grad=50)
+
+    def depth_range(h):
+        return float(np.nanmax(h[mask]) - np.nanmin(h[mask]))
+
+    result = dict(
+        gap_center=gap_center if with_front else None,
+        ratio_normals=depth_range(h_n) / depth_range(h_true),
+        ratio_depth=depth_range(h_d) / depth_range(h_true),
+        mask=mask,
+        z=z,
+        heights=(h_true, h_n, h_d),
+        info=info,
+    )
+    if with_front:
+        ring_in = mf & ~sphere(165, 160, 35, gap_center, 0.90)[0]  # 小球轮廓内侧一圈
+        ring_out = mb & ~mf & sphere(165, 160, 35, gap_center, 1.10)[0]  # 紧挨着的大球表面
+
+        def jump(h):
+            return float(np.nanmean(h[ring_in]) - np.nanmean(h[ring_out]))
+
+        result.update(gap_true=jump(h_true), gap_normals=jump(h_n), gap_depth=jump(h_d))
+    return result
+
+
+def selftest(out_dir):
+    """--selftest:理想半球和遮挡场景两个检查,打印结果并保存预览图。"""
+    os.makedirs(out_dir, exist_ok=True)
+    r = hemisphere_check()
+    h, mask = r["h"], r["mask"]
+    print(
+        f"理想半球自检:半径 {r['radius']:.0f} 像素,"
+        f"真实最高点比边缘高 {r['true_height']:.1f} 像素"
+    )
+    print(
+        f"  恢复出的高度差 {r['recovered_height']:.1f} 像素;"
+        f"逐像素高度误差 平均 {r['mean_err']:.2f} 像素,最大 {r['max_err']:.2f} 像素"
+    )
+    print(f"  中心比边缘更靠近相机:{r['center_higher']}(应为 True,否则说明符号反了)")
+    verts, faces, vcol = heightmap_to_mesh(h, mask, np.ones(mask.shape + (3,)) * 0.8)
+    make_preview(
+        [render_fast(verts, faces, vcol, yaw, res=240) for yaw in (0, 45, 90)],
+        [f"hemisphere yaw {a}" for a in (0, 45, 90)],
+        os.path.join(out_dir, "selftest_hemisphere.png"),
+    )
+    print("  预览图已保存到", os.path.join(out_dir, "selftest_hemisphere.png"))
+    selftest_occlusion(out_dir)
+
+
+def selftest_occlusion(out_dir):
+    """--selftest 的第二部分:遮挡场景,打印断崖高度并保存三联预览图(真值、只用法线、加深度先验)。"""
+    r = occlusion_check()
+    mask, z, info = r["mask"], r["z"], r["info"]
+    H, W = mask.shape
     print("遮挡场景自检:小球悬在大球前方")
     print(
-        f"  断崖高度:真实 {jump(np.where(mask, z, np.nan)):.1f} 像素,"
-        f"只用法线 {jump(h_n):.1f} 像素,法线 + 深度先验 {jump(h_d):.1f} 像素"
+        f"  断崖高度:真实 {r['gap_true']:.1f} 像素,"
+        f"只用法线 {r['gap_normals']:.1f} 像素,法线 + 深度先验 {r['gap_depth']:.1f} 像素"
         "(后者应接近真实值)"
     )
     # 真实深度的网格按真实断崖(相邻像素深度差超过 3 像素)去掉竖直面;只用法线的结果没有断崖
@@ -734,7 +781,7 @@ def selftest_occlusion(out_dir):
         (np.zeros(0, np.int64), np.zeros(0, np.int64)),
         (info["cut_i"], info["cut_j"]),
     ]
-    heights = (np.where(mask, z - z[mask].min(), np.nan), h_n, h_d)
+    heights = r["heights"]
     panels = []
     for k, h in enumerate(heights):
         cut_i, cut_j = cuts[k]
