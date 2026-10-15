@@ -15,6 +15,10 @@ Scripts we added around IDArb (whose code is in `third_party/IDArb/`).
 | `estimate_depth.py` | server | Generates relative depth maps with Depth Anything V2, used as a depth prior for mesh reconstruction |
 | `normal_to_mesh.py` | laptop or server | Rebuilds a 3D mesh from an IDArb normal map, optionally with the depth prior |
 | `plot_failure_cases.py` | laptop | Draws failure-case figures (input, IDArb output, side views of both meshes), e.g. `results/analysis/failure_cats.png` |
+| `eval_samples.py` | laptop | Per-image metrics for all sample images, with and without the depth prior → `results/analysis/sample_metrics.csv` |
+| `eval_occlusion.py` | laptop | Two-sphere occlusion experiment at three gaps, plus a single-sphere control → `results/analysis/occlusion_gaps.csv` |
+| `eval_method_b.py` | laptop | Distance between the method-B and method-A surfaces → `results/analysis/method_b_vs_a.csv` |
+| `compare_depth_models.py` | laptop or server | Correlation between two sets of depth maps, e.g. Depth Anything V2 Small vs Large → `results/analysis/depth_small_vs_large.csv` |
 | `poisson_on_depth_points.py` | laptop | Experiment: screened Poisson on points taken straight from the depth map, compared with the other variants (not adopted, see `docs/decisions.md`) |
 
 ## 1. Server: image decomposition
@@ -188,3 +192,18 @@ result is identical every time.
 - The normals predicted by the network have random errors. On 16 samples from the dataset they differ from
   the ground truth by 17.2° on average; the integrated depth is 0.43 to 1.55 times the true depth, with a
   median of 1.00, so there is no systematic flattening.
+
+## 4. Reproducing the numbers in the report
+
+Run from the repository root in the `mesh` environment unless noted. Each script prints its results and
+writes them to `results/analysis/`.
+
+| Number in the report | Script | Output |
+|---|---|---|
+| Hemisphere self-test: mean error 0.01 px, max 0.04 px | `normal_to_mesh.py --selftest` (also `pytest tests/ -q`) | printed |
+| Two spheres: true gaps 49.4 / 99.4 / 149.4 px recovered as 5.4 px; depth ratio 0.71 / 0.49 / 0.38; single sphere 1.00 | `eval_occlusion.py` | `occlusion_gaps.csv` |
+| 16 of 19 images usable; median depth/width 0.35 → 0.38; mean angle to the normals 5.5° → 11.2°; chair1 0.28 → 0.82; part counts | `eval_samples.py` | `sample_metrics.csv` |
+| Method B vs method A: median distance about 0.45 px | `eval_method_b.py` | `method_b_vs_a.csv` |
+| Normals only / joint / depth only / Poisson on depth points: 4.8° / 11.0° / 17.0° / 16.9° (chair1) | `poisson_on_depth_points.py` | printed |
+| Failed cats: mean n_z, scale s, depth ranges | `plot_failure_cases.py` | printed, `failure_cats.png` |
+| Depth Anything V2 Small vs Large: correlation 0.94 to 0.997 | `estimate_depth.py --model depth-anything/Depth-Anything-V2-Large-hf` (server), then `compare_depth_models.py` | `depth_small_vs_large.csv` |
