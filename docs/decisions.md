@@ -77,3 +77,25 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   follow the normals; in effect the Poisson variant is the joint solve with a very large depth weight.
   Open3D 0.18 does not expose PoissonRecon's point weight, which would be the parameter to lower.
 - **Decision:** keep the joint solve. Script: `scripts/idarb/poisson_on_depth_points.py`.
+
+## 2026-10-16 — Repository cleaned up to match the current project
+
+- Removed the relighting placeholder package `src/relight/`, its test `tests/test_smoke.py`, the empty
+  `configs/` and the unused template `docs/diary.md`. The repository is no longer an installable package;
+  `pyproject.toml` only holds the ruff and pytest settings and a `test` dependency group, and ruff now
+  targets Python 3.8 because `scripts/idarb/` also runs in the server environment.
+- New tests in `tests/test_normal_integration.py` check the hemisphere and two-sphere scenes from
+  `normal_to_mesh.py --selftest`. To share the code, the self-test was split into `hemisphere_check()` and
+  `occlusion_check()`, which return numbers; `--selftest` prints exactly what it printed before.
+  `occlusion_check()` now takes the distance between the spheres, so the 49.4 / 99.4 / 149.4 px cases and
+  the single-sphere control in the report can be recomputed.
+- Added scripts so that the numbers in the report can be recomputed in the repository:
+  `eval_samples.py`, `eval_occlusion.py`, `eval_method_b.py` (laptop) and `compare_depth_models.py`.
+  Rerun on 2026-10-16, they reproduce the report: gaps 49.4 / 99.4 / 149.4 px recovered as 5.4 px with
+  depth ratios 0.71 / 0.49 / 0.38 and 1.00 for a single sphere; 16 of 19 images usable, median
+  depth/width 0.35 to 0.38, mean angle 5.5° to 11.2°; method B to method A median distance 0.456 /
+  0.448 / 0.438 px on panda / chair1 / bird. Results are in `results/analysis/*.csv`.
+- Still to be reproduced on the GPU server: the IDArb-vs-ground-truth comparison on Arb-Objaverse (17.2°,
+  depth ratio median 1.00) and the Depth Anything Small-vs-Large correlation (0.94 to 0.997).
+- `AGENTS.md` was merged into `CLAUDE.md` and removed. `README.md` was rewritten for the current project,
+  and `NOTICE.md` now lists rembg (MIT) and the U²-Net model it downloads (Apache-2.0).
