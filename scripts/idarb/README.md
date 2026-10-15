@@ -206,4 +206,5 @@ writes them to `results/analysis/`.
 | Method B vs method A: median distance about 0.45 px | `eval_method_b.py` | `method_b_vs_a.csv` |
 | Normals only / joint / depth only / Poisson on depth points: 4.8° / 11.0° / 17.0° / 16.9° (chair1) | `poisson_on_depth_points.py` | printed |
 | Failed cats: mean n_z, scale s, depth ranges | `plot_failure_cases.py` | printed, `failure_cats.png` |
+| IDArb normals vs ground truth (8 Arb-Objaverse training objects × 2 views): mean angle 17.2°; outline n_z 0.59 GT vs 0.59 predicted; integrated depth ratio median 1.00 (0.43 to 1.55) | `eval_idarb_gt.py --data_dir <Arb-Objaverse folder>` (server, idarb environment) | `idarb_normals_vs_gt.csv` |
 | Depth Anything V2 Small vs Large: correlation 0.94 to 0.997 | `estimate_depth.py --model depth-anything/Depth-Anything-V2-Large-hf` (server), then `compare_depth_models.py` | `depth_small_vs_large.csv` |
