@@ -31,10 +31,11 @@ Steps:
 Distances are fractions of the target's bounding-box diagonal. Outputs in --out_dir: metrics.csv
 (one row per stage and candidate), transform.json, aligned_source.ply (the source mesh moved onto
 the target, or the source points), target.ply, correspondence_{source,target}.ply (matched points
-share a colour), target_from_source_colors.ply (target points coloured with the source's vertex
+share a colour), target_from_source_colors.ply (the target mesh coloured with the source's vertex
 colours through feature matches only), target_from_source_colors_registered.ply (the same through
-the registration: the albedo transfer the project aims at; target points the source does not cover
-stay grey), correspondences.npz and preview.png (when matplotlib is installed).
+the registration: the albedo transfer the project aims at; target vertices the source does not cover
+stay grey), correspondences.npz and preview.png (when matplotlib is installed). The coloured target
+files are meshes with vertex colours when --target_mesh is given, else point clouds.
 
 --gt <file>_gt.npz from make_partial_mesh.py adds ground-truth columns: rotation and scale error,
 and the accuracy of the correspondences (fraction within 1 % and 5 % of the diagonal of the true
@@ -498,6 +499,22 @@ def save_points(path, points, colors):
     trimesh.PointCloud(points, colors=colors).export(path)
 
 
+def save_target_colored(path, target_mesh, dst_xyz, colors):
+    """The target as a mesh with one colour per vertex (every mesh vertex takes the colour of the
+    nearest sampled point), so viewers show a continuous coloured surface; without the mesh file,
+    a point cloud of the sampled points."""
+    if target_mesh is None:
+        save_points(path, dst_xyz, colors)
+        return
+    import trimesh
+
+    m = trimesh.load(target_mesh, process=False, force="mesh")
+    _, near = cKDTree(dst_xyz).query(np.asarray(m.vertices, dtype=np.float64))
+    trimesh.Trimesh(
+        vertices=m.vertices, faces=m.faces, vertex_colors=colors[near], process=False
+    ).export(path)
+
+
 def save_mesh_transformed(path, mesh_path, s, R, t, a=1.0):
     import trimesh
 
@@ -905,7 +922,12 @@ def main():
     src_pc = position_colors(src_xyz)
     t2s = similarity_matrix(dst["feat"], src["feat"]).argmax(axis=1)
     save_points(os.path.join(args.out_dir, "correspondence_source.ply"), src_xyz, src_pc)
-    save_points(os.path.join(args.out_dir, "correspondence_target.ply"), dst_xyz, src_pc[t2s])
+    save_target_colored(
+        os.path.join(args.out_dir, "correspondence_target.ply"),
+        args.target_mesh,
+        dst_xyz,
+        src_pc[t2s],
+    )
     # albedo transfer: through features only, and through the registration (nearest aligned source
     # point, only where the source covers the target)
     src_col = src["colors"]
@@ -914,12 +936,18 @@ def main():
     d_t, near_src = cKDTree(aligned).query(dst_xyz)
     covered = d_t < args.icp_dist * res["diag"]
     if src_col is not None:
-        save_points(
-            os.path.join(args.out_dir, "target_from_source_colors.ply"), dst_xyz, src_col[t2s]
+        save_target_colored(
+            os.path.join(args.out_dir, "target_from_source_colors.ply"),
+            args.target_mesh,
+            dst_xyz,
+            src_col[t2s],
         )
         reg_col[covered] = src_col[near_src[covered]]
-        save_points(
-            os.path.join(args.out_dir, "target_from_source_colors_registered.ply"), dst_xyz, reg_col
+        save_target_colored(
+            os.path.join(args.out_dir, "target_from_source_colors_registered.ply"),
+            args.target_mesh,
+            dst_xyz,
+            reg_col,
         )
 
     red = np.full((len(src_xyz), 3), (220, 60, 60), np.uint8)
