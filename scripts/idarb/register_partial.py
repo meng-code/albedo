@@ -710,6 +710,9 @@ def paint_target(
     mirror=True,
     mirror_tol=0.02,
     max_plane_err=0.02,
+    full_src_xyz=None,
+    full_src_colors=None,
+    refine_radius=0.03,
 ):
     """Albedo transfer onto the target mesh, subdivided subdiv times so that small parts have
     vertices to carry a colour. Every target vertex takes its feature from the 3 nearest sampled
@@ -724,7 +727,11 @@ def paint_target(
         symmetry plane lies on a covered vertex (within mirror_tol), which take that vertex's
         colour: the far side of a bilaterally symmetric object gets the near side's albedo. Only
         when the plane fits within max_plane_err;
-      combined: mirror where available, feature elsewhere."""
+      combined: mirror where available, feature elsewhere.
+    With full_src_xyz / full_src_colors (every vertex of the aligned source mesh with its colour,
+    not only the sampled points that carry features), the chosen sampled point only marks the
+    region and the colour comes from the full-resolution vertex nearest to the target vertex
+    within refine_radius of it, so the painting keeps the photo's detail."""
     import trimesh
 
     m = trimesh.load(target_mesh, process=False, force="mesh")
@@ -753,6 +760,16 @@ def paint_target(
     col_feat = src_colors[best_feat]
     col_reg = np.full((len(V), 3), 170, np.uint8)
     col_reg[covered] = src_colors[best_joint[covered]]
+    if full_src_xyz is not None and covered.any():
+        idx_c = np.nonzero(covered)[0]
+        _, j_k = cKDTree(full_src_xyz).query(V[idx_c], k=8)
+        p_sel = aligned_src[best_joint[idx_c]]
+        inside = (
+            np.linalg.norm(full_src_xyz[j_k] - p_sel[:, None, :], axis=2) < refine_radius * diag
+        )
+        has = inside.any(axis=1)
+        first = inside.argmax(axis=1)  # the nearest full-resolution vertex inside the region
+        col_reg[idx_c[has]] = full_src_colors[j_k[has, first[has]]]
     col_mirror = col_reg.copy()
     mirrored = np.zeros(len(V), dtype=bool)
     plane = None
@@ -1205,7 +1222,7 @@ def main():
     ap.add_argument(
         "--paint_subdiv",
         type=int,
-        default=1,
+        default=2,
         help="subdivide the target mesh this many times before painting it (4x vertices each)",
     )
     ap.add_argument(
@@ -1235,6 +1252,11 @@ def main():
         "--no_mirror",
         action="store_true",
         help="painting: do not fill the far side through the target's symmetry plane",
+    )
+    ap.add_argument(
+        "--no_full_colors",
+        action="store_true",
+        help="painting: use only the sampled points' colours, not every source vertex",
     )
     args = ap.parse_args()
 
@@ -1340,6 +1362,26 @@ def main():
             aligned_paint = (
                 aligned if res["aligned_piecewise"] is None else res["aligned_piecewise"]
             )
+            # every vertex of the source mesh with its photo colour, moved like the sampled points
+            full_xyz, full_col = None, None
+            if args.source_mesh and not args.no_full_colors:
+                m_full = trimesh.load(args.source_mesh, process=False, force="mesh")
+                if m_full.visual.kind == "vertex":
+                    v_full = np.asarray(m_full.vertices, dtype=np.float64)
+                    full_col = np.asarray(m_full.visual.vertex_colors[:, :3], dtype=np.uint8)
+                    if res["aligned_piecewise"] is None:
+                        full_xyz = transform(apply_depth(v_full, a), s, R, t)
+                    else:
+                        full_xyz = apply_piecewise(
+                            v_full,
+                            aligned,
+                            res["piecewise_info"],
+                            s,
+                            R,
+                            t,
+                            a,
+                            sigma=res["options"]["blend_sigma"] * res["diag"],
+                        )
             paint = paint_target(
                 args.target_mesh,
                 dst_xyz,
@@ -1356,6 +1398,8 @@ def main():
                 part_penalty=args.part_penalty,
                 feature_weight=args.feature_weight,
                 mirror=not args.no_mirror,
+                full_src_xyz=full_xyz,
+                full_src_colors=full_col,
             )
             V, F = paint["V"], paint["F"]
             for name, key in [

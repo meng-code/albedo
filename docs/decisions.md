@@ -219,3 +219,11 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   0.65 (true 0.5), cutting the rotation error from 12.8° / 16.4° to 2.1° / 5.5° and lifting the
   correspondences within 1 % from 15 % to 94 % (halved case); harmless when the depth is right.
   Still optional, because on thin real objects the agreement cannot pick the factor.
+- **Full-resolution colours (2026-10-21):** after reading Foti et al., "Heat Kernel Textures"
+  (arXiv 2609.07557; a UV-free texture representation fitted by differentiable rendering, not a
+  correspondence method), the cheap part of its lesson was applied: the painting now takes colours
+  from every source vertex (36k to 92k) instead of the 15000 feature points, and subdivides the
+  target twice. Sharper stripes and markings; placement unchanged. HKTex itself would only improve
+  how the transferred texture is stored and rendered; adopting it means Mitsuba 3 + Dr.Jit on the
+  GPU, deferred until the supervisor confirms the direction. Functional maps (pyFM inside
+  third_party/Diff3F) are the more relevant next step for placement.

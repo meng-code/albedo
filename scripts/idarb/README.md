@@ -521,3 +521,14 @@ synthetic feature-only correspondence (30.5 % against 28.0 % within 1 %). The co
 normal checks, extra seeds, the feature-guided ICP variants and the loose per-part limits were
 evaluated on the first 8 and 15 pairs in earlier versions of this table (git history) and changed
 nothing, so the final run leaves them out to stay under an hour on the laptop.
+
+### Full-resolution colours (2026-10-21)
+
+Until now the painting took its colours from the 15000 sampled source points that carry features,
+while the relief mesh has 36k to 92k vertices with the photo's albedo. The chosen sampled point now
+only marks the region (feature and part terms as before), and the colour comes from the
+full-resolution source vertex nearest to the target vertex inside that region
+(`paint_target(full_src_xyz, full_src_colors)`, on by default, `--no_full_colors` to switch off); the
+target is subdivided twice by default (`--paint_subdiv 2`). The cat's stripes and the panda's eye
+patches come out sharp; the cartoon cow's face still lands where the registration puts it. Stored
+painted meshes are decimated to 100000 triangles.
