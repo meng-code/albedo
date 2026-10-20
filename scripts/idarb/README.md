@@ -499,3 +499,25 @@ So the depth factor repairs a relief whose depth is off by a factor of two, more
 relief is too shallow (factor found 1.76 of 2) than when it is too deep (0.65 of 0.5), and does no harm
 when the depth is right. It stays off by default only because on the real, thin cat the agreement cannot
 tell 0.48 from 1.76 (see above); on objects as wide as the cow it is safe to use.
+
+### Summary over all pairs (`results/diff3f/ablation.csv`, final, 2026-10-21)
+
+The table holds six settings on 24 pairs: 16 real, 2 synthetic, 4 synthetic with the depth squashed
+after the features were computed (`_z0.5`, `_z2`) and 2 deformed before (`_d0.5`, `_d2`). Averages
+over the 16 real pairs (median distance / agreement / part agreement):
+
+| Setting | Median | Agreement | Part agreement |
+|---|---|---|---|
+| mutual matches, best-inlier hypothesis (first version) | 0.0199 | 0.51 | 0.66 |
+| default (both-direction matches, scale bands, agreement with coverage discount) | 0.0167 | 0.56 | 0.69 |
+| default + `--piecewise` | 0.0158 | 0.57 | 0.71 |
+| default + `--depth_scale` | 0.0161 | 0.57 | 0.70 |
+| DINO half of the feature only | 0.0160 | 0.62 | 0.70 |
+| diffusion half only | 0.0170 | 0.47 | 0.59 |
+
+The DINO half alone registers the real pairs as well as the fused vector (agreements of different
+feature types are not comparable, part agreements are); the fused vector keeps its edge on the
+synthetic feature-only correspondence (30.5 % against 28.0 % within 1 %). The consensus filter, the
+normal checks, extra seeds, the feature-guided ICP variants and the loose per-part limits were
+evaluated on the first 8 and 15 pairs in earlier versions of this table (git history) and changed
+nothing, so the final run leaves them out to stay under an hour on the laptop.
