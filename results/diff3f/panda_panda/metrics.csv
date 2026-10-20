@@ -1,0 +1,6 @@
+stage,candidate,scale,depth_factor,n_matches,n_inliers,icp_kept,agreement,part_agreement,rms_to_target,median_to_target,frac_within_2pct,match_median,match_within_5pct,rot_err_deg,scale_ratio,pos_err_median,corr_acc_1pct,corr_acc_5pct,corr_median
+ransac,0,0.8086,1.0,14905,13201,,0.7866,0.782,0.0171,0.0107,0.868,0.0232,0.886,,,,,,
+candidate0+icp,0,0.8086,1.0,14905,13201,0.99,0.7831,0.755,0.0149,0.0107,0.901,0.0305,0.863,,,,,,
+selected,0,0.8086,1.0,14905,13201,0.99,0.7831,0.755,0.0149,0.0107,0.901,0.0305,0.863,,,,,,
+baseline_icp_no_features,,1.0097,1.0,,,0.872,0.6395,0.633,0.0342,0.0169,0.585,0.1043,0.178,,,,,,
+piecewise,0,,,14905,13201,,0.809,0.809,0.0141,0.0104,0.901,,,,,,,,
