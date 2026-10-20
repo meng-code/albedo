@@ -32,6 +32,11 @@ MESHES = dict(
     posed_human="third_party/Diff3F/meshes/posed_human.off",
     camel="third_party/Diff3F/meshes/camel.obj",
     lion="third_party/Diff3F/meshes/lion.off",
+    armchair="results/diff3f/targets/armchair.ply",
+    roundchair="results/diff3f/targets/roundchair.ply",
+    panda="results/diff3f/targets/panda.ply",
+    bird="results/diff3f/targets/bird.ply",
+    lizard="results/diff3f/targets/lizard.ply",
 )
 
 SYNTH = dict(
@@ -50,6 +55,13 @@ REAL = [
     ("cat5_cat", "cat5", "cat"),
     ("cat_lion", "cat", "lion"),
     ("labubu_man", "labubu", "man"),
+    ("chair1_armchair", "chair1", "armchair"),
+    ("chair_armchair", "chair", "armchair"),
+    ("chair10_roundchair", "chair10", "roundchair"),
+    ("chairgen_armchair", "ipadapter_result_00_chair", "armchair"),
+    ("panda_panda", "panda", "panda"),
+    ("bird_bird", "bird", "bird"),
+    ("dragon_lizard", "fire_dragon", "lizard"),
 ]
 
 PAIRS = [
