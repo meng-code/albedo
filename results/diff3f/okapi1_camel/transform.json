@@ -1,0 +1,142 @@
+{
+ "source": "outputs/diff3f/okapi1_partial.npz",
+ "target": "outputs/diff3f/camel_full.npz",
+ "feature": "full",
+ "scale": 65.38747710508578,
+ "rotation": [
+  [
+   -0.19574683016238892,
+   0.09172401686623327,
+   -0.9763554082460445
+  ],
+  [
+   -0.13187492785708177,
+   0.9841106323064317,
+   0.118891828079657
+  ],
+  [
+   0.9717469742088555,
+   0.15202949750412362,
+   -0.18054043869609235
+  ]
+ ],
+ "translation": [
+  -6.73492862817699,
+  17.065813065384347,
+  4.423041919600165
+ ],
+ "depth_factor": 1.0,
+ "matrix": [
+  [
+   -12.79939137563632,
+   5.99760205282733,
+   -63.84141690311491,
+   -6.73492862817699
+  ],
+  [
+   -8.622968825989773,
+   64.34851143880829,
+   7.7740366865403665,
+   17.065813065384347
+  ],
+  [
+   63.54008302801792,
+   9.940825287348579,
+   -11.805083801782882,
+   4.423041919600165
+  ],
+  [
+   0.0,
+   0.0,
+   0.0,
+   1.0
+  ]
+ ],
+ "coarse_matrix": [
+  [
+   -16.43565465350517,
+   6.132159120562448,
+   -62.99038055766082,
+   -7.090226345294422
+  ],
+  [
+   -2.935773569996261,
+   64.93588979672569,
+   7.087567426227894,
+   15.251348209923467
+  ],
+  [
+   63.22003362720191,
+   4.609664087080332,
+   -16.046822344248,
+   1.0311824056095773
+  ],
+  [
+   0.0,
+   0.0,
+   0.0,
+   1.0
+  ]
+ ],
+ "selected_candidate": 0,
+ "options": {
+  "inlier_dist": 0.05,
+  "icp_dist": 0.05,
+  "n_iter": 5000,
+  "seeds": [
+   0
+  ],
+  "match_mode": "both",
+  "consensus": false,
+  "n_candidates": 8,
+  "refine": "icp",
+  "n_joint": 3,
+  "joint_refit_scale": false,
+  "depth_grid": [
+   0.5,
+   0.7,
+   1.0,
+   1.4,
+   2.0
+  ],
+  "n_depth": 3,
+  "piecewise": true,
+  "part_scale_range": [
+   0.8,
+   1.25
+  ],
+  "part_max_rot": 15.0,
+  "blend_sigma": 0.05,
+  "normals": false,
+  "depth_scale": false,
+  "n_parts": 6
+ },
+ "source_meta": {
+  "command": "scripts/idarb/diff3f_features.py --mesh outputs/mesh_depth/okapi1/relief.ply --prompt okapi --front_only --no_cpu_offload --out outputs/diff3f/okapi1_partial.npz",
+  "commit": "4c65a9f",
+  "mesh": "outputs/mesh_depth/okapi1/relief.ply",
+  "prompt": "okapi",
+  "num_views": 100,
+  "front_only": true,
+  "tolerance": 0.004,
+  "seed": 0,
+  "sd_repo": "stable-diffusion-v1-5/stable-diffusion-v1-5",
+  "n_vertices": 33261,
+  "n_features": 15000,
+  "seconds": 447.3
+ },
+ "target_meta": {
+  "command": "scripts/idarb/diff3f_features.py --mesh third_party/Diff3F/meshes/camel.obj --prompt camel --no_cpu_offload --out outputs/diff3f/camel_full.npz",
+  "commit": "4c65a9f",
+  "mesh": "third_party/Diff3F/meshes/camel.obj",
+  "prompt": "camel",
+  "num_views": 100,
+  "front_only": false,
+  "tolerance": 0.004,
+  "seed": 0,
+  "sd_repo": "stable-diffusion-v1-5/stable-diffusion-v1-5",
+  "n_vertices": 1789,
+  "n_features": 1789,
+  "seconds": 244.7
+ }
+}
