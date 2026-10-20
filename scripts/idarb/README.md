@@ -259,21 +259,33 @@ python scripts/idarb/register_partial.py --source outputs/diff3f/cow_partial.npz
 
 Steps, all in NumPy/SciPy (no GPU):
 
-1. **Matches.** Cosine similarity between every source vector and every target vector; keep the pairs
-   that are each other's best match (mutual nearest neighbours).
+1. **Matches.** Cosine similarity between every source vector and every target vector. `--matches both`
+   (default) takes every source point with its best target point and every target point with its best
+   source point, and keeps the most similar half of them: thousands of matches with outliers that RANSAC
+   has to reject. `--matches mutual` keeps only pairs that are each other's best match: few, cleaner,
+   but on the first cow run too few (144) to pin down the right transform.
 2. **Coarse alignment.** RANSAC over the matches: take 3 matches, fit a similarity transform (scale,
    rotation, translation; Umeyama 1991), count how many matches it brings within `--inlier_dist` (default
-   5 % of the target's bounding-box diagonal); keep the best and refit it on its inliers.
-3. **Fine alignment.** ICP with the scale fixed: pair every source point with its nearest target point,
-   drop pairs farther apart than `--icp_dist`, refit the rotation and translation, repeat.
+   5 % of the target's bounding-box diagonal). The scale is limited to 0.4 to 2.5 times the ratio of the
+   two bounding-box diagonals. Up to `--candidates` (default 8) distinct hypotheses are kept, best first,
+   each refitted on its inliers.
+3. **Fine alignment and selection.** Every candidate is refined by ICP with the scale fixed (pair every
+   source point with its nearest target point, drop pairs farther apart than `--icp_dist`, refit the
+   rotation and translation, repeat) and then scored by *feature agreement*: the mean cosine similarity
+   between each source point's feature and the feature of the target point it lands on (0 for points
+   that land nowhere). The candidate with the best agreement is `selected`. This step exists because the
+   hypothesis with the most RANSAC inliers can be wrong: on the cartoon cow the big head matched well, and
+   the best-inlier transform shrank the whole cow onto the full cow's head; body points landing on head
+   points give that transform a low agreement.
 4. **Baseline.** The same ICP started from centroid-and-size alignment only, without features, to show
    what the features add.
 
-`metrics.csv` has one row per stage: `n_matches`, `n_inliers`, `scale`, `rms_to_target` and
-`median_to_target` (distance from the aligned source points to the nearest target point),
-`frac_within_2pct` (fraction closer than 2 % of the diagonal), and `match_median` / `match_within_5pct`
-(distance between the two points of each feature match after alignment: small when the features and the
-geometry agree). All distances are fractions of the target diagonal. `transform.json` has the transform;
+`metrics.csv` has one row per stage and candidate: `candidate`, `n_matches`, `n_inliers`, `scale`,
+`agreement`, `rms_to_target` and `median_to_target` (distance from the aligned source points to the
+nearest target point), `frac_within_2pct` (fraction closer than 2 % of the diagonal), and `match_median` /
+`match_within_5pct` (distance between the two points of each feature match after alignment: small when
+the features and the geometry agree). All distances are fractions of the target diagonal. The `selected`
+row is the result. `transform.json` has the transform;
 `aligned_source.ply` is the partial mesh moved onto the target; `correspondence_*.ply` colour matched points
 alike; `target_from_source_colors.ply` paints the target with the source's albedo through the feature
 matches; `preview.png` shows the stages side by side.
