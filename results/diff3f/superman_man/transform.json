@@ -1,0 +1,142 @@
+{
+ "source": "outputs/diff3f/superman_partial.npz",
+ "target": "outputs/diff3f/man_full.npz",
+ "feature": "full",
+ "scale": 0.9743356081495834,
+ "rotation": [
+  [
+   0.9903998274062412,
+   -0.10857543459302157,
+   -0.0855544088672507
+  ],
+  [
+   0.11029854096307551,
+   0.9937750657007902,
+   0.0156636730305482
+  ],
+  [
+   0.08332114818642952,
+   -0.02494982553701887,
+   0.99621036557073
+  ]
+ ],
+ "translation": [
+  -0.008715261790160411,
+  -0.13595758914725264,
+  0.053544011741610734
+ ],
+ "depth_factor": 1.0,
+ "matrix": [
+  [
+   0.9649818181471025,
+   -0.105788912094297,
+   -0.08335870699355083,
+   -0.008715261790160411
+  ],
+  [
+   0.10746779598726991,
+   0.9682704330034717,
+   0.015261674388075408,
+   -0.13595758914725264
+  ],
+  [
+   0.08118276158994636,
+   -0.024309503437837287,
+   0.970643232383276,
+   0.053544011741610734
+  ],
+  [
+   0.0,
+   0.0,
+   0.0,
+   1.0
+  ]
+ ],
+ "coarse_matrix": [
+  [
+   0.7090878207128536,
+   -0.03217883685140138,
+   -0.6674495204012096,
+   -0.018105633018154862
+  ],
+  [
+   0.07420245183063381,
+   0.9709781940256904,
+   0.03201905959190331,
+   -0.09272087577434719
+  ],
+  [
+   0.6640921140679481,
+   -0.07413330219083919,
+   0.7090950534641063,
+   0.10087829469126973
+  ],
+  [
+   0.0,
+   0.0,
+   0.0,
+   1.0
+  ]
+ ],
+ "selected_candidate": 1,
+ "options": {
+  "inlier_dist": 0.05,
+  "icp_dist": 0.05,
+  "n_iter": 5000,
+  "seeds": [
+   0
+  ],
+  "match_mode": "both",
+  "consensus": false,
+  "n_candidates": 8,
+  "refine": "icp",
+  "n_joint": 3,
+  "joint_refit_scale": false,
+  "depth_grid": [
+   0.5,
+   0.7,
+   1.0,
+   1.4,
+   2.0
+  ],
+  "n_depth": 3,
+  "piecewise": true,
+  "part_scale_range": [
+   0.8,
+   1.25
+  ],
+  "part_max_rot": 15.0,
+  "blend_sigma": 0.05,
+  "normals": false,
+  "depth_scale": false,
+  "n_parts": 6
+ },
+ "source_meta": {
+  "command": "scripts/idarb/diff3f_features.py --mesh outputs/mesh_depth/superman/relief.ply --prompt man --front_only --no_cpu_offload --out outputs/diff3f/superman_partial.npz",
+  "commit": "4c65a9f",
+  "mesh": "outputs/mesh_depth/superman/relief.ply",
+  "prompt": "man",
+  "num_views": 100,
+  "front_only": true,
+  "tolerance": 0.004,
+  "seed": 0,
+  "sd_repo": "stable-diffusion-v1-5/stable-diffusion-v1-5",
+  "n_vertices": 86711,
+  "n_features": 15000,
+  "seconds": 608.8
+ },
+ "target_meta": {
+  "command": "scripts/idarb/diff3f_features.py --mesh third_party/Diff3F/meshes/man.obj --prompt man --no_cpu_offload --out outputs/diff3f/man_full.npz",
+  "commit": "4c65a9f",
+  "mesh": "third_party/Diff3F/meshes/man.obj",
+  "prompt": "man",
+  "num_views": 100,
+  "front_only": false,
+  "tolerance": 0.004,
+  "seed": 0,
+  "sd_repo": "stable-diffusion-v1-5/stable-diffusion-v1-5",
+  "n_vertices": 41320,
+  "n_features": 15000,
+  "seconds": 298.1
+ }
+}
