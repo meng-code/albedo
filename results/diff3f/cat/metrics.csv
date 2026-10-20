@@ -1,0 +1,4 @@
+stage,scale,n_matches,n_inliers,icp_kept,rms_to_target,median_to_target,frac_within_2pct,match_median,match_within_5pct
+ransac,0.4552,133,75,,0.052,0.0167,0.558,0.0442,0.564
+ransac+icp,0.4552,133,75,0.883,0.0556,0.0118,0.755,0.052,0.496
+baseline_icp_no_features,0.5331,,,0.504,0.1111,0.0491,0.236,0.3685,0.0
