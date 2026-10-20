@@ -408,3 +408,22 @@ Numbers are the `selected` row and, after the arrow, the `piecewise` row of each
 
 The camel scale of 50 to 65 is the unit of `camel.obj` (its extent is about 80), not an error.
 `man_full` has 515 vertices without features (surfaces no camera saw) against 2 to 43 elsewhere.
+
+### More pairs (2026-10-21, server batch 2: Objaverse targets)
+
+Seven pairs against the CC-BY Objaverse meshes in `results/diff3f/targets/` (sources and licenses in
+`NOTICE.md`), same procedure as batch 1.
+
+| Pair | Source image → target mesh | Median | Agreement | Part agreement | Remarks |
+|---|---|---|---|---|---|
+| chair1_armchair | chair1 → armchair | 0.0146 → 0.0142 | 0.52 | 0.63 → 0.66 | frame and upholstery colours on the right parts |
+| chair_armchair | chair (green, ornate) → armchair | 0.0225 → 0.0171 | 0.43 → 0.46 | 0.52 → 0.54 | green pattern on back and seat |
+| chair10_roundchair | chair10 (carved) → roundchair | 0.0304 → 0.0299 | 0.38 | 0.56 | worst pair: the carved chair's relief mesh is cut into 6 pieces by the depth prior and the thin structure gives few consistent matches |
+| chairgen_armchair | generated chair → armchair | 0.0117 → 0.0104 | 0.57 | 0.64 | clean source, clean result |
+| panda_panda | panda → panda | 0.0107 → 0.0104 | 0.78 → 0.81 | 0.76 → 0.81 | best pair of all: eye patches, ears and arms painted black where they belong |
+| bird_bird | bird (stone figurine) → sparrow | 0.0051 | 0.61 | 0.46 | **failure**: the figurine is a blob with a beak; the registration shrinks it (scale 0.46) onto the sparrow's belly, where every point is close to the surface but the parts do not correspond |
+| dragon_lizard | fire_dragon → Charmeleon | 0.0138 | 0.54 | 0.58 | orange body, cream belly and the tail flame land where they belong |
+
+The Objaverse meshes have many vertices no camera sees (panda 4950 of 20002: eyes, mouth and other
+parts inside the head; chairs 685 and 966); they get the feature of the nearest seen vertex and do
+not seem to disturb the registration.

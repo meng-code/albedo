@@ -189,3 +189,8 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   the cat's spots on the lion. The toy-to-human pair has a low feature agreement (0.32), so its small
   distances mean little. Next: chairs, panda, bird and dragon against CC-BY Objaverse meshes
   (`results/diff3f/targets/`, batch 2).
+- **Seven more pairs (server batch 2, 2026-10-21; Objaverse targets):** chairs, panda, bird and
+  dragon. Five register well (panda best: median 0.0104, agreement 0.81), chair10 is poor (its relief
+  mesh is in 6 pieces), and the stone-bird figurine is a failure of a new kind: the registration
+  shrinks the blob onto the sparrow's belly (small distances, part agreement 0.46). Table in
+  `scripts/idarb/README.md`.
