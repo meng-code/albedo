@@ -58,6 +58,12 @@ CONFIGS = [
     ("v3_joint_consensus", "full", dict(refine="joint", consensus=True)),
     ("v2_diffusion_only", "diffusion", dict()),
     ("v2_dino_only", "dino", dict()),
+    ("v2_piecewise", "full", dict(piecewise=True)),
+    (
+        "v2_piecewise_loose",
+        "full",
+        dict(piecewise=True, part_scale_range=(0.6, 1.5), part_max_rot=30.0),
+    ),
 ]
 
 FIELDS = [
@@ -111,6 +117,12 @@ def main():
                 row["feature_nn_acc_5pct"] = stages["feature_nn"]["corr_acc_5pct"]
             rows.append(row)
             print({k: v for k, v in row.items() if v is not None})
+            if "piecewise" in stages:  # the per-part refinement of the selected result
+                pw = stages["piecewise"]
+                row2 = dict(row, config=cfg + "[piecewise]")
+                row2.update({k: pw.get(k) for k in FIELDS if k in pw})
+                rows.append(row2)
+                print({k: v for k, v in row2.items() if v is not None})
 
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     import csv

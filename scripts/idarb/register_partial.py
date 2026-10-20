@@ -483,6 +483,154 @@ def transform_metrics(src_xyz, gt_rows, dst_xyz, gt, s, R, t, a, diag):
     )
 
 
+def points_metrics(
+    name,
+    points,
+    src_feat,
+    dst_tree,
+    dst_feat,
+    src_parts,
+    dst_parts,
+    diag,
+    max_dist,
+    gt_rows=None,
+    dst_xyz=None,
+    **extra,
+):
+    """The metrics of stage_metrics / evaluate for an already-moved point set (piecewise
+    alignment), where there is no single transform."""
+    d, j = dst_tree.query(points)
+    dn = d / diag
+    agree = np.einsum("ij,ij->i", src_feat, dst_feat[j])
+    agree[d > max_dist] = 0.0
+    row = dict(
+        stage=name,
+        rms_to_target=round(float(np.sqrt(np.mean(dn**2))), 4),
+        median_to_target=round(float(np.median(dn)), 4),
+        frac_within_2pct=round(float((dn < 0.02).mean()), 3),
+        agreement=round(float(agree.mean()), 4),
+        part_agreement=round(float((src_parts == dst_parts[j]).mean()), 3),
+    )
+    if gt_rows is not None:
+        valid = gt_rows >= 0
+        pos_err = np.linalg.norm(points[valid] - dst_xyz[gt_rows[valid]], axis=1) / diag
+        row["pos_err_median"] = round(float(np.median(pos_err)), 4)
+        row.update(correspondence_metrics(j, gt_rows, dst_xyz, diag))
+    row.update(extra)
+    return row
+
+
+# ------------------------------------------------------------------------------
+# piecewise refinement
+# ------------------------------------------------------------------------------
+
+
+def piecewise_refine(
+    base_xyz,
+    dst_xyz,
+    src_parts,
+    dst_parts,
+    diag,
+    icp_dist=0.05,
+    scale_range=(0.8, 1.25),
+    max_rot_deg=15.0,
+    min_src=150,
+    min_dst=50,
+    iters=50,
+    blend_sigma=0.05,
+):
+    """Per-part refinement after the global registration. base_xyz are the globally aligned source
+    points. For every part (k-means label on the features) with enough points on both sides, a
+    similarity transform with its own scale (clipped to scale_range) is fitted by ICP between the
+    source and the target points of that part only, so a cartoon head that is too big for the
+    realistic head shrinks onto it while the body stays where it is. A part keeps the global
+    alignment when its transform rotates more than max_rot_deg, does not bring the part closer, or
+    uncovers target points it covered before (the way a shrinking part would). The transforms are
+    then blended: every point moves with a weighted mix of all part transforms, the weights falling
+    off with the distance to each part (blend_sigma, fraction of the diagonal), so there are no
+    tears between parts. Returns the moved points and the part table used by blend_piecewise()."""
+    cap = icp_dist * diag
+    info = {}
+
+    def capped_rms(d):
+        return float(np.sqrt(np.mean(np.minimum(d, cap) ** 2))) / diag
+
+    for p in np.unique(dst_parts):
+        si = np.nonzero(src_parts == p)[0]
+        di = np.nonzero(dst_parts == p)[0]
+        if len(si) < min_src or len(di) < min_dst:
+            continue
+        sp, dp = base_xyz[si], dst_xyz[di]
+        tree = cKDTree(dp)
+        rms0 = capped_rms(tree.query(sp)[0])
+        cover0 = float((cKDTree(sp).query(dp)[0] < cap).mean())
+        s_p, R_p, t_p = 1.0, np.eye(3), np.zeros(3)
+        for _ in range(iters):
+            q = transform(sp, s_p, R_p, t_p)
+            d, j = tree.query(q)
+            keep = d < cap
+            if keep.sum() < 20:
+                break
+            s_new, R_new, t_new = umeyama(sp[keep], dp[j[keep]], with_scale=True)
+            s_clip = float(np.clip(s_new, scale_range[0], scale_range[1]))
+            if s_clip != s_new:
+                _, R_new, t_new = umeyama(s_clip * sp[keep], dp[j[keep]], with_scale=False)
+            if (s_clip, np.abs(R_new - R_p).max(), np.abs(t_new - t_p).max()) == (s_p, 0.0, 0.0):
+                break
+            s_p, R_p, t_p = s_clip, R_new, t_new
+        q = transform(sp, s_p, R_p, t_p)
+        rms1 = capped_rms(tree.query(q)[0])
+        cover1 = float((cKDTree(q).query(dp)[0] < cap).mean())
+        accepted = (
+            rms1 < rms0
+            and rotation_angle_deg(R_p, np.eye(3)) <= max_rot_deg
+            and cover1 >= 0.9 * cover0
+        )
+        info[int(p)] = dict(
+            s=s_p if accepted else 1.0,
+            R=R_p if accepted else np.eye(3),
+            t=t_p if accepted else np.zeros(3),
+            idx=si,
+            accepted=bool(accepted),
+            n_src=int(len(si)),
+            n_dst=int(len(di)),
+            rms_before=round(rms0, 4),
+            rms_after=round(rms1 if accepted else rms0, 4),
+            cover_before=round(cover0, 3),
+            cover_after=round(cover1 if accepted else cover0, 3),
+        )
+    return blend_piecewise(base_xyz, base_xyz, info, blend_sigma * diag), info
+
+
+def blend_piecewise(points, base_xyz, info, sigma):
+    """Move points (in the globally aligned frame) with the part transforms of info, blended by
+    exp(-d^2 / 2 sigma^2) where d is the distance from the point to the nearest sampled point of
+    each part (base_xyz[info[p]["idx"]]). Parts without an accepted transform pull towards the
+    identity, so the blend is the identity far from every refined part."""
+    if not info:
+        return points.copy()
+    weights = []
+    moved = []
+    for tr in info.values():
+        d, _ = cKDTree(base_xyz[tr["idx"]]).query(points)
+        weights.append(np.exp(-(d**2) / (2.0 * sigma**2)) + 1e-12)
+        moved.append(transform(points, tr["s"], tr["R"], tr["t"]))
+    weights = np.stack(weights, axis=1)
+    weights /= weights.sum(axis=1, keepdims=True)
+    out = np.zeros_like(points)
+    for w, m in zip(weights.T, moved):
+        out += w[:, None] * m
+    return out
+
+
+def apply_piecewise(points, base_xyz, info, s, R, t, a=1.0, sigma=0.05):
+    """Move arbitrary points of the source mesh with the global transform and then with the
+    blended part transforms. base_xyz: the globally aligned sampled source points; sigma as a
+    fraction of the target diagonal is converted by the caller (pass sigma * diag)."""
+    base = transform(apply_depth(points, a), s, R, t)
+    return blend_piecewise(base, base_xyz, info, sigma)
+
+
 # ------------------------------------------------------------------------------
 # outputs
 # ------------------------------------------------------------------------------
@@ -529,6 +677,9 @@ def paint_target(
     delta=0.03,
     cover_dist=0.05,
     chunk=1024,
+    src_parts=None,
+    dst_parts=None,
+    part_penalty=0.5,
 ):
     """Albedo transfer onto the target mesh, subdivided subdiv times so that small parts have
     vertices to carry a colour. Every target vertex takes its feature from the 3 nearest sampled
@@ -548,6 +699,7 @@ def paint_target(
         V, F = trimesh.remesh.subdivide(V, F)
     _, nn = cKDTree(dst_xyz).query(V, k=3)
     feat_v = normalize_rows(dst_feat[nn].mean(axis=1))
+    vparts = dst_parts[nn[:, 0]] if dst_parts is not None else None
     d_s, _ = cKDTree(aligned_src).query(V)
     covered = d_s < cover_dist * diag
     a2 = (aligned_src**2).sum(axis=1)
@@ -560,6 +712,8 @@ def paint_target(
         best_feat[i : i + chunk] = sim.argmax(axis=1)
         d2 = (vc**2).sum(axis=1)[:, None] - 2.0 * vc @ aligned_src.T + a2[None, :]
         cost = (1.0 - sim) + np.maximum(d2, 0.0) / dd
+        if vparts is not None:  # colours should come from the same kind of part
+            cost += part_penalty * (vparts[i : i + chunk][:, None] != src_parts[None, :])
         best_joint[i : i + chunk] = cost.argmin(axis=1)
     col_feat = src_colors[best_feat]
     col_reg = np.full((len(V), 3), 170, np.uint8)
@@ -624,6 +778,10 @@ DEFAULTS = dict(
     joint_refit_scale=False,
     depth_grid=(0.5, 0.7, 1.0, 1.4, 2.0),
     n_depth=3,
+    piecewise=False,
+    part_scale_range=(0.8, 1.25),
+    part_max_rot=15.0,
+    blend_sigma=0.05,
     normals=False,
     depth_scale=False,
     n_parts=6,
@@ -842,8 +1000,46 @@ def register(src, dst, gt=None, **options):
     )
     rows.append(evaluate("baseline_icp_no_features", s0, R1, t1, a1, j1, icp_kept=round(kept1, 3)))
 
+    # 6. optional per-part refinement of the selected alignment
+    pw_xyz, pw_info = None, {}
+    if o["piecewise"]:
+        base = transform(apply_depth(src_xyz, a), s, R, t)
+        pw_xyz, pw_info = piecewise_refine(
+            base,
+            dst_xyz,
+            src_parts,
+            dst_parts,
+            diag,
+            icp_dist=o["icp_dist"],
+            scale_range=o["part_scale_range"],
+            max_rot_deg=o["part_max_rot"],
+            blend_sigma=o["blend_sigma"],
+        )
+        rows.append(
+            points_metrics(
+                "piecewise",
+                pw_xyz,
+                src_feat,
+                dst_tree,
+                dst_feat,
+                src_parts,
+                dst_parts,
+                diag,
+                o["icp_dist"] * diag,
+                gt_rows,
+                dst_xyz,
+                candidate=c,
+                n_matches=n_matches,
+                n_inliers=int(inliers.sum()),
+            )
+        )
+
     return dict(
         diag=diag,
+        aligned_piecewise=pw_xyz,
+        piecewise_info=pw_info,
+        src_parts=src_parts,
+        dst_parts=dst_parts,
         matches=(i, k, sim),
         inliers=inliers,
         selected=c,
@@ -908,6 +1104,17 @@ def main():
         default=0.03,
         help="spatial tolerance of the painting, fraction of the target diagonal",
     )
+    ap.add_argument(
+        "--piecewise",
+        action="store_true",
+        help="after the global alignment, align every feature part on its own (own scale)",
+    )
+    ap.add_argument(
+        "--part_penalty",
+        type=float,
+        default=0.5,
+        help="painting: cost added when the colour would come from a different part",
+    )
     args = ap.parse_args()
 
     src = load_features(args.source, args.feature, args.source_mesh)
@@ -930,6 +1137,7 @@ def main():
         normals=args.normals,
         depth_scale=args.depth_scale,
         n_parts=args.parts,
+        piecewise=args.piecewise,
     )
     s, R, t, a = res["fine"]
     os.makedirs(args.out_dir, exist_ok=True)
@@ -1006,17 +1214,23 @@ def main():
         if args.target_mesh:
             import trimesh
 
+            aligned_paint = (
+                aligned if res["aligned_piecewise"] is None else res["aligned_piecewise"]
+            )
             V, F, cov, col_feat, col_reg, col_comb = paint_target(
                 args.target_mesh,
                 dst_xyz,
                 dst["feat"],
                 src["feat"],
-                aligned,
+                aligned_paint,
                 src_col,
                 res["diag"],
                 subdiv=args.paint_subdiv,
                 delta=args.paint_delta,
                 cover_dist=args.icp_dist,
+                src_parts=res["src_parts"],
+                dst_parts=res["dst_parts"],
+                part_penalty=args.part_penalty,
             )
             for name, col in [
                 ("target_from_source_colors.ply", col_feat),
@@ -1027,6 +1241,29 @@ def main():
                     os.path.join(args.out_dir, name)
                 )
             print(f"painted target: {len(V)} vertices, {cov.mean():.0%} covered by the source")
+        if res["aligned_piecewise"] is not None and args.source_mesh:
+            import trimesh
+
+            m = trimesh.load(args.source_mesh, process=False, force="mesh")
+            m.vertices = apply_piecewise(
+                np.asarray(m.vertices, dtype=np.float64),
+                aligned,
+                res["piecewise_info"],
+                s,
+                R,
+                t,
+                a,
+                sigma=res["options"]["blend_sigma"] * res["diag"],
+            )
+            m.export(os.path.join(args.out_dir, "aligned_source_piecewise.ply"))
+            for p, tr in res["piecewise_info"].items():
+                print(
+                    f"part {p}: {tr['n_src']} source points, "
+                    f"{'accepted' if tr['accepted'] else 'kept global'}, scale {tr['s']:.3f}, "
+                    f"rotation {rotation_angle_deg(tr['R'], np.eye(3)):.1f} deg, "
+                    f"rms {tr['rms_before']} -> {tr['rms_after']}, "
+                    f"cover {tr['cover_before']} -> {tr['cover_after']}"
+                )
         else:
             save_points(
                 os.path.join(args.out_dir, "target_from_source_colors.ply"), dst_xyz, src_col[t2s]

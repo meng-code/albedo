@@ -292,7 +292,8 @@ iterations; the scale stays fixed) and keeps whichever of the geometric and join
 `--depth_scale` also fits one factor on the source's z, restarting the ICP of the best three candidates
 from factors 0.5 to 2 (a relief mesh's depth is only known up to the depth-prior scale); `--feature
 diffusion|dino` uses only one half of the Diff3F vector; `--seeds` pools the hypotheses of several
-RANSAC runs.
+RANSAC runs; `--piecewise` refines the selected alignment part by part (see "Per-part refinement"
+below).
 
 `metrics.csv` has one row per stage and candidate: `candidate`, `n_matches`, `n_inliers`, `scale`,
 `depth_factor`, `agreement`, `part_agreement` (k-means parts of the target features, `--parts 6`, as in
@@ -348,3 +349,37 @@ and the whole pipeline must beat the feature-free baseline).
   / 0.0221, cat 0.0110 / 0.0117), but the fused vector gives the best feature-only correspondence on the
   synthetic pairs (30.5 % against 29.2 % / 28.0 % within 1 %), so it stays. `agreement` values are not
   comparable between feature types (DINO similarities are higher across the board).
+
+### Painting the target (albedo transfer)
+
+`register_partial.py` paints the full mesh with the source's vertex colours (the albedo of the
+photo). The target mesh is first subdivided (`--paint_subdiv`, default once: cow 2759 → 11017
+vertices, cat 7207 → 28822), because small parts such as eyes have no vertices of their own on a
+coarse mesh. Then every target vertex that the aligned source covers (within `--icp_dist`) takes the
+colour of the source point that minimises (1 − feature similarity) + (distance / `--paint_delta`)² +
+`--part_penalty` if the two points belong to different k-means parts: the colour comes from nearby,
+from the same kind of part, and preferably from the same kind of point. Vertices the source does not
+cover stay grey in `target_from_source_colors_registered.ply` and take the best feature match
+anywhere in `target_from_source_colors_combined.ply`; `target_from_source_colors.ply` uses features
+only everywhere. Before this (one colour per original vertex, nearest point only), stripes and
+markings landed roughly; now the cat's stripes follow the body. What still fails is detail smaller
+than the registration residual (about 2 % of the diagonal on the cow): the cartoon cow's eyes and
+muzzle are far larger than the realistic cow's, so their colours land around the real eyes and
+muzzle, not on them.
+
+### Per-part refinement (`--piecewise`)
+
+After the global similarity transform, every k-means part (`--parts`, default 6) is aligned once
+more on its own by ICP against the target points of the same part, with its own scale (clipped to
+0.8 to 1.25) and rotation (at most 15°). A part keeps the global alignment when its transform does
+not bring it closer or uncovers target points it covered before (a shrinking part would). The part
+transforms are blended by distance (`blend_sigma`, 5 % of the diagonal), so the mesh does not tear
+at part borders. Results (`ablation.csv`, config `v2_piecewise`): on the synthetic pairs it changes
+nothing where the alignment was already exact and improves the depth-squashed ones (cow z×0.5:
+position error 0.023 → 0.017, correspondences within 1 % 14 % → 33 %); on the real cat the median
+distance goes from 0.0116 to 0.0099, the points within 2 % from 78 % to 83 % and the agreement from
+0.689 to 0.707 (three of six parts accepted, scales 0.80 to 0.83); on the real cow every part keeps
+the global alignment, because the cartoon head would need a scale below 0.8 and a rotation above
+15° (allowing 0.6 and 30°, `v2_piecewise_loose`, accepts transforms that lower the feature
+agreement, so the limits stay). Off by default; the stored cat result was produced with it
+(`aligned_source_piecewise.ply` next to `aligned_source.ply`; for the cow the two are the same).

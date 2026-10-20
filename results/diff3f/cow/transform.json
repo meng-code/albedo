@@ -100,6 +100,13 @@
    2.0
   ],
   "n_depth": 3,
+  "piecewise": true,
+  "part_scale_range": [
+   0.8,
+   1.25
+  ],
+  "part_max_rot": 15.0,
+  "blend_sigma": 0.05,
   "normals": false,
   "depth_scale": false,
   "n_parts": 6

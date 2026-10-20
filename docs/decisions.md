@@ -173,3 +173,12 @@ The repository will be used beyond the original course, so the owner rewrote `AG
     on the real cat, whose body is thinner than the 5 % tolerance: 0.48 or 1.76 depending on the start).
   - The registered partial lies on the near side of the target (normals agree for 90 % / 93 % of close
     pairs), so the albedo transfer `target_from_source_colors_registered.ply` paints the right side.
+- **Painting and per-part refinement (same day):** the albedo transfer now paints a subdivided
+  target mesh and chooses, for every covered vertex, the source point that is close, of the same
+  k-means part and of the most similar feature (`paint_target()`); stripes and markings follow the
+  body, but detail smaller than the registration residual (the cartoon cow's eyes and muzzle) still
+  lands next to, not on, the real feature. `--piecewise` aligns each k-means part on its own with a
+  clipped scale and rotation, blended between parts; safe on the synthetic pairs with ground truth,
+  helpful on the depth-squashed ones and on the cat (median 0.0116 → 0.0099, agreement
+  0.689 → 0.707), no change on the cow because its head would need more deformation than the limits
+  allow. Kept optional; the next step for such cases is a real non-rigid deformation of the head.
