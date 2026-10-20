@@ -91,6 +91,7 @@ def render_dir(d, out=None, dpi=75):
         ]
     for name, title in [
         ("target_from_source_colors_registered.ply", "painted (covered part)"),
+        ("target_from_source_colors_mirrored.ply", "painted (covered + mirrored)"),
         ("target_from_source_colors_combined.ply", "painted (combined)"),
     ]:
         p = os.path.join(d, name)

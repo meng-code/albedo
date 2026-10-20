@@ -258,12 +258,12 @@ def ransac_candidates(
         count = int((d < inlier_dist).sum())
         if count >= 3:
             hyps.append((count, s, R, t))
-    return distinct_hypotheses(hyps, src, dst, inlier_dist, n_keep, min_angle_deg)
+    return distinct_hypotheses(hyps, src, dst, inlier_dist, n_keep, min_angle_deg, scale_range)
 
 
-def distinct_hypotheses(hyps, src, dst, inlier_dist, n_keep, min_angle_deg=15.0):
+def distinct_hypotheses(hyps, src, dst, inlier_dist, n_keep, min_angle_deg=15.0, scale_range=None):
     """Sort (count, s, R, t) hypotheses by count, drop near-duplicates, refit the first n_keep on
-    their inliers. Returns [(s, R, t, inliers), ...]."""
+    their inliers (keeping the scale inside scale_range). Returns [(s, R, t, inliers), ...]."""
     hyps = sorted(hyps, key=lambda h: -h[0])
     kept = []
     for count, s, R, t in hyps:
@@ -284,6 +284,11 @@ def distinct_hypotheses(hyps, src, dst, inlier_dist, n_keep, min_angle_deg=15.0)
             if inliers.sum() < 3:
                 break
             s, R, t = umeyama(src[inliers], dst[inliers])
+            if scale_range is not None:
+                s_clip = float(np.clip(s, scale_range[0], scale_range[1]))
+                if s_clip != s:  # the refit left the allowed range: keep the bound
+                    _, R, t = umeyama(s_clip * src[inliers], dst[inliers], with_scale=False)
+                    s = s_clip
             d = np.linalg.norm(transform(src, s, R, t) - dst, axis=1)
             inliers = d < inlier_dist
         out.append((s, R, t, inliers))
@@ -665,6 +670,27 @@ def save_target_colored(path, target_mesh, dst_xyz, colors):
     ).export(path)
 
 
+def symmetry_planes(points):
+    """Candidate mirror planes of a shape: the three principal planes through the centroid, each
+    with the mean distance from the reflected points to the shape as a fraction of the bounding-box
+    diagonal (small means the shape really is symmetric about that plane). Returns a list of
+    (centre, unit normal, error), best first."""
+    c = points.mean(axis=0)
+    diag = float(np.linalg.norm(points.max(axis=0) - points.min(axis=0)))
+    _, _, vt = np.linalg.svd(points - c, full_matrices=False)
+    tree = cKDTree(points)
+    out = []
+    for n in vt:
+        refl = points - 2.0 * ((points - c) @ n)[:, None] * n[None, :]
+        out.append((c, n, float(tree.query(refl)[0].mean()) / diag))
+    return sorted(out, key=lambda p: p[2])
+
+
+def symmetry_plane(points):
+    """The best candidate of symmetry_planes()."""
+    return symmetry_planes(points)[0]
+
+
 def paint_target(
     target_mesh,
     dst_xyz,
@@ -680,16 +706,25 @@ def paint_target(
     src_parts=None,
     dst_parts=None,
     part_penalty=0.5,
+    feature_weight=1.0,
+    mirror=True,
+    mirror_tol=0.02,
+    max_plane_err=0.02,
 ):
     """Albedo transfer onto the target mesh, subdivided subdiv times so that small parts have
     vertices to carry a colour. Every target vertex takes its feature from the 3 nearest sampled
-    target points. Returns vertices, faces, the covered mask and three colour arrays:
-      feature-only: the colour of the source point with the most similar feature, anywhere;
+    target points. Returns a dict with V, F, the masks covered and mirrored, the plane, and four
+    colour arrays:
+      feature: the colour of the source point with the most similar feature, anywhere;
       registered: for vertices within cover_dist of the aligned source, the source point that
-        minimises (1 - similarity) + (distance / delta)^2, so the colour comes from nearby AND
-        from the same kind of part (an eye vertex takes an eye colour from the eye next to it);
-        uncovered vertices stay grey;
-      combined: registered where covered, feature-only elsewhere."""
+        minimises feature_weight (1 - similarity) + (distance / delta)^2 + part_penalty if the
+        parts differ, so the colour comes from nearby AND from the same kind of part (an eye
+        vertex takes an eye colour from the eye next to it); uncovered vertices stay grey;
+      mirror: registered, plus the uncovered vertices whose mirror image across the target's
+        symmetry plane lies on a covered vertex (within mirror_tol), which take that vertex's
+        colour: the far side of a bilaterally symmetric object gets the near side's albedo. Only
+        when the plane fits within max_plane_err;
+      combined: mirror where available, feature elsewhere."""
     import trimesh
 
     m = trimesh.load(target_mesh, process=False, force="mesh")
@@ -711,16 +746,52 @@ def paint_target(
         sim = feat_v[i : i + chunk] @ src_feat.T
         best_feat[i : i + chunk] = sim.argmax(axis=1)
         d2 = (vc**2).sum(axis=1)[:, None] - 2.0 * vc @ aligned_src.T + a2[None, :]
-        cost = (1.0 - sim) + np.maximum(d2, 0.0) / dd
-        if vparts is not None:  # colours should come from the same kind of part
+        cost = feature_weight * (1.0 - sim) + np.maximum(d2, 0.0) / dd
+        if vparts is not None and part_penalty > 0:  # colours from the same kind of part
             cost += part_penalty * (vparts[i : i + chunk][:, None] != src_parts[None, :])
         best_joint[i : i + chunk] = cost.argmin(axis=1)
     col_feat = src_colors[best_feat]
     col_reg = np.full((len(V), 3), 170, np.uint8)
     col_reg[covered] = src_colors[best_joint[covered]]
+    col_mirror = col_reg.copy()
+    mirrored = np.zeros(len(V), dtype=bool)
+    plane = None
+    if mirror and covered.any() and not covered.all():
+        # among the planes the shape is symmetric about, take the one whose reflection carries
+        # the most uncovered vertices onto covered ones (a box has three mirror planes; only the
+        # one between the near and the far side is useful)
+        cov_idx = np.nonzero(covered)[0]
+        unc_idx = np.nonzero(~covered)[0]
+        cov_tree = cKDTree(V[cov_idx])
+        best = None
+        for c, n, err in symmetry_planes(V):
+            if err > max_plane_err:
+                continue
+            refl = V - 2.0 * ((V - c) @ n)[:, None] * n[None, :]
+            d_m, j_m = cov_tree.query(refl[unc_idx])
+            ok = d_m < mirror_tol * diag
+            if best is None or ok.sum() > best[0]:
+                best = (int(ok.sum()), (c, n, err), ok, j_m)
+        if best is not None:
+            _, plane, ok, j_m = best
+            col_mirror[unc_idx[ok]] = col_reg[cov_idx[j_m[ok]]]
+            mirrored[unc_idx[ok]] = True
+        else:
+            plane = symmetry_planes(V)[0]
     col_comb = col_feat.copy()
-    col_comb[covered] = src_colors[best_joint[covered]]
-    return V, F, covered, col_feat, col_reg, col_comb
+    col_comb[covered] = col_reg[covered]
+    col_comb[mirrored] = col_mirror[mirrored]
+    return dict(
+        V=V,
+        F=F,
+        covered=covered,
+        mirrored=mirrored,
+        plane=plane,
+        feature=col_feat,
+        registered=col_reg,
+        mirror=col_mirror,
+        combined=col_comb,
+    )
 
 
 def save_mesh_transformed(path, mesh_path, s, R, t, a=1.0):
@@ -778,6 +849,10 @@ DEFAULTS = dict(
     joint_refit_scale=False,
     depth_grid=(0.5, 0.7, 1.0, 1.4, 2.0),
     n_depth=3,
+    scale_low=0.5,
+    scale_high=2.5,
+    scale_bands=((0.5, 0.8), (0.8, 1.3), (1.3, 2.5)),
+    min_coverage=0.2,
     piecewise=False,
     part_scale_range=(0.8, 1.25),
     part_max_rot=15.0,
@@ -801,7 +876,9 @@ def register(src, dst, gt=None, **options):
     diag = float(np.linalg.norm(dst_xyz.max(0) - dst_xyz.min(0)))
     src_diag = float(np.linalg.norm(src_xyz.max(0) - src_xyz.min(0)))
     ratio = diag / src_diag
-    scale_range = (0.4 * ratio, 2.5 * ratio)
+    # a front-view relief has about the extent of the full object: the selected scale was 0.55 to
+    # 1.2 times the bounding-box ratio on every pair that registered, 0.38 on the one that collapsed
+    scale_range = (o["scale_low"] * ratio, o["scale_high"] * ratio)
     dst_tree = cKDTree(dst_xyz)
     gt_rows = gt_targets(src, dst, gt) if gt is not None else None
     src_parts, dst_parts = part_labels(src_feat, dst_feat, o["n_parts"])
@@ -819,6 +896,19 @@ def register(src, dst, gt=None, **options):
             4,
         )
         row["part_agreement"] = round(float((src_parts == dst_parts[j]).mean()), 3)
+        # the same agreement seen from the target: every target point near the source compares its
+        # feature with that of the nearest source point, points not near the source count 0. A
+        # source squeezed into one part of the target scores well from the source side only.
+        d_t, j_t = cKDTree(p).query(dst_xyz)
+        near = d_t < o["icp_dist"] * diag
+        agree_t = np.einsum("ij,ij->i", dst_feat, src_feat[j_t])
+        agree_t[~near] = 0.0
+        row["coverage"] = round(float(near.mean()), 3)
+        row["agreement_t"] = round(float(agree_t.mean()), 4)
+        # selection score: the agreement, discounted only when the source covers less of the
+        # target than any front view does (registered pairs cover 0.24 to 0.75 of the target, the
+        # collapsed bird 0.16). Averaging in agreement_t instead rewards size, not correctness.
+        row["score"] = round(row["agreement"] * min(1.0, row["coverage"] / o["min_coverage"]), 4)
         if gt_rows is not None:
             row.update(transform_metrics(src_xyz, gt_rows, dst_xyz, gt, s, R, t, a, diag))
             row.update(correspondence_metrics(assign, gt_rows, dst_xyz, diag))
@@ -844,19 +934,31 @@ def register(src, dst, gt=None, **options):
 
     # 2. coarse
     hyps = []
+    # RANSAC once per scale band, so the pool always holds hypotheses at every plausible scale;
+    # the best-inlier solution alone can be a small source squeezed into a part of the target
+    bands = [(lo * ratio, hi * ratio) for lo, hi in o["scale_bands"]] or [scale_range]
     for seed in o["seeds"]:
-        for s, R, t, inl in ransac_candidates(
-            src_xyz[i],
-            dst_xyz[k],
-            o["inlier_dist"] * diag,
-            n_iter=o["n_iter"],
-            seed=seed,
-            scale_range=scale_range,
-            n_keep=o["n_candidates"],
-        ):
-            hyps.append((int(inl.sum()), s, R, t))
+        for band in bands:
+            band = (max(band[0], scale_range[0]), min(band[1], scale_range[1]))
+            if band[0] >= band[1]:
+                continue
+            for s, R, t, inl in ransac_candidates(
+                src_xyz[i],
+                dst_xyz[k],
+                o["inlier_dist"] * diag,
+                n_iter=o["n_iter"],
+                seed=seed,
+                scale_range=band,
+                n_keep=o["n_candidates"],
+            ):
+                hyps.append((int(inl.sum()), s, R, t))
     cands = distinct_hypotheses(
-        hyps, src_xyz[i], dst_xyz[k], o["inlier_dist"] * diag, o["n_candidates"]
+        hyps,
+        src_xyz[i],
+        dst_xyz[k],
+        o["inlier_dist"] * diag,
+        o["n_candidates"],
+        scale_range=scale_range,
     )
     if not cands:
         raise RuntimeError("RANSAC found no transform with 3 inliers")
@@ -893,7 +995,7 @@ def register(src, dst, gt=None, **options):
             icp_kept=round(kept, 3),
         )
         rows.append(row)
-        refined.append((row["agreement"], c, s, R2, t2, a, j, inliers, kept, (s, R, t)))
+        refined.append((row["score"], c, s, R2, t2, a, j, inliers, kept, (s, R, t)))
     refined.sort(key=lambda r: -r[0])
 
     # depth factor: restart the ICP of the best few candidates from several depth factors and let
@@ -928,7 +1030,7 @@ def register(src, dst, gt=None, **options):
                     icp_kept=round(kept, 3),
                 )
                 rows.append(row)
-                with_depth.append((row["agreement"], c, s, R2, t2, a, j, inliers, kept, coarse))
+                with_depth.append((row["score"], c, s, R2, t2, a, j, inliers, kept, coarse))
         refined = sorted(with_depth + refined, key=lambda r: -r[0])
 
     # feature-guided ICP on the best few
@@ -963,7 +1065,7 @@ def register(src, dst, gt=None, **options):
                 icp_kept=round(kept2, 3),
             )
             rows.append(row)
-            joint.append((row["agreement"], c, s2, R2, t2, a2, j2, inliers, kept2, coarse))
+            joint.append((row["score"], c, s2, R2, t2, a2, j2, inliers, kept2, coarse))
         # the geometric results stay in the pool: the joint step must earn its place
         refined = sorted(joint + refined, key=lambda r: -r[0])
 
@@ -1055,7 +1157,8 @@ def register(src, dst, gt=None, **options):
 
 FIELDS = [
     "stage", "candidate", "scale", "depth_factor", "n_matches", "n_inliers", "icp_kept",
-    "agreement", "part_agreement", "rms_to_target", "median_to_target", "frac_within_2pct",
+    "agreement", "agreement_t", "score", "part_agreement", "coverage", "rms_to_target",
+    "median_to_target", "frac_within_2pct",
     "match_median", "match_within_5pct", "rot_err_deg", "scale_ratio", "pos_err_median",
     "corr_acc_1pct", "corr_acc_5pct", "corr_median",
 ]  # fmt: skip
@@ -1088,6 +1191,13 @@ def main():
     ap.add_argument("--ransac_iters", type=int, default=DEFAULTS["n_iter"])
     ap.add_argument("--seeds", type=int, nargs="+", default=list(DEFAULTS["seeds"]))
     ap.add_argument("--candidates", type=int, default=DEFAULTS["n_candidates"])
+    ap.add_argument(
+        "--scale_low",
+        type=float,
+        default=DEFAULTS["scale_low"],
+        help="lowest allowed scale, times the ratio of the bounding-box diagonals",
+    )
+    ap.add_argument("--scale_high", type=float, default=DEFAULTS["scale_high"])
     ap.add_argument("--refine", choices=["icp", "joint"], default=DEFAULTS["refine"])
     ap.add_argument("--normals", action="store_true", help="reject ICP pairs with opposite normals")
     ap.add_argument("--depth_scale", action="store_true", help="also fit a depth factor on z")
@@ -1115,6 +1225,17 @@ def main():
         default=0.5,
         help="painting: cost added when the colour would come from a different part",
     )
+    ap.add_argument(
+        "--feature_weight",
+        type=float,
+        default=1.0,
+        help="painting: weight of the feature term (0 = nearest aligned point only)",
+    )
+    ap.add_argument(
+        "--no_mirror",
+        action="store_true",
+        help="painting: do not fill the far side through the target's symmetry plane",
+    )
     args = ap.parse_args()
 
     src = load_features(args.source, args.feature, args.source_mesh)
@@ -1133,6 +1254,8 @@ def main():
         match_mode=args.matches,
         consensus=args.consensus,
         n_candidates=args.candidates,
+        scale_low=args.scale_low,
+        scale_high=args.scale_high,
         refine=args.refine,
         normals=args.normals,
         depth_scale=args.depth_scale,
@@ -1217,7 +1340,7 @@ def main():
             aligned_paint = (
                 aligned if res["aligned_piecewise"] is None else res["aligned_piecewise"]
             )
-            V, F, cov, col_feat, col_reg, col_comb = paint_target(
+            paint = paint_target(
                 args.target_mesh,
                 dst_xyz,
                 dst["feat"],
@@ -1231,39 +1354,24 @@ def main():
                 src_parts=res["src_parts"],
                 dst_parts=res["dst_parts"],
                 part_penalty=args.part_penalty,
+                feature_weight=args.feature_weight,
+                mirror=not args.no_mirror,
             )
-            for name, col in [
-                ("target_from_source_colors.ply", col_feat),
-                ("target_from_source_colors_registered.ply", col_reg),
-                ("target_from_source_colors_combined.ply", col_comb),
+            V, F = paint["V"], paint["F"]
+            for name, key in [
+                ("target_from_source_colors.ply", "feature"),
+                ("target_from_source_colors_registered.ply", "registered"),
+                ("target_from_source_colors_mirrored.ply", "mirror"),
+                ("target_from_source_colors_combined.ply", "combined"),
             ]:
-                trimesh.Trimesh(vertices=V, faces=F, vertex_colors=col, process=False).export(
-                    os.path.join(args.out_dir, name)
-                )
-            print(f"painted target: {len(V)} vertices, {cov.mean():.0%} covered by the source")
-        if res["aligned_piecewise"] is not None and args.source_mesh:
-            import trimesh
-
-            m = trimesh.load(args.source_mesh, process=False, force="mesh")
-            m.vertices = apply_piecewise(
-                np.asarray(m.vertices, dtype=np.float64),
-                aligned,
-                res["piecewise_info"],
-                s,
-                R,
-                t,
-                a,
-                sigma=res["options"]["blend_sigma"] * res["diag"],
+                trimesh.Trimesh(
+                    vertices=V, faces=F, vertex_colors=paint[key], process=False
+                ).export(os.path.join(args.out_dir, name))
+            plane_err = None if paint["plane"] is None else round(paint["plane"][2], 4)
+            print(
+                f"painted target: {len(V)} vertices, {paint['covered'].mean():.0%} covered, "
+                f"{paint['mirrored'].mean():.0%} mirrored (symmetry plane error {plane_err})"
             )
-            m.export(os.path.join(args.out_dir, "aligned_source_piecewise.ply"))
-            for p, tr in res["piecewise_info"].items():
-                print(
-                    f"part {p}: {tr['n_src']} source points, "
-                    f"{'accepted' if tr['accepted'] else 'kept global'}, scale {tr['s']:.3f}, "
-                    f"rotation {rotation_angle_deg(tr['R'], np.eye(3)):.1f} deg, "
-                    f"rms {tr['rms_before']} -> {tr['rms_after']}, "
-                    f"cover {tr['cover_before']} -> {tr['cover_after']}"
-                )
         else:
             save_points(
                 os.path.join(args.out_dir, "target_from_source_colors.ply"), dst_xyz, src_col[t2s]
@@ -1272,6 +1380,29 @@ def main():
                 os.path.join(args.out_dir, "target_from_source_colors_registered.ply"),
                 dst_xyz,
                 reg_col,
+            )
+    if res["aligned_piecewise"] is not None and args.source_mesh:
+        import trimesh
+
+        m = trimesh.load(args.source_mesh, process=False, force="mesh")
+        m.vertices = apply_piecewise(
+            np.asarray(m.vertices, dtype=np.float64),
+            aligned,
+            res["piecewise_info"],
+            s,
+            R,
+            t,
+            a,
+            sigma=res["options"]["blend_sigma"] * res["diag"],
+        )
+        m.export(os.path.join(args.out_dir, "aligned_source_piecewise.ply"))
+        for p, tr in res["piecewise_info"].items():
+            print(
+                f"part {p}: {tr['n_src']} source points, "
+                f"{'accepted' if tr['accepted'] else 'kept global'}, scale {tr['s']:.3f}, "
+                f"rotation {rotation_angle_deg(tr['R'], np.eye(3)):.1f} deg, "
+                f"rms {tr['rms_before']} -> {tr['rms_after']}, "
+                f"cover {tr['cover_before']} -> {tr['cover_after']}"
             )
 
     red = np.full((len(src_xyz), 3), (220, 60, 60), np.uint8)

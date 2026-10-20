@@ -1,0 +1,13 @@
+pair,alignment,variant,covered_frac,mirrored_frac,plane_err,err_covered,within20_covered,err_mirrored,within20_mirrored,err_feature_only
+cow_synth,global,nearest,0.836,0.164,0.0007,3.6,1.0,2.5,0.999,7.7
+cow_synth,global,joint,0.836,0.164,0.0007,3.6,1.0,2.5,0.999,7.7
+cow_synth,global,joint+parts,0.836,0.164,0.0007,3.6,1.0,2.6,0.999,7.7
+cow_synth,piecewise,nearest,0.835,0.165,0.0007,3.6,1.0,2.5,0.999,7.7
+cow_synth,piecewise,joint,0.835,0.165,0.0007,3.6,1.0,2.5,0.999,7.7
+cow_synth,piecewise,joint+parts,0.835,0.165,0.0007,3.6,1.0,2.6,0.999,7.7
+cat_synth,global,nearest,0.928,0.072,0.0016,4.4,0.978,4.1,0.94,8.0
+cat_synth,global,joint,0.928,0.072,0.0016,4.4,0.978,4.1,0.94,8.0
+cat_synth,global,joint+parts,0.928,0.072,0.0016,4.5,0.978,4.2,0.94,8.0
+cat_synth,piecewise,nearest,0.927,0.072,0.0016,4.3,0.978,3.9,0.942,8.0
+cat_synth,piecewise,joint,0.927,0.072,0.0016,4.4,0.978,4.0,0.942,8.0
+cat_synth,piecewise,joint+parts,0.927,0.072,0.0016,4.4,0.978,4.0,0.942,8.0

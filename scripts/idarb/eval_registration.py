@@ -108,7 +108,8 @@ CONFIGS = [
 
 FIELDS = [
     "pair", "config", "feature", "seconds", "n_matches", "n_inliers", "candidate", "scale",
-    "depth_factor", "agreement", "part_agreement", "median_to_target", "frac_within_2pct",
+    "depth_factor", "agreement", "agreement_t", "score", "part_agreement", "coverage",
+    "median_to_target", "frac_within_2pct",
     "rot_err_deg", "scale_ratio", "pos_err_median", "corr_acc_1pct", "corr_acc_5pct",
     "corr_median", "feature_nn_acc_1pct", "feature_nn_acc_5pct",
     "baseline_agreement", "baseline_median", "baseline_rot_err_deg", "baseline_corr_acc_5pct",

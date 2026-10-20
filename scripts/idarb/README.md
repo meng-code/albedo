@@ -427,3 +427,43 @@ Seven pairs against the CC-BY Objaverse meshes in `results/diff3f/targets/` (sou
 The Objaverse meshes have many vertices no camera sees (panda 4950 of 20002: eyes, mouth and other
 parts inside the head; chairs 685 and 966); they get the feature of the nearest seen vertex and do
 not seem to disturb the registration.
+
+### Painting with ground truth and symmetric completion (2026-10-21)
+
+`eval_painting.py` gives the synthetic partial meshes a known colour field (position inside the
+bounding box, folded across the symmetry plane so the field is mirror-symmetric like a real albedo),
+registers them and paints the full mesh back, then compares every painted vertex with the field
+(mean absolute RGB error, 0 to 255; `results/diff3f/painting_eval.csv`). With the registration
+exact, the covered vertices are painted to within 3.6 (cow) / 4.4 (cat) and the nearest-point,
+feature-guided and part-aware variants are indistinguishable; the feature-only transfer is twice as
+far off (7.7 / 8.0). So the painting is as good as the alignment, and the feature term only matters
+where the alignment is not exact (the real pairs).
+
+`paint_target()` now also fills the far side: the target's symmetry plane is taken among its three
+principal planes (the ones the reflected shape lies on within 2 % of the diagonal; among those, the
+one whose reflection carries the most uncovered vertices onto covered ones), and every uncovered
+vertex whose mirror image lies on a covered vertex takes that vertex's colour
+(`target_from_source_colors_mirrored.ply`; `--no_mirror` turns it off). On the synthetic colour field
+the mirrored vertices are as accurate as the covered ones (2.6 / 4.2). On the real cow the far flank
+takes the near flank's colours (43 % covered, 17 % mirrored); on the panda the plane fits less well
+(error 0.0197) and 7 % are mirrored. `combined` uses the registered colours, then the mirrored ones,
+then the feature-only colours.
+
+### Candidates at every scale, and a coverage check (2026-10-21)
+
+The stone-bird pair showed a failure the agreement alone cannot see: RANSAC's best hypothesis
+shrank the blob-like figurine (scale 0.38 times the bounding-box ratio) into the sparrow's belly,
+where every source point is close to the surface and the features agree reasonably, but only 16 % of
+the target is covered. Two changes:
+
+- RANSAC runs once per scale band (0.5 to 0.8, 0.8 to 1.3 and 1.3 to 2.5 times the ratio of the
+  bounding-box diagonals; `scale_bands`), so the candidate pool always holds hypotheses at every
+  plausible scale, and the refit on the inliers can no longer leave the allowed range. On every pair
+  that registered, the selected scale was 0.55 to 1.2 times the ratio.
+- `metrics.csv` gains `coverage` (fraction of the target's points within `--icp_dist` of the aligned
+  source) and `agreement_t` (the agreement seen from the target side). The selection `score` is the
+  agreement discounted when the coverage is below 0.2 (`min_coverage`): registered pairs cover 0.24 to
+  0.75 of their targets, the collapsed bird 0.16. Averaging the two agreements instead, which was
+  tried first, rewards size rather than correctness (it moved the dragon to a worse larger-scale
+  solution). With the discount the bird registers at scale 0.98 (part agreement 0.46 → 0.63) and the
+  other pairs keep their results.

@@ -194,3 +194,18 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   mesh is in 6 pieces), and the stone-bird figurine is a failure of a new kind: the registration
   shrinks the blob onto the sparrow's belly (small distances, part agreement 0.46). Table in
   `scripts/idarb/README.md`.
+- **Painting with ground truth, symmetric completion (2026-10-21, night):** `eval_painting.py` paints
+  the synthetic partial meshes back onto their full meshes with a known mirror-symmetric colour field:
+  covered vertices come out within 3.6 / 4.4 (RGB, 0 to 255), feature-only transfer within 7.7 / 8.0,
+  and the nearest-point, feature-guided and part-aware painting variants are indistinguishable when
+  the alignment is exact. `paint_target()` now fills the far side of a bilaterally symmetric target
+  through its symmetry plane (mirrored vertices as accurate as covered ones on the synthetic field;
+  cow 17 % of the vertices, panda 7 %). Also fixed: without `--piecewise` the painted files were
+  overwritten by point clouds (an `else` attached to the wrong `if`).
+- **Scale bands and coverage discount (2026-10-21, night):** the stone bird collapsed because the
+  best-inlier RANSAC solution shrank it into the sparrow's belly (scale 0.38 of the bounding-box
+  ratio, coverage 0.16). RANSAC now runs per scale band so candidates exist at every plausible
+  scale, and the selection score discounts candidates that cover less than 0.2 of the target
+  (registered pairs: 0.24 to 0.75). Averaging the source- and target-side agreements was tried and
+  rejected: it rewards larger scales (the dragon moved to a worse solution). Validated on all 22
+  pairs before adoption (see `ablation.csv`).
