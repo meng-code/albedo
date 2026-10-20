@@ -31,11 +31,13 @@ Steps:
 Distances are fractions of the target's bounding-box diagonal. Outputs in --out_dir: metrics.csv
 (one row per stage and candidate), transform.json, aligned_source.ply (the source mesh moved onto
 the target, or the source points), target.ply, correspondence_{source,target}.ply (matched points
-share a colour), target_from_source_colors.ply (the target mesh coloured with the source's vertex
-colours through feature matches only), target_from_source_colors_registered.ply (the same through
-the registration: the albedo transfer the project aims at; target vertices the source does not cover
-stay grey), correspondences.npz and preview.png (when matplotlib is installed). The coloured target
-files are meshes with vertex colours when --target_mesh is given, else point clouds.
+share a colour), the albedo transfer onto the target mesh (subdivided --paint_subdiv times so that
+small parts have vertices to carry a colour): target_from_source_colors.ply through feature matches
+only, target_from_source_colors_registered.ply through the registration (each covered vertex takes
+the colour of the aligned source point that is both close and of the same kind of part; uncovered
+vertices stay grey), target_from_source_colors_combined.ply (registered where covered, features
+elsewhere); correspondences.npz and preview.png (when matplotlib is installed). Without
+--target_mesh the coloured target files are point clouds of the sampled points.
 
 --gt <file>_gt.npz from make_partial_mesh.py adds ground-truth columns: rotation and scale error,
 and the accuracy of the correspondences (fraction within 1 % and 5 % of the diagonal of the true
@@ -515,6 +517,58 @@ def save_target_colored(path, target_mesh, dst_xyz, colors):
     ).export(path)
 
 
+def paint_target(
+    target_mesh,
+    dst_xyz,
+    dst_feat,
+    src_feat,
+    aligned_src,
+    src_colors,
+    diag,
+    subdiv=1,
+    delta=0.03,
+    cover_dist=0.05,
+    chunk=1024,
+):
+    """Albedo transfer onto the target mesh, subdivided subdiv times so that small parts have
+    vertices to carry a colour. Every target vertex takes its feature from the 3 nearest sampled
+    target points. Returns vertices, faces, the covered mask and three colour arrays:
+      feature-only: the colour of the source point with the most similar feature, anywhere;
+      registered: for vertices within cover_dist of the aligned source, the source point that
+        minimises (1 - similarity) + (distance / delta)^2, so the colour comes from nearby AND
+        from the same kind of part (an eye vertex takes an eye colour from the eye next to it);
+        uncovered vertices stay grey;
+      combined: registered where covered, feature-only elsewhere."""
+    import trimesh
+
+    m = trimesh.load(target_mesh, process=False, force="mesh")
+    V = np.asarray(m.vertices, dtype=np.float64)
+    F = np.asarray(m.faces, dtype=np.int64)
+    for _ in range(subdiv):
+        V, F = trimesh.remesh.subdivide(V, F)
+    _, nn = cKDTree(dst_xyz).query(V, k=3)
+    feat_v = normalize_rows(dst_feat[nn].mean(axis=1))
+    d_s, _ = cKDTree(aligned_src).query(V)
+    covered = d_s < cover_dist * diag
+    a2 = (aligned_src**2).sum(axis=1)
+    dd = (delta * diag) ** 2
+    best_joint = np.empty(len(V), dtype=np.int64)
+    best_feat = np.empty(len(V), dtype=np.int64)
+    for i in range(0, len(V), chunk):
+        vc = V[i : i + chunk]
+        sim = feat_v[i : i + chunk] @ src_feat.T
+        best_feat[i : i + chunk] = sim.argmax(axis=1)
+        d2 = (vc**2).sum(axis=1)[:, None] - 2.0 * vc @ aligned_src.T + a2[None, :]
+        cost = (1.0 - sim) + np.maximum(d2, 0.0) / dd
+        best_joint[i : i + chunk] = cost.argmin(axis=1)
+    col_feat = src_colors[best_feat]
+    col_reg = np.full((len(V), 3), 170, np.uint8)
+    col_reg[covered] = src_colors[best_joint[covered]]
+    col_comb = col_feat.copy()
+    col_comb[covered] = src_colors[best_joint[covered]]
+    return V, F, covered, col_feat, col_reg, col_comb
+
+
 def save_mesh_transformed(path, mesh_path, s, R, t, a=1.0):
     import trimesh
 
@@ -842,6 +896,18 @@ def main():
     ap.add_argument("--normals", action="store_true", help="reject ICP pairs with opposite normals")
     ap.add_argument("--depth_scale", action="store_true", help="also fit a depth factor on z")
     ap.add_argument("--parts", type=int, default=DEFAULTS["n_parts"])
+    ap.add_argument(
+        "--paint_subdiv",
+        type=int,
+        default=1,
+        help="subdivide the target mesh this many times before painting it (4x vertices each)",
+    )
+    ap.add_argument(
+        "--paint_delta",
+        type=float,
+        default=0.03,
+        help="spatial tolerance of the painting, fraction of the target diagonal",
+    )
     args = ap.parse_args()
 
     src = load_features(args.source, args.feature, args.source_mesh)
@@ -936,19 +1002,40 @@ def main():
     d_t, near_src = cKDTree(aligned).query(dst_xyz)
     covered = d_t < args.icp_dist * res["diag"]
     if src_col is not None:
-        save_target_colored(
-            os.path.join(args.out_dir, "target_from_source_colors.ply"),
-            args.target_mesh,
-            dst_xyz,
-            src_col[t2s],
-        )
-        reg_col[covered] = src_col[near_src[covered]]
-        save_target_colored(
-            os.path.join(args.out_dir, "target_from_source_colors_registered.ply"),
-            args.target_mesh,
-            dst_xyz,
-            reg_col,
-        )
+        reg_col[covered] = src_col[near_src[covered]]  # point-level version for the preview
+        if args.target_mesh:
+            import trimesh
+
+            V, F, cov, col_feat, col_reg, col_comb = paint_target(
+                args.target_mesh,
+                dst_xyz,
+                dst["feat"],
+                src["feat"],
+                aligned,
+                src_col,
+                res["diag"],
+                subdiv=args.paint_subdiv,
+                delta=args.paint_delta,
+                cover_dist=args.icp_dist,
+            )
+            for name, col in [
+                ("target_from_source_colors.ply", col_feat),
+                ("target_from_source_colors_registered.ply", col_reg),
+                ("target_from_source_colors_combined.ply", col_comb),
+            ]:
+                trimesh.Trimesh(vertices=V, faces=F, vertex_colors=col, process=False).export(
+                    os.path.join(args.out_dir, name)
+                )
+            print(f"painted target: {len(V)} vertices, {cov.mean():.0%} covered by the source")
+        else:
+            save_points(
+                os.path.join(args.out_dir, "target_from_source_colors.ply"), dst_xyz, src_col[t2s]
+            )
+            save_points(
+                os.path.join(args.out_dir, "target_from_source_colors_registered.ply"),
+                dst_xyz,
+                reg_col,
+            )
 
     red = np.full((len(src_xyz), 3), (220, 60, 60), np.uint8)
     s0, R1, t1, a1 = res["baseline"]
