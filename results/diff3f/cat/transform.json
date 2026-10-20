@@ -1,0 +1,110 @@
+{
+ "source": "outputs/diff3f/cat_partial.npz",
+ "target": "outputs/diff3f/cat_full.npz",
+ "scale": 0.45517760886957565,
+ "rotation": [
+  [
+   -0.08500676750361735,
+   0.07377867454266761,
+   -0.9936450858638174
+  ],
+  [
+   -0.09801314383605042,
+   0.9917988962174316,
+   0.08202666089302531
+  ],
+  [
+   0.9915479177094568,
+   0.10436310001438653,
+   -0.07707833834111583
+  ]
+ ],
+ "translation": [
+  -0.04444667389993301,
+  0.2449258250663521,
+  0.04219811031607811
+ ],
+ "matrix": [
+  [
+   -0.038693177170028493,
+   0.033582400663898074,
+   -0.45228499424849655,
+   -0.04444667389993301
+  ],
+  [
+   -0.04461338844908322,
+   0.4514446500597349,
+   0.03733669936884279,
+   0.2449258250663521
+  ],
+  [
+   0.4513304102625973,
+   0.04750374631876484,
+   -0.035084333741749234,
+   0.04219811031607811
+  ],
+  [
+   0.0,
+   0.0,
+   0.0,
+   1.0
+  ]
+ ],
+ "coarse_matrix": [
+  [
+   -0.02550781954199603,
+   0.04720167801947357,
+   -0.4520044339943837,
+   -0.035932451272740765
+  ],
+  [
+   -0.07460658017595263,
+   0.44613891801047506,
+   0.05079940597207886,
+   0.2150196052097635
+  ],
+  [
+   0.4482966260779648,
+   0.07693323758176869,
+   -0.017264634908534998,
+   0.048477485754518546
+  ],
+  [
+   0.0,
+   0.0,
+   0.0,
+   1.0
+  ]
+ ],
+ "source_meta": {
+  "command": "scripts/idarb/diff3f_features.py --mesh outputs/mesh_depth/cat/relief.ply --prompt cat --front_only --out outputs/diff3f/cat_partial.npz",
+  "commit": "94958a8",
+  "mesh": "outputs/mesh_depth/cat/relief.ply",
+  "prompt": "cat",
+  "num_views": 100,
+  "front_only": true,
+  "tolerance": 0.004,
+  "seed": 0,
+  "sd_repo": "stable-diffusion-v1-5/stable-diffusion-v1-5",
+  "n_vertices": 36046,
+  "n_features": 15000,
+  "seconds": 581.5
+ },
+ "target_meta": {
+  "command": "scripts/idarb/diff3f_features.py --mesh third_party/Diff3F/meshes/cat.off --prompt cat --out outputs/diff3f/cat_full.npz",
+  "commit": "94958a8",
+  "mesh": "third_party/Diff3F/meshes/cat.off",
+  "prompt": "cat",
+  "num_views": 100,
+  "front_only": false,
+  "tolerance": 0.004,
+  "seed": 0,
+  "sd_repo": "stable-diffusion-v1-5/stable-diffusion-v1-5",
+  "n_vertices": 7207,
+  "n_features": 7207,
+  "seconds": 390.0
+ },
+ "inlier_dist": 0.05,
+ "icp_dist": 0.05,
+ "seed": 0
+}
