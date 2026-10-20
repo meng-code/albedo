@@ -213,7 +213,8 @@ writes them to `results/analysis/`.
 | Failed cats: mean n_z, scale s, depth ranges | `plot_failure_cases.py` | printed, `failure_cats.png` |
 | IDArb normals vs ground truth (8 Arb-Objaverse training objects × 2 views): mean angle 17.2° (mean of per-image means); outline n_z 0.59 GT vs 0.59 predicted (mean of per-image medians on the outline ring); integrated depth ratio median 1.00 (0.43 to 1.55) | `eval_idarb_gt.py --data_dir <Arb-Objaverse folder>` (server, idarb environment) | `idarb_normals_vs_gt.csv` |
 | Depth Anything V2 Small vs Large on chair1, superman, labubu, panda, bird: correlation 0.93 to 0.996 (inside the full object mask) | `estimate_depth.py --model depth-anything/Depth-Anything-V2-Large-hf` (server), then `compare_depth_models.py` | `depth_small_vs_large.csv` |
-| Partial-to-full registration with Diff3F features: cow median 0.0199 / cat 0.0116 of the target diagonal, agreement 0.563 / 0.689, feature-free ICP baseline 0.0217 / 0.049 | `diff3f_features.py` (server, diff3f environment, 4 meshes), then `register_partial.py` (section 5) | `results/diff3f/{cow,cat}/metrics.csv` |
+| Partial-to-full registration with Diff3F features: cow median 0.0201 / cat 0.0110 of the target diagonal, agreement 0.564 / 0.690, feature-free ICP baseline 0.0217 / 0.049; 16 real pairs in all (section 5) | `diff3f_features.py` (server, diff3f environment), then `register_partial.py --piecewise` (section 5) | `results/diff3f/<pair>/metrics.csv` |
+| Painting with ground truth: covered vertices within 3.6 / 4.4 RGB, feature-only 7.7 / 8.0, mirrored 2.6 / 4.2 | `eval_painting.py` | `results/diff3f/painting_eval.csv` |
 | Synthetic partial meshes with ground truth: rotation error 0°, correspondences 100 % within 1 %, feature-only 30.5 % / 38.7 % | `make_partial_mesh.py`, `diff3f_features.py --front_only` (server), `register_partial.py --gt` | `results/diff3f/{cow,cat}_synth/metrics.csv` |
 | Registration ablation: 12 settings on 8 pairs (section 5, findings) | `eval_registration.py` | `results/diff3f/ablation.csv` |
 
@@ -332,7 +333,8 @@ and the whole pipeline must beat the feature-free baseline).
   are within 1 %, 86 % / 97 % within 5 %; the features find the part, the geometry finds the point.
   The feature-free baseline is 29° off on the cow and only happens to land right on the cat.
 - **Real relief meshes (cartoon cow and photo cat against Diff3F's cow and cat):** the default gives cow
-  median 0.0199, agreement 0.563, part agreement 0.585; cat 0.0116 / 0.689 / 0.829 (5 to 10 s per pair).
+  median 0.0201, agreement 0.564, part agreement 0.591; cat 0.0110 / 0.690 / 0.792, 0.0106 / 0.707 /
+  0.828 with `--piecewise` (5 to 10 s per pair; the numbers before the scale bands were 0.0199 and 0.0116).
   Mutual matches with the best-inlier hypothesis (the first version) fail on the cow (0.0308, agreement
   0.268). The consensus filter, normals and three seeds change the result by less than 0.0005. The
   registered partial faces the same way as the target surface (normals agree for 90 % / 93 % of the close
@@ -398,13 +400,16 @@ Numbers are the `selected` row and, after the arrow, the `piecewise` row of each
 
 | Pair | Source image → target mesh | Median | Agreement | Part agreement | Remarks |
 |---|---|---|---|---|---|
-| superman_man | superman → man.obj | 0.0277 → 0.0241 | 0.41 → 0.46 | 0.76 → 0.81 | suit, belt, boots and cape colours land on the right parts |
+| superman_man | superman → man.obj | 0.0258 → 0.0187 | 0.41 → 0.48 | 0.75 → 0.81 | suit, belt, boots and cape colours land on the right parts |
 | superman_posed | superman → posed_human.off (kneeling) | 0.0165 | 0.47 | 0.62 | a different pose still registers; no part was refined |
-| okapi_camel | okapi → camel.obj | 0.0237 | 0.60 | 0.90 | cross-species: dark body and striped legs transfer |
-| okapi1_camel | okapi1 → camel.obj | 0.0189 → 0.0180 | 0.66 → 0.67 | 0.88 → 0.91 | same, second photo |
-| cat5_cat | cat5 → cat.off | 0.0119 | 0.64 → 0.66 | 0.82 → 0.84 | walking pose |
-| cat_lion | cat → lion.off | 0.0154 → 0.0133 | 0.64 | 0.80 → 0.81 | cross-species: the lion gets the Bengal cat's spots |
+| okapi_camel | okapi → camel.obj | 0.0220 → 0.0217 | 0.63 | 0.92 → 0.93 | cross-species: dark body and striped legs transfer |
+| okapi1_camel | okapi1 → camel.obj | 0.0190 → 0.0181 | 0.66 → 0.67 | 0.88 → 0.91 | same, second photo |
+| cat5_cat | cat5 → cat.off | 0.0119 → 0.0120 | 0.64 → 0.66 | 0.82 → 0.84 | walking pose |
+| cat_lion | cat → lion.off | 0.0151 → 0.0133 | 0.64 | 0.80 | cross-species: the lion gets the Bengal cat's spots |
 | labubu_man | labubu → man.obj | 0.0114 → 0.0107 | 0.32 → 0.34 | 0.60 → 0.67 | toy with a huge head on a human: shirt and trousers land on the body, the head stays uncovered; the low agreement says the features of a plush toy and a human differ, so the distances alone overstate this one |
+
+(Numbers from the final code, with the scale bands and the coverage discount; the server's first
+run of these pairs differed by at most 0.002 except superman_man, which improved from 0.0277.)
 
 The camel scale of 50 to 65 is the unit of `camel.obj` (its extent is about 80), not an error.
 `man_full` has 515 vertices without features (surfaces no camera saw) against 2 to 43 elsewhere.
@@ -416,13 +421,17 @@ Seven pairs against the CC-BY Objaverse meshes in `results/diff3f/targets/` (sou
 
 | Pair | Source image → target mesh | Median | Agreement | Part agreement | Remarks |
 |---|---|---|---|---|---|
-| chair1_armchair | chair1 → armchair | 0.0146 → 0.0142 | 0.52 | 0.63 → 0.66 | frame and upholstery colours on the right parts |
-| chair_armchair | chair (green, ornate) → armchair | 0.0225 → 0.0171 | 0.43 → 0.46 | 0.52 → 0.54 | green pattern on back and seat |
-| chair10_roundchair | chair10 (carved) → roundchair | 0.0304 → 0.0299 | 0.38 | 0.56 | worst pair: the carved chair's relief mesh is cut into 6 pieces by the depth prior and the thin structure gives few consistent matches |
+| chair1_armchair | chair1 → armchair | 0.0144 → 0.0138 | 0.50 | 0.61 → 0.65 | frame and upholstery colours on the right parts |
+| chair_armchair | chair (green, ornate) → armchair | 0.0214 → 0.0211 | 0.51 → 0.52 | 0.45 → 0.46 | green pattern on back and seat |
+| chair10_roundchair | chair10 (carved) → roundchair | 0.0303 → 0.0295 | 0.38 → 0.39 | 0.56 → 0.59 | worst pair: the carved chair's relief mesh is cut into 6 pieces by the depth prior and the thin structure gives few consistent matches |
 | chairgen_armchair | generated chair → armchair | 0.0117 → 0.0104 | 0.57 | 0.64 | clean source, clean result |
 | panda_panda | panda → panda | 0.0107 → 0.0104 | 0.78 → 0.81 | 0.76 → 0.81 | best pair of all: eye patches, ears and arms painted black where they belong |
-| bird_bird | bird (stone figurine) → sparrow | 0.0051 | 0.61 | 0.46 | **failure**: the figurine is a blob with a beak; the registration shrinks it (scale 0.46) onto the sparrow's belly, where every point is close to the surface but the parts do not correspond |
-| dragon_lizard | fire_dragon → Charmeleon | 0.0138 | 0.54 | 0.58 | orange body, cream belly and the tail flame land where they belong |
+| bird_bird | bird (stone figurine) → sparrow | 0.0121 | 0.62 | 0.63 | the figurine is a blob with a beak; the first run shrank it (scale 0.46, coverage 0.16) into the sparrow's belly with part agreement 0.46; with the scale bands and the coverage discount it registers to the whole bird at scale 0.98 |
+| dragon_lizard | fire_dragon → Charmeleon | 0.0135 | 0.54 | 0.58 | orange body, cream belly and the tail flame land where they belong |
+
+Each result folder keeps `metrics.csv`, `transform.json`, `correspondences.npz`, `render.png` and
+`target_from_source_colors_combined.ply` (decimated to 40000 triangles when larger); the aligned meshes
+and the other painted variants are regenerated by the command in `transform.json`.
 
 The Objaverse meshes have many vertices no camera sees (panda 4950 of 20002: eyes, mouth and other
 parts inside the head; chairs 685 and 966); they get the feature of the nearest seen vertex and do

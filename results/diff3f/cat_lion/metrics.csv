@@ -1,6 +1,10 @@
-stage,candidate,scale,depth_factor,n_matches,n_inliers,icp_kept,agreement,part_agreement,rms_to_target,median_to_target,frac_within_2pct,match_median,match_within_5pct,rot_err_deg,scale_ratio,pos_err_median,corr_acc_1pct,corr_acc_5pct,corr_median
-ransac,0,0.5575,1.0,10003,8062,,0.6205,0.8,0.0564,0.0144,0.682,0.03,0.806,,,,,,
-candidate0+icp,0,0.5575,1.0,10003,8062,0.919,0.6423,0.801,0.0535,0.0154,0.667,0.0341,0.731,,,,,,
-selected,0,0.5575,1.0,10003,8062,0.919,0.6423,0.801,0.0535,0.0154,0.667,0.0341,0.731,,,,,,
-baseline_icp_no_features,,0.6417,1.0,,,0.556,0.225,0.4,0.1034,0.0417,0.28,0.3928,0.007,,,,,,
-piecewise,0,,,10003,8062,,0.6419,0.81,0.0526,0.0133,0.758,,,,,,,,
+stage,candidate,scale,depth_factor,n_matches,n_inliers,icp_kept,agreement,agreement_t,score,part_agreement,coverage,rms_to_target,median_to_target,frac_within_2pct,match_median,match_within_5pct,rot_err_deg,scale_ratio,pos_err_median,corr_acc_1pct,corr_acc_5pct,corr_median
+ransac,0,0.5575,1.0,10003,8062,,0.6205,0.2262,0.6205,0.8,0.379,0.0564,0.0144,0.682,0.03,0.806,,,,,,
+candidate0+icp,0,0.5575,1.0,10003,8062,0.919,0.6423,0.2938,0.6423,0.801,0.493,0.0535,0.0154,0.667,0.0341,0.731,,,,,,
+candidate1+icp,1,0.5685,1.0,10003,7989,0.918,0.6406,0.2977,0.6406,0.806,0.506,0.0548,0.0157,0.653,0.0344,0.723,,,,,,
+candidate2+icp,2,0.5496,1.0,10003,4926,0.92,0.6436,0.2924,0.6436,0.797,0.487,0.0526,0.0151,0.671,0.0343,0.734,,,,,,
+candidate3+icp,3,0.5711,1.0,10003,7944,0.917,0.6401,0.2962,0.6401,0.809,0.506,0.055,0.0158,0.649,0.0344,0.724,,,,,,
+candidate4+icp,4,0.5537,1.0,10003,3966,0.919,0.6429,0.2966,0.6429,0.797,0.495,0.0532,0.0153,0.671,0.0344,0.729,,,,,,
+selected,2,0.5496,1.0,10003,4926,0.92,0.6436,0.2924,0.6436,0.797,0.487,0.0526,0.0151,0.671,0.0343,0.734,,,,,,
+baseline_icp_no_features,,0.6417,1.0,,,0.556,0.225,0.0652,0.225,0.4,0.2,0.1034,0.0417,0.28,0.3928,0.007,,,,,,
+piecewise,2,,,10003,4926,,0.6419,,,0.803,,0.0517,0.0133,0.761,,,,,,,,

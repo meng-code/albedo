@@ -209,3 +209,8 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   (registered pairs: 0.24 to 0.75). Averaging the source- and target-side agreements was tried and
   rejected: it rewards larger scales (the dragon moved to a worse solution). Validated on all 22
   pairs before adoption (see `ablation.csv`).
+- **Stored results slimmed (2026-10-21, night):** `results/diff3f/<pair>/` now keeps only metrics,
+  transform, correspondences, `render.png` and one painted mesh (decimated to 40000 triangles when
+  larger): 24 MB for 18 folders instead of 192 MB. The branch history still carries the larger files
+  the first result pushes contained (about 180 MB in `diff3f-more-pairs`, `diff3f-more-pairs2` and
+  earlier commits); whether to rebuild the branch without them before merging is the owner's call.
