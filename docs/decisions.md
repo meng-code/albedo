@@ -132,4 +132,27 @@ The repository will be used beyond the original course, so the owner rewrote `AG
     of the target's bounding-box diagonal.
 - **First experiment (planned):** cow and cat. Source: `outputs/mesh_depth/{cow,cat}/relief.ply` (our
   meshes with the depth prior); target: `third_party/Diff3F/meshes/cow.obj` (2759 vertices) and
-  `meshes/cat.off` (7207 vertices), the sample meshes that ship with Diff3F. Results will be added here.
+  `meshes/cat.off` (7207 vertices), the sample meshes that ship with Diff3F.
+- **Feature extraction (server, A40):** 100 views per mesh, 15000 sampled vertices for the partial meshes.
+  Run times 373 to 947 s per mesh (6 to 13 minutes of GPU work, peak 10 to 12 GB), far slower than the
+  2 to 3 minutes the paper reports, because Diff3F enables diffusers' model CPU offload; `--no_cpu_offload`
+  was added for the next run. Commands, commit and timings are in the commit message of
+  `results/diff3f/` (first run) and in `transform.json`.
+- **First registration run (mutual matches only, best RANSAC hypothesis):** cat works, cow fails.
+  Cat: median distance to the target 0.0118 of the diagonal, 75.5 % of points within 2 %
+  (feature-free ICP baseline: 0.0491 / 23.6 %, and the wrong way round). Cow: only 144 mutual matches;
+  RANSAC chose a transform with scale 0.295 (bounding-box ratio 0.51) that put the whole partial cow on
+  the full cow's head, median 0.0313 / 33.9 %, worse than the baseline (0.0217 / 45.2 %). The cartoon
+  cow's head is much larger than the realistic cow's, so the head matches were the most self-consistent.
+- **Second run (same features, registration changed):** matches in both directions (8808 for cow,
+  11037 for cat), scale limited to 0.4 to 2.5 times the bounding-box ratio, up to 8 RANSAC hypotheses
+  refined by ICP and the one with the best feature agreement selected. Cow: scale 0.429, median 0.020,
+  RMS 0.031, 90.7 % of points paired by ICP, agreement 0.565 (baseline 0.0217 / 0.0418 / 0.420); the
+  head-only transform (scale 0.29) is still among the candidates with agreement 0.27 and is rejected.
+  Cat: median 0.0117, agreement 0.689 (baseline 0.049 / 0.245). Both previews show the partial mesh on
+  the right part of the full mesh. Run on the laptop with the server's feature files;
+  `results/diff3f/{cow,cat}/` holds this run.
+- **What the residual means:** a similarity transform cannot fit a cartoon cow's head and body to a
+  realistic cow at the same time; the 2 % median is the compromise. If the final goal (albedo transfer by
+  correspondence) needs closer surfaces, the next step is a non-rigid refinement after this alignment,
+  or using the feature correspondences directly without a global transform.

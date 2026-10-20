@@ -210,6 +210,7 @@ writes them to `results/analysis/`.
 | Failed cats: mean n_z, scale s, depth ranges | `plot_failure_cases.py` | printed, `failure_cats.png` |
 | IDArb normals vs ground truth (8 Arb-Objaverse training objects × 2 views): mean angle 17.2° (mean of per-image means); outline n_z 0.59 GT vs 0.59 predicted (mean of per-image medians on the outline ring); integrated depth ratio median 1.00 (0.43 to 1.55) | `eval_idarb_gt.py --data_dir <Arb-Objaverse folder>` (server, idarb environment) | `idarb_normals_vs_gt.csv` |
 | Depth Anything V2 Small vs Large on chair1, superman, labubu, panda, bird: correlation 0.93 to 0.996 (inside the full object mask) | `estimate_depth.py --model depth-anything/Depth-Anything-V2-Large-hf` (server), then `compare_depth_models.py` | `depth_small_vs_large.csv` |
+| Partial-to-full registration with Diff3F features: cow median 0.020 / cat 0.0117 of the target diagonal, feature-free ICP baseline 0.0217 / 0.049 | `diff3f_features.py` (server, diff3f environment, 4 meshes), then `register_partial.py` (section 5) | `results/diff3f/{cow,cat}/metrics.csv` |
 
 ## 5. Registering a partial mesh to a full mesh with Diff3F features
 
