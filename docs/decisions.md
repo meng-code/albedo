@@ -156,3 +156,20 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   realistic cow at the same time; the 2 % median is the compromise. If the final goal (albedo transfer by
   correspondence) needs closer surfaces, the next step is a non-rigid refinement after this alignment,
   or using the feature correspondences directly without a global transform.
+- **Registration ablation (same day, `scripts/idarb/eval_registration.py`, `results/diff3f/ablation.csv`;
+  details in `scripts/idarb/README.md`, section 5):**
+  - Ground truth: `make_partial_mesh.py` cuts the camera-visible part of Diff3F's cow and cat meshes
+    (1248 of 2759 and 2821 of 7207 vertices) into the camera frame with a known transform; their features
+    are computed like the real relief meshes (`--front_only`, with `--no_cpu_offload`: about 4 minutes
+    per mesh, 10.3 GB). Every setting registers them exactly (rotation error 0°, correspondences 100 %
+    within 1 % of the diagonal), so the method itself is sound on partial meshes; the 2 % residual on the
+    real cow is the cartoon-versus-realistic gap. The features alone place only 30 to 39 % of the points
+    within 1 % of the true point (86 to 97 % within 5 %): they find the part, the geometry the point.
+  - Kept as default: matches in both directions, 8 candidates, geometric ICP with the scale fixed,
+    selection by feature agreement. The consensus filter, normal checks and more seeds change nothing.
+  - Not default: feature-guided ICP (with a refitted scale it shrinks the source; with the scale fixed it
+    equals plain ICP at 5 to 8 times the time) and the depth factor on z (recovers a halved or doubled
+    relief depth to within 10 to 30 % on the synthetic meshes and fixes the pose, but is not determined
+    on the real cat, whose body is thinner than the 5 % tolerance: 0.48 or 1.76 depending on the start).
+  - The registered partial lies on the near side of the target (normals agree for 90 % / 93 % of close
+    pairs), so the albedo transfer `target_from_source_colors_registered.ply` paints the right side.

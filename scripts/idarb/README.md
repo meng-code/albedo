@@ -210,7 +210,9 @@ writes them to `results/analysis/`.
 | Failed cats: mean n_z, scale s, depth ranges | `plot_failure_cases.py` | printed, `failure_cats.png` |
 | IDArb normals vs ground truth (8 Arb-Objaverse training objects × 2 views): mean angle 17.2° (mean of per-image means); outline n_z 0.59 GT vs 0.59 predicted (mean of per-image medians on the outline ring); integrated depth ratio median 1.00 (0.43 to 1.55) | `eval_idarb_gt.py --data_dir <Arb-Objaverse folder>` (server, idarb environment) | `idarb_normals_vs_gt.csv` |
 | Depth Anything V2 Small vs Large on chair1, superman, labubu, panda, bird: correlation 0.93 to 0.996 (inside the full object mask) | `estimate_depth.py --model depth-anything/Depth-Anything-V2-Large-hf` (server), then `compare_depth_models.py` | `depth_small_vs_large.csv` |
-| Partial-to-full registration with Diff3F features: cow median 0.020 / cat 0.0117 of the target diagonal, feature-free ICP baseline 0.0217 / 0.049 | `diff3f_features.py` (server, diff3f environment, 4 meshes), then `register_partial.py` (section 5) | `results/diff3f/{cow,cat}/metrics.csv` |
+| Partial-to-full registration with Diff3F features: cow median 0.0199 / cat 0.0116 of the target diagonal, agreement 0.563 / 0.689, feature-free ICP baseline 0.0217 / 0.049 | `diff3f_features.py` (server, diff3f environment, 4 meshes), then `register_partial.py` (section 5) | `results/diff3f/{cow,cat}/metrics.csv` |
+| Synthetic partial meshes with ground truth: rotation error 0°, correspondences 100 % within 1 %, feature-only 30.5 % / 38.7 % | `make_partial_mesh.py`, `diff3f_features.py --front_only` (server), `register_partial.py --gt` | `results/diff3f/{cow,cat}_synth/metrics.csv` |
+| Registration ablation: 12 settings on 8 pairs (section 5, findings) | `eval_registration.py` | `results/diff3f/ablation.csv` |
 
 ## 5. Registering a partial mesh to a full mesh with Diff3F features
 
@@ -281,15 +283,68 @@ Steps, all in NumPy/SciPy (no GPU):
 4. **Baseline.** The same ICP started from centroid-and-size alignment only, without features, to show
    what the features add.
 
+Options that are off by default (see the findings below for what they did): `--consensus` drops matches
+whose spatial neighbours on the source do not land near the same place on the target; `--normals`
+rejects ICP pairs whose normals disagree (needs both mesh files); `--refine joint` replaces the geometric
+pairing of the best three candidates by a feature-guided one (each source point goes to the target point
+that minimises feature distance plus spatial distance, with the spatial tolerance shrinking over the
+iterations; the scale stays fixed) and keeps whichever of the geometric and joint results agrees best;
+`--depth_scale` also fits one factor on the source's z, restarting the ICP of the best three candidates
+from factors 0.5 to 2 (a relief mesh's depth is only known up to the depth-prior scale); `--feature
+diffusion|dino` uses only one half of the Diff3F vector; `--seeds` pools the hypotheses of several
+RANSAC runs.
+
 `metrics.csv` has one row per stage and candidate: `candidate`, `n_matches`, `n_inliers`, `scale`,
-`agreement`, `rms_to_target` and `median_to_target` (distance from the aligned source points to the
-nearest target point), `frac_within_2pct` (fraction closer than 2 % of the diagonal), and `match_median` /
-`match_within_5pct` (distance between the two points of each feature match after alignment: small when
-the features and the geometry agree). All distances are fractions of the target diagonal. The `selected`
-row is the result. `transform.json` has the transform;
-`aligned_source.ply` is the partial mesh moved onto the target; `correspondence_*.ply` colour matched points
-alike; `target_from_source_colors.ply` paints the target with the source's albedo through the feature
-matches; `preview.png` shows the stages side by side.
+`depth_factor`, `agreement`, `part_agreement` (k-means parts of the target features, `--parts 6`, as in
+Diff3F's segmentation: the fraction of source points that land on a target point of the same part),
+`rms_to_target` and `median_to_target` (distance from the aligned source points to the nearest target
+point), `frac_within_2pct` (fraction closer than 2 % of the diagonal), and `match_median` /
+`match_within_5pct` (distance between the two points of each feature match after alignment). All
+distances are fractions of the target diagonal. The `selected` row is the result. `transform.json` has the
+transform; `correspondences.npz` the target point of every source point, after registration and from the
+features alone; `aligned_source.ply` is the partial mesh moved onto the target; `correspondence_*.ply`
+colour matched points alike; `target_from_source_colors.ply` paints the target with the source's albedo
+through the feature matches alone, `target_from_source_colors_registered.ply` through the registration
+(the target points the aligned source covers take the colour of the nearest source point, the rest stay
+grey: this is the albedo transfer the project aims at); `preview.png` shows the stages side by side.
+
+**Ground truth.** `make_partial_mesh.py` cuts the part of a full mesh that one camera sees and writes it
+in the camera frame with a known transform and vertex map (`results/diff3f/synthetic/`). Registering such
+a synthetic partial mesh back to its full mesh (`--gt <name>_gt.npz`) adds the columns `rot_err_deg`,
+`scale_ratio`, `pos_err_median` and the correspondence accuracy `corr_acc_1pct` / `corr_acc_5pct`
+(fraction of source points whose assigned target point lies within 1 % / 5 % of the diagonal of the true
+point), also for the feature-only correspondence (`feature_nn` row). `eval_registration.py` runs the
+settings above on every pair whose feature files are present and writes `results/diff3f/ablation.csv`.
 
 `pytest tests/ -q` checks the registration maths on synthetic data (a known transform must be recovered
-from matches with 40 % outliers, and ICP must remove a small misalignment).
+from matches with 40 % outliers, ICP must remove a small misalignment, the depth factor must be found,
+and the whole pipeline must beat the feature-free baseline).
+
+### Findings (2026-10-20, `results/diff3f/ablation.csv`)
+
+- **Synthetic partial meshes (same object, ground truth):** every setting recovers the transform
+  (rotation error 0°, scale within 0.5 %) and 100 % of the correspondences within 1 % of the diagonal.
+  The features alone are coarser: only 30.5 % (cow) / 38.7 % (cat) of the feature-only correspondences
+  are within 1 %, 86 % / 97 % within 5 %; the features find the part, the geometry finds the point.
+  The feature-free baseline is 29° off on the cow and only happens to land right on the cat.
+- **Real relief meshes (cartoon cow and photo cat against Diff3F's cow and cat):** the default gives cow
+  median 0.0199, agreement 0.563, part agreement 0.585; cat 0.0116 / 0.689 / 0.829 (5 to 10 s per pair).
+  Mutual matches with the best-inlier hypothesis (the first version) fail on the cow (0.0308, agreement
+  0.268). The consensus filter, normals and three seeds change the result by less than 0.0005. The
+  registered partial faces the same way as the target surface (normals agree for 90 % / 93 % of the close
+  pairs), so it is not mirrored onto the far side.
+- **Feature-guided ICP:** with the scale refitted it shrinks the source (cow scale 0.32 instead of 0.43,
+  cat 0.31 instead of 0.44; part agreement down to 0.50 / 0.68), because a smaller source is closer to
+  any surface. With the scale fixed it equals plain ICP within noise at 5 to 8 times the run time, so it is
+  an option, not the default.
+- **Depth factor:** on synthetic meshes whose depth was halved (true factor 2) it finds 1.79 (cow) / 1.78
+  (cat) and brings the rotation error from 12.5° / 14.4° down to 1.9° / 2.7° and the correspondences within
+  1 % from 14 % / 10 % up to 84 % / 74 %; on doubled depth (true 0.5) it finds 0.64 / 0.78 (rotation 16.5°
+  / 17.4° → 4.7° / 10.7°). On the real relief meshes the factor is not well determined: the cat gives 0.48
+  or 1.76 depending on the start with agreements 0.01 apart (its body is thinner than the 5 % tolerance,
+  so the front and back surfaces are both "close"), the cow 1.17 to 1.42. Off by default; a diagnostic for
+  the depth-prior scale once a sharper criterion exists.
+- **Feature halves:** diffusion-only and DINO-only register about as well as the fused vector (cow 0.0204
+  / 0.0221, cat 0.0110 / 0.0117), but the fused vector gives the best feature-only correspondence on the
+  synthetic pairs (30.5 % against 29.2 % / 28.0 % within 1 %), so it stays. `agreement` values are not
+  comparable between feature types (DINO similarities are higher across the board).

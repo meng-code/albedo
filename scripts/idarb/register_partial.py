@@ -4,27 +4,41 @@ trimesh); runs on the laptop or the server.
 
 Input: two .npz files written by diff3f_features.py, the "source" (our partial relief mesh from
 normal_to_mesh.py) and the "target" (a full mesh of the same kind of object). Registration means
-finding the scale, rotation and translation that put the source onto the target.
+finding the scale, rotation and translation that put the source onto the target, and the
+point-to-point correspondence that comes with it.
 
 Steps:
-  1. match: cosine similarity between every source vector and every target vector; keep the pairs
-     that are each other's best match (mutual nearest neighbours). Semantics, not shape, decides
-     these matches, so they survive a different pose, style or coordinate system.
+  1. match: cosine similarity between every source vector and every target vector. Semantics, not
+     shape, decides these matches, so they survive a different pose, style or coordinate system.
+     --matches both (default) takes the best match of every point in both directions and keeps the
+     most similar half; --matches mutual keeps only mutual best matches. --consensus drops matches
+     whose spatial neighbours on the source do not land near the same place on the target.
   2. coarse: RANSAC over the matches. Each hypothesis takes 3 matches, fits a similarity transform
      (scale, rotation, translation; Umeyama 1991) and is scored by how many matches it brings
-     within --inlier_dist of each other. The best hypothesis is refitted on its inliers.
-  3. fine: rigid ICP with the scale fixed, between all source points and the target points,
-     trimmed to the source points that have a target point within --icp_dist.
-  4. baseline: the same ICP started from centroid-and-extent alignment only, without features,
-     to show what the features add.
+     within --inlier_dist of each other. Up to --candidates distinct hypotheses are kept.
+  3. fine: every candidate is refined by ICP. --refine icp pairs each source point with its nearest
+     target point (geometry only); --refine joint pairs it with the target point that minimises
+     feature distance plus spatial distance, with the spatial tolerance shrinking over the
+     iterations (feature-guided ICP). --normals rejects pairs whose normals disagree (needs the
+     meshes); --depth_scale also fits one factor on the source's z (a relief mesh's depth is only
+     known up to the depth-prior scale).
+  4. select: each refined candidate is scored by feature agreement, the mean cosine similarity
+     between every source point's feature and the feature of the target point it lands on; the
+     best one is "selected". A transform that puts the body on the head scores low here even if it
+     brings many feature matches together.
+  5. baseline: ICP from centroid-and-size alignment only, without features.
 
-Distances are given as fractions of the target's bounding-box diagonal. Outputs in --out_dir:
-metrics.csv, transform.json (scale, rotation, translation and the 4x4 matrix), aligned_source.ply
-(the full source mesh moved onto the target, if --source_mesh is given, else the source points),
-target.ply, correspondence_source.ply / correspondence_target.ply (matched points share a colour)
-and target_from_source_colors.ply (target points coloured with the source's vertex colours through
-the feature matches: the albedo transfer the project aims at), plus preview.png when matplotlib is
-installed.
+Distances are fractions of the target's bounding-box diagonal. Outputs in --out_dir: metrics.csv
+(one row per stage and candidate), transform.json, aligned_source.ply (the source mesh moved onto
+the target, or the source points), target.ply, correspondence_{source,target}.ply (matched points
+share a colour), target_from_source_colors.ply (target points coloured with the source's vertex
+colours through feature matches only), target_from_source_colors_registered.ply (the same through
+the registration: the albedo transfer the project aims at; target points the source does not cover
+stay grey), correspondences.npz and preview.png (when matplotlib is installed).
+
+--gt <file>_gt.npz from make_partial_mesh.py adds ground-truth columns: rotation and scale error,
+and the accuracy of the correspondences (fraction within 1 % and 5 % of the diagonal of the true
+point), including the feature-only correspondence without any transform ("feature_nn").
 
 Usage (repository root, mesh environment):
     python scripts/idarb/register_partial.py --source outputs/diff3f/cow_partial.npz \
@@ -38,55 +52,69 @@ import json
 import os
 
 import numpy as np
+from scipy.cluster.vq import kmeans2
 from scipy.spatial import cKDTree
+
+DIFFUSION_DIMS = 1280  # Diff3F feature = [1280 diffusion UNet dims | 768 DINOv2 dims]
 
 # ------------------------------------------------------------------------------
 # features and matches
 # ------------------------------------------------------------------------------
 
 
-def load_features(path):
-    """xyz (N,3 float64), feat (N,D float32 unit length), colors (N,3 uint8 or None), meta dict."""
+def normalize_rows(x):
+    return x / np.maximum(np.linalg.norm(x, axis=1, keepdims=True), 1e-8)
+
+
+def load_features(path, feature="full", mesh=None):
+    """A dict with xyz (N,3 float64), feat (N,D float32 unit length), colors (N,3 uint8 or None),
+    idx (vertex index of every point), meta, and normals (N,3) when a mesh file is given."""
     z = np.load(path, allow_pickle=False)
     feat = z["feat"].astype(np.float32)
-    feat /= np.maximum(np.linalg.norm(feat, axis=1, keepdims=True), 1e-8)
-    colors = z["colors"] if len(z["colors"]) else None
-    meta = json.loads(str(z["meta"])) if "meta" in z else {}
-    return z["xyz"].astype(np.float64), feat, colors, meta
+    if feature == "diffusion":
+        feat = feat[:, :DIFFUSION_DIMS]
+    elif feature == "dino":
+        feat = feat[:, DIFFUSION_DIMS:]
+    elif feature != "full":
+        raise ValueError(feature)
+    out = dict(
+        xyz=z["xyz"].astype(np.float64),
+        feat=normalize_rows(feat),
+        colors=z["colors"] if len(z["colors"]) else None,
+        idx=z["idx"] if "idx" in z.files else np.arange(len(feat)),
+        meta=json.loads(str(z["meta"])) if "meta" in z.files else {},
+        normals=None,
+    )
+    if mesh is not None:
+        import trimesh
+
+        m = trimesh.load(mesh, process=False, force="mesh")
+        out["normals"] = np.asarray(m.vertex_normals, dtype=np.float64)[out["idx"]]
+    return out
 
 
-def nearest_in_feature_space(fa, fb, chunk=2048):
-    """For every row of fa: the index of the most similar row of fb and that cosine similarity."""
-    best = np.empty(len(fa), dtype=np.int64)
-    best_sim = np.empty(len(fa), dtype=np.float32)
+def similarity_matrix(fa, fb, chunk=4096):
+    """Cosine similarity of every row of fa with every row of fb (both unit length), float16."""
+    S = np.empty((len(fa), len(fb)), dtype=np.float16)
     for i in range(0, len(fa), chunk):
-        s = fa[i : i + chunk] @ fb.T
-        j = s.argmax(axis=1)
-        best[i : i + chunk] = j
-        best_sim[i : i + chunk] = s[np.arange(len(j)), j]
-    return best, best_sim
+        S[i : i + chunk] = fa[i : i + chunk] @ fb.T
+    return S
 
 
-def mutual_matches(fs, ft):
-    """Pairs (i, k) where target k is source i's best match and source i is target k's best match.
-    Returns source indices, target indices and the similarities."""
-    s2t, sim = nearest_in_feature_space(fs, ft)
-    t2s, _ = nearest_in_feature_space(ft, fs)
-    i = np.nonzero(t2s[s2t] == np.arange(len(fs)))[0]
-    return i, s2t[i], sim[i]
-
-
-def collect_matches(fs, ft, mode="both", keep_frac=0.5):
-    """Candidate matches for RANSAC. mode "mutual": only mutual nearest neighbours (few, clean).
-    mode "both": every source point with its best target point plus every target point with its
-    best source point, keeping the most similar keep_frac of them (many, with outliers that RANSAC
-    has to reject). Returns source indices, target indices and similarities."""
+def matches_from_similarity(S, mode="both", keep_frac=0.5):
+    """Candidate matches (source indices, target indices, similarities) from the similarity matrix.
+    "mutual": pairs that are each other's best match (few, clean). "both": every source point with
+    its best target point plus every target point with its best source point, keeping the most
+    similar keep_frac of them (many, with outliers for RANSAC to reject)."""
+    s2t = S.argmax(axis=1)
+    t2s = S.argmax(axis=0)
+    sim_s = S[np.arange(len(s2t)), s2t].astype(np.float32)
     if mode == "mutual":
-        return mutual_matches(fs, ft)
-    s2t, sim_s = nearest_in_feature_space(fs, ft)
-    t2s, sim_t = nearest_in_feature_space(ft, fs)
-    i = np.concatenate([np.arange(len(fs)), t2s])
-    k = np.concatenate([s2t, np.arange(len(ft))])
+        i = np.nonzero(t2s[s2t] == np.arange(len(s2t)))[0]
+        return i, s2t[i], sim_s[i]
+    sim_t = S[t2s, np.arange(len(t2s))].astype(np.float32)
+    i = np.concatenate([np.arange(len(s2t)), t2s])
+    k = np.concatenate([s2t, np.arange(len(t2s))])
     sim = np.concatenate([sim_s, sim_t])
     _, first = np.unique(np.stack([i, k], axis=1), axis=0, return_index=True)
     i, k, sim = i[first], k[first], sim[first]
@@ -94,16 +122,42 @@ def collect_matches(fs, ft, mode="both", keep_frac=0.5):
     return i[keep], k[keep], sim[keep]
 
 
-def feature_agreement(src_xyz, src_feat, dst_tree, dst_feat, s, R, t, max_dist):
+def consensus_filter(src_xyz, dst_xyz, i, k, diag, n_neigh=20, radius=0.1, min_frac=0.3):
+    """Keep a match (i, k) only if at least min_frac of the n_neigh matches nearest to source point
+    i (on the source) land within radius of target point k (on the target): wrong matches are
+    scattered, right ones move together."""
+    if len(i) <= n_neigh:
+        return np.ones(len(i), dtype=bool)
+    tree = cKDTree(src_xyz[i])
+    _, nb = tree.query(src_xyz[i], k=n_neigh + 1)
+    nb = nb[:, 1:]
+    d = np.linalg.norm(dst_xyz[k[nb]] - dst_xyz[k][:, None, :], axis=2)
+    return (d < radius * diag).mean(axis=1) >= min_frac
+
+
+def feature_agreement(src_xyz, src_feat, dst_tree, dst_feat, s, R, t, max_dist, a=1.0):
     """How well a transform agrees with the features: the mean cosine similarity between each
     source point's feature and the feature of the target point it lands next to. Source points
-    farther than max_dist from the target count as 0. A transform that puts the body on the head
-    scores low here even if it brings many feature matches close together."""
-    p = transform(src_xyz, s, R, t)
+    farther than max_dist from the target count as 0."""
+    p = transform(apply_depth(src_xyz, a), s, R, t)
     d, j = dst_tree.query(p)
-    a = np.einsum("ij,ij->i", src_feat, dst_feat[j])
-    a[d > max_dist] = 0.0
-    return float(a.mean())
+    agree = np.einsum("ij,ij->i", src_feat, dst_feat[j])
+    agree[d > max_dist] = 0.0
+    return float(agree.mean())
+
+
+def part_labels(src_feat, dst_feat, n_parts=6, seed=0):
+    """k-means parts on the target features, and the nearest centroid for every source point
+    (Diff3F's zero-shot segmentation). Returns source labels, target labels."""
+    centroids, dst_labels = kmeans2(
+        dst_feat.astype(np.float64), n_parts, minit="++", seed=np.random.default_rng(seed)
+    )
+    d = (
+        (src_feat**2).sum(1)[:, None]
+        - 2.0 * src_feat @ centroids.T
+        + (centroids**2).sum(1)[None, :]
+    )
+    return d.argmin(axis=1), dst_labels
 
 
 # ------------------------------------------------------------------------------
@@ -116,9 +170,18 @@ def transform(points, s, R, t):
     return s * (points @ R.T) + t
 
 
-def to_matrix(s, R, t):
+def apply_depth(points, a):
+    """Multiply z (the depth of a relief mesh) by a."""
+    if a == 1.0:
+        return points
+    q = points.copy()
+    q[:, 2] *= a
+    return q
+
+
+def to_matrix(s, R, t, a=1.0):
     M = np.eye(4)
-    M[:3, :3] = s * R
+    M[:3, :3] = s * R @ np.diag([1.0, 1.0, a])
     M[:3, 3] = t
     return M
 
@@ -149,6 +212,14 @@ def umeyama(src, dst, with_scale=True):
         s = 1.0
     t = mu_d - s * R @ mu_s
     return s, R, t
+
+
+def solve_depth_factor(p, q, s, R, t, bounds=(0.3, 3.0)):
+    """Least-squares a in q ~ s R diag(1,1,a) p + t, with s, R, t fixed."""
+    u = s * p[:, 2:3] * R[:, 2][None, :]
+    v = q - t - s * (np.column_stack([p[:, 0], p[:, 1], np.zeros(len(p))]) @ R.T)
+    a = float((u * v).sum() / max((u * u).sum(), 1e-12))
+    return float(np.clip(a, bounds[0], bounds[1]))
 
 
 def ransac_candidates(
@@ -184,7 +255,13 @@ def ransac_candidates(
         count = int((d < inlier_dist).sum())
         if count >= 3:
             hyps.append((count, s, R, t))
-    hyps.sort(key=lambda h: -h[0])
+    return distinct_hypotheses(hyps, src, dst, inlier_dist, n_keep, min_angle_deg)
+
+
+def distinct_hypotheses(hyps, src, dst, inlier_dist, n_keep, min_angle_deg=15.0):
+    """Sort (count, s, R, t) hypotheses by count, drop near-duplicates, refit the first n_keep on
+    their inliers. Returns [(s, R, t, inliers), ...]."""
+    hyps = sorted(hyps, key=lambda h: -h[0])
     kept = []
     for count, s, R, t in hyps:
         same = any(
@@ -218,27 +295,129 @@ def ransac_similarity(src, dst, inlier_dist, n_iter=5000, seed=0, scale_range=(0
     return cands[0]
 
 
-def icp_rigid(src, dst, s, R, t, max_dist, iters=100, tol=1e-7):
+# ------------------------------------------------------------------------------
+# refinement (ICP)
+# ------------------------------------------------------------------------------
+
+
+def normals_compatible(src_normals, dst_normals, R, j, min_dot=-0.3):
+    """Pairs whose source normal, rotated, points roughly like the target normal."""
+    if src_normals is None or dst_normals is None:
+        return None
+    return np.einsum("ij,ij->i", src_normals @ R.T, dst_normals[j]) > min_dot
+
+
+def icp_rigid(
+    src,
+    dst,
+    s,
+    R,
+    t,
+    max_dist,
+    iters=100,
+    tol=1e-7,
+    src_normals=None,
+    dst_normals=None,
+    depth_scale=False,
+    a=1.0,
+):
     """Point-to-point ICP with the scale fixed. Every iteration pairs each transformed source point
-    with its nearest target point, drops pairs farther apart than max_dist and refits R, t.
-    Returns R, t, the RMS distance of the kept pairs and the fraction of source points kept."""
+    with its nearest target point, drops pairs farther apart than max_dist (and with incompatible
+    normals, when given) and refits R, t (and the depth factor a when depth_scale).
+    Returns R, t, a, the RMS distance of the kept pairs, the fraction of source points kept and
+    the final pairing (target index per source point)."""
     tree = cKDTree(dst)
     rmse_prev = np.inf
     rmse = np.inf
     kept = 0.0
+    j = np.zeros(len(src), dtype=np.int64)
     for _ in range(iters):
-        p = transform(src, s, R, t)
+        q = apply_depth(src, a)
+        p = transform(q, s, R, t)
         d, j = tree.query(p)
         keep = d < max_dist
+        ok = normals_compatible(src_normals, dst_normals, R, j)
+        if ok is not None:
+            keep &= ok
         if keep.sum() < 10:
             break
         rmse = float(np.sqrt(np.mean(d[keep] ** 2)))
         kept = float(keep.mean())
-        _, R, t = umeyama(s * src[keep], dst[j[keep]], with_scale=False)
+        _, R, t = umeyama(s * q[keep], dst[j[keep]], with_scale=False)
+        if depth_scale:
+            a = solve_depth_factor(src[keep], dst[j[keep]], s, R, t)
         if abs(rmse_prev - rmse) < tol:
             break
         rmse_prev = rmse
-    return R, t, rmse, kept
+    return R, t, a, rmse, kept, j
+
+
+def icp_joint(
+    src,
+    dst,
+    S,
+    s,
+    R,
+    t,
+    diag,
+    deltas=(0.2, 0.1, 0.05, 0.03),
+    iters=8,
+    scale_range=None,
+    refit_scale=False,
+    src_normals=None,
+    dst_normals=None,
+    depth_scale=False,
+    a=1.0,
+    chunk=3000,
+):
+    """Feature-guided ICP. Each source point is paired with the target point that minimises
+    (1 - cosine similarity) + (spatial distance / delta)^2, so the pairing respects the semantics
+    and the geometry at the same time; delta shrinks over the stages, from "trust the features" to
+    "trust the geometry". The scale stays as it comes from the feature matches unless refit_scale
+    (refitting it lets the geometry shrink the source: a smaller source is closer to any surface),
+    and the depth factor a is refitted when depth_scale. Returns s, R, t, a, the RMS distance of
+    the kept pairs, the fraction kept and the pairing."""
+    n_src = len(src)
+    S32_rows = None  # (1 - S) converted chunk by chunk
+    q2 = (dst**2).sum(axis=1)
+    j = np.zeros(n_src, dtype=np.int64)
+    rmse = np.inf
+    kept = 0.0
+    for delta in deltas:
+        dd = (delta * diag) ** 2
+        for _ in range(iters):
+            q = apply_depth(src, a)
+            p = transform(q, s, R, t)
+            cost_min = np.empty(n_src)
+            for i0 in range(0, n_src, chunk):
+                pc = p[i0 : i0 + chunk]
+                d2 = (pc**2).sum(axis=1)[:, None] - 2.0 * pc @ dst.T + q2[None, :]
+                S32_rows = 1.0 - S[i0 : i0 + chunk].astype(np.float32)
+                c = S32_rows + np.maximum(d2, 0.0) / dd
+                jj = c.argmin(axis=1)
+                j[i0 : i0 + chunk] = jj
+                cost_min[i0 : i0 + chunk] = c[np.arange(len(jj)), jj]
+            d = np.linalg.norm(p - dst[j], axis=1)
+            keep = d < 2.0 * delta * diag
+            ok = normals_compatible(src_normals, dst_normals, R, j)
+            if ok is not None:
+                keep &= ok
+            if keep.sum() < 10:
+                break
+            rmse = float(np.sqrt(np.mean(d[keep] ** 2)))
+            kept = float(keep.mean())
+            if refit_scale:
+                s_new, R, t = umeyama(q[keep], dst[j[keep]], with_scale=True)
+                if scale_range is not None:
+                    s_new = float(np.clip(s_new, scale_range[0], scale_range[1]))
+                    if s_new != s:  # the clipped scale needs its own translation
+                        _, R, t = umeyama(s_new * q[keep], dst[j[keep]], with_scale=False)
+                s = s_new
+            else:
+                _, R, t = umeyama(s * q[keep], dst[j[keep]], with_scale=False)
+            if depth_scale:
+                a = solve_depth_factor(src[keep], dst[j[keep]], s, R, t)
+    return s, R, t, a, rmse, kept, j
 
 
 # ------------------------------------------------------------------------------
@@ -246,19 +425,16 @@ def icp_rigid(src, dst, s, R, t, max_dist, iters=100, tol=1e-7):
 # ------------------------------------------------------------------------------
 
 
-def surface_distances(points, target_tree):
-    d, _ = target_tree.query(points)
-    return d
-
-
-def stage_metrics(name, src, dst_tree, s, R, t, diag, matches=None, close=0.02):
+def stage_metrics(name, src_xyz, dst_tree, s, R, t, diag, a=1.0, matches=None, close=0.02):
     """Distances of the transformed source points to the nearest target point, as fractions of the
     target diagonal; and, if matches (i, k, dst) are given, the distance between matched points."""
-    p = transform(src, s, R, t)
-    d = surface_distances(p, dst_tree) / diag
+    p = transform(apply_depth(src_xyz, a), s, R, t)
+    d, _ = dst_tree.query(p)
+    d = d / diag
     row = dict(
         stage=name,
         scale=round(float(s), 4),
+        depth_factor=round(float(a), 3),
         rms_to_target=round(float(np.sqrt(np.mean(d**2))), 4),
         median_to_target=round(float(np.median(d)), 4),
         frac_within_2pct=round(float((d < close).mean()), 3),
@@ -269,6 +445,39 @@ def stage_metrics(name, src, dst_tree, s, R, t, diag, matches=None, close=0.02):
         row["match_median"] = round(float(np.median(dm)), 4)
         row["match_within_5pct"] = round(float((dm < 0.05).mean()), 3)
     return row
+
+
+def gt_targets(src, dst, gt):
+    """Row in dst of the true counterpart of every source point (-1 when the true vertex was not
+    sampled in dst). gt: orig_idx (partial vertex -> full vertex), s, R, t."""
+    inv = -np.ones(int(gt["orig_idx"].max()) + 1 + len(dst["xyz"]), dtype=np.int64)
+    inv[dst["idx"]] = np.arange(len(dst["idx"]))
+    full_vertex = gt["orig_idx"][src["idx"]]
+    full_vertex = np.where(full_vertex < len(inv), full_vertex, -1)
+    rows = np.where(full_vertex >= 0, inv[np.maximum(full_vertex, 0)], -1)
+    return rows
+
+
+def correspondence_metrics(assign, gt_rows, dst_xyz, diag):
+    """Accuracy of a correspondence (target row per source point) against the ground truth."""
+    valid = gt_rows >= 0
+    err = np.linalg.norm(dst_xyz[assign[valid]] - dst_xyz[gt_rows[valid]], axis=1) / diag
+    return dict(
+        corr_acc_1pct=round(float((err < 0.01).mean()), 3),
+        corr_acc_5pct=round(float((err < 0.05).mean()), 3),
+        corr_median=round(float(np.median(err)), 4),
+    )
+
+
+def transform_metrics(src_xyz, gt_rows, dst_xyz, gt, s, R, t, a, diag):
+    valid = gt_rows >= 0
+    p = transform(apply_depth(src_xyz, a), s, R, t)
+    pos_err = np.linalg.norm(p[valid] - dst_xyz[gt_rows[valid]], axis=1) / diag
+    return dict(
+        rot_err_deg=round(rotation_angle_deg(R, gt["R"]), 2),
+        scale_ratio=round(float(s / float(gt["s"])), 4),
+        pos_err_median=round(float(np.median(pos_err)), 4),
+    )
 
 
 # ------------------------------------------------------------------------------
@@ -289,11 +498,11 @@ def save_points(path, points, colors):
     trimesh.PointCloud(points, colors=colors).export(path)
 
 
-def save_mesh_transformed(path, mesh_path, s, R, t):
+def save_mesh_transformed(path, mesh_path, s, R, t, a=1.0):
     import trimesh
 
     m = trimesh.load(mesh_path, process=False, force="mesh")
-    m.vertices = transform(np.asarray(m.vertices, dtype=np.float64), s, R, t)
+    m.vertices = transform(apply_depth(np.asarray(m.vertices, dtype=np.float64), a), s, R, t)
     m.export(path)
 
 
@@ -331,102 +540,265 @@ def save_preview(path, panels):
 # main
 # ------------------------------------------------------------------------------
 
-
-def register(
-    src_xyz,
-    src_feat,
-    dst_xyz,
-    dst_feat,
+DEFAULTS = dict(
     inlier_dist=0.05,
     icp_dist=0.05,
     n_iter=5000,
-    seed=0,
+    seeds=(0,),
     match_mode="both",
+    consensus=False,
     n_candidates=8,
-):
-    """The whole pipeline on arrays. Up to n_candidates distinct RANSAC hypotheses are each refined
-    by ICP and scored by feature_agreement; the best score wins ("selected"). The scale is limited
-    to 0.4 to 2.5 times the ratio of the bounding-box diagonals. Returns a dict with matches,
-    transforms and metric rows (one per stage and candidate)."""
+    refine="icp",
+    n_joint=3,
+    joint_refit_scale=False,
+    depth_grid=(0.5, 0.7, 1.0, 1.4, 2.0),
+    n_depth=3,
+    normals=False,
+    depth_scale=False,
+    n_parts=6,
+)
+
+
+def register(src, dst, gt=None, **options):
+    """The whole pipeline. src, dst: dicts from load_features (xyz, feat, normals, idx). gt: dict
+    from make_partial_mesh.py's _gt.npz, optional. Options: see DEFAULTS and the module docstring.
+    Returns a dict with the selected transform (s, R, t, a), the correspondences and metric rows."""
+    o = dict(DEFAULTS)
+    o.update(options)
+    src_xyz, src_feat = src["xyz"], src["feat"]
+    dst_xyz, dst_feat = dst["xyz"], dst["feat"]
+    src_n = src.get("normals") if o["normals"] else None
+    dst_n = dst.get("normals") if o["normals"] else None
     diag = float(np.linalg.norm(dst_xyz.max(0) - dst_xyz.min(0)))
     src_diag = float(np.linalg.norm(src_xyz.max(0) - src_xyz.min(0)))
+    ratio = diag / src_diag
+    scale_range = (0.4 * ratio, 2.5 * ratio)
     dst_tree = cKDTree(dst_xyz)
-    i, k, sim = collect_matches(src_feat, dst_feat, match_mode)
+    gt_rows = gt_targets(src, dst, gt) if gt is not None else None
+    src_parts, dst_parts = part_labels(src_feat, dst_feat, o["n_parts"])
+
+    def evaluate(name, s, R, t, a, assign=None, **extra):
+        row = stage_metrics(name, src_xyz, dst_tree, s, R, t, diag, a, matches)
+        p = transform(apply_depth(src_xyz, a), s, R, t)
+        d, j = dst_tree.query(p)
+        if assign is None:
+            assign = j
+        row["agreement"] = round(
+            feature_agreement(
+                src_xyz, src_feat, dst_tree, dst_feat, s, R, t, o["icp_dist"] * diag, a
+            ),
+            4,
+        )
+        row["part_agreement"] = round(float((src_parts == dst_parts[j]).mean()), 3)
+        if gt_rows is not None:
+            row.update(transform_metrics(src_xyz, gt_rows, dst_xyz, gt, s, R, t, a, diag))
+            row.update(correspondence_metrics(assign, gt_rows, dst_xyz, diag))
+        row.update(extra)
+        return row
+
+    # 1. matches
+    S = similarity_matrix(src_feat, dst_feat)
+    i, k, sim = matches_from_similarity(S, o["match_mode"])
+    if o["consensus"]:
+        keep = consensus_filter(src_xyz, dst_xyz, i, k, diag)
+        i, k, sim = i[keep], k[keep], sim[keep]
     matches = (i, k, dst_xyz)
     n_matches = int(len(i))
+    rows = []
+    if gt_rows is not None:
+        rows.append(
+            dict(
+                stage="feature_nn",
+                **correspondence_metrics(S.argmax(axis=1), gt_rows, dst_xyz, diag),
+            )
+        )
 
-    ratio = diag / src_diag
-    cands = ransac_candidates(
-        src_xyz[i],
-        dst_xyz[k],
-        inlier_dist * diag,
-        n_iter=n_iter,
-        seed=seed,
-        scale_range=(0.4 * ratio, 2.5 * ratio),
-        n_keep=n_candidates,
+    # 2. coarse
+    hyps = []
+    for seed in o["seeds"]:
+        for s, R, t, inl in ransac_candidates(
+            src_xyz[i],
+            dst_xyz[k],
+            o["inlier_dist"] * diag,
+            n_iter=o["n_iter"],
+            seed=seed,
+            scale_range=scale_range,
+            n_keep=o["n_candidates"],
+        ):
+            hyps.append((int(inl.sum()), s, R, t))
+    cands = distinct_hypotheses(
+        hyps, src_xyz[i], dst_xyz[k], o["inlier_dist"] * diag, o["n_candidates"]
     )
     if not cands:
         raise RuntimeError("RANSAC found no transform with 3 inliers")
-
-    def agreement(s, R, t):
-        return feature_agreement(src_xyz, src_feat, dst_tree, dst_feat, s, R, t, icp_dist * diag)
-
-    rows = []
     s, R, t, inliers = cands[0]
-    row = stage_metrics("ransac", src_xyz, dst_tree, s, R, t, diag, matches)
-    row.update(
-        candidate=0,
-        n_matches=n_matches,
-        n_inliers=int(inliers.sum()),
-        agreement=round(agreement(s, R, t), 4),
+    rows.append(
+        evaluate(
+            "ransac", s, R, t, 1.0, candidate=0, n_matches=n_matches, n_inliers=int(inliers.sum())
+        )
     )
-    rows.append(row)
 
+    # 3. fine: geometric ICP on every candidate
     refined = []
     for c, (s, R, t, inliers) in enumerate(cands):
-        R2, t2, _, kept = icp_rigid(src_xyz, dst_xyz, s, R, t, icp_dist * diag)
-        a = agreement(s, R2, t2)
-        refined.append((a, c, s, R, t, R2, t2, inliers, kept))
-        row = stage_metrics(f"candidate{c}+icp", src_xyz, dst_tree, s, R2, t2, diag, matches)
-        row.update(
+        R2, t2, a, _, kept, j = icp_rigid(
+            src_xyz,
+            dst_xyz,
+            s,
+            R,
+            t,
+            o["icp_dist"] * diag,
+            src_normals=src_n,
+            dst_normals=dst_n,
+        )
+        row = evaluate(
+            f"candidate{c}+icp",
+            s,
+            R2,
+            t2,
+            a,
+            j,
             candidate=c,
             n_matches=n_matches,
             n_inliers=int(inliers.sum()),
             icp_kept=round(kept, 3),
-            agreement=round(a, 4),
         )
         rows.append(row)
+        refined.append((row["agreement"], c, s, R2, t2, a, j, inliers, kept, (s, R, t)))
+    refined.sort(key=lambda r: -r[0])
 
-    a, c, s, R, t, R2, t2, inliers, kept = max(refined, key=lambda r: r[0])
-    row = stage_metrics("selected", src_xyz, dst_tree, s, R2, t2, diag, matches)
-    row.update(
-        candidate=c,
-        n_matches=n_matches,
-        n_inliers=int(inliers.sum()),
-        icp_kept=round(kept, 3),
-        agreement=round(a, 4),
+    # depth factor: restart the ICP of the best few candidates from several depth factors and let
+    # it fit the factor; the pose and the factor are coupled, so a single start from 1.0 stops
+    # short when the relief is far too deep or too shallow
+    if o["depth_scale"]:
+        with_depth = []
+        for _agree, c, s, R, t, _a, _j, inliers, _kept, coarse in refined[: o["n_depth"]]:
+            for a0 in o["depth_grid"]:
+                R2, t2, a, _, kept, j = icp_rigid(
+                    src_xyz,
+                    dst_xyz,
+                    s,
+                    R,
+                    t,
+                    o["icp_dist"] * diag,
+                    src_normals=src_n,
+                    dst_normals=dst_n,
+                    depth_scale=True,
+                    a=a0,
+                )
+                row = evaluate(
+                    f"candidate{c}+icp+depth{a0:g}",
+                    s,
+                    R2,
+                    t2,
+                    a,
+                    j,
+                    candidate=c,
+                    n_matches=n_matches,
+                    n_inliers=int(inliers.sum()),
+                    icp_kept=round(kept, 3),
+                )
+                rows.append(row)
+                with_depth.append((row["agreement"], c, s, R2, t2, a, j, inliers, kept, coarse))
+        refined = sorted(with_depth + refined, key=lambda r: -r[0])
+
+    # feature-guided ICP on the best few
+    if o["refine"] == "joint":
+        joint = []
+        for _agree, c, s, R, t, a, _j, inliers, _kept, coarse in refined[: o["n_joint"]]:
+            s2, R2, t2, a2, _, kept2, j2 = icp_joint(
+                src_xyz,
+                dst_xyz,
+                S,
+                s,
+                R,
+                t,
+                diag,
+                scale_range=scale_range,
+                refit_scale=o["joint_refit_scale"],
+                src_normals=src_n,
+                dst_normals=dst_n,
+                depth_scale=o["depth_scale"],
+                a=a,
+            )
+            row = evaluate(
+                f"candidate{c}+joint",
+                s2,
+                R2,
+                t2,
+                a2,
+                j2,
+                candidate=c,
+                n_matches=n_matches,
+                n_inliers=int(inliers.sum()),
+                icp_kept=round(kept2, 3),
+            )
+            rows.append(row)
+            joint.append((row["agreement"], c, s2, R2, t2, a2, j2, inliers, kept2, coarse))
+        # the geometric results stay in the pool: the joint step must earn its place
+        refined = sorted(joint + refined, key=lambda r: -r[0])
+
+    # 4. select
+    agree, c, s, R, t, a, j, inliers, kept, coarse = refined[0]
+    rows.append(
+        evaluate(
+            "selected",
+            s,
+            R,
+            t,
+            a,
+            j,
+            candidate=c,
+            n_matches=n_matches,
+            n_inliers=int(inliers.sum()),
+            icp_kept=round(kept, 3),
+        )
     )
-    rows.append(row)
 
-    # baseline without features: same size and centre, no rotation
+    # 5. baseline without features: same size and centre, no rotation
     s0 = ratio
-    R0 = np.eye(3)
     t0 = dst_xyz.mean(0) - s0 * src_xyz.mean(0)
-    R1, t1, _, kept1 = icp_rigid(src_xyz, dst_xyz, s0, R0, t0, icp_dist * diag)
-    row = stage_metrics("baseline_icp_no_features", src_xyz, dst_tree, s0, R1, t1, diag, matches)
-    row.update(icp_kept=round(kept1, 3), agreement=round(agreement(s0, R1, t1), 4))
-    rows.append(row)
+    R1, t1, a1, _, kept1, j1 = icp_rigid(
+        src_xyz,
+        dst_xyz,
+        s0,
+        np.eye(3),
+        t0,
+        o["icp_dist"] * diag,
+        src_normals=src_n,
+        dst_normals=dst_n,
+        depth_scale=o["depth_scale"],
+    )
+    rows.append(evaluate("baseline_icp_no_features", s0, R1, t1, a1, j1, icp_kept=round(kept1, 3)))
 
     return dict(
         diag=diag,
         matches=(i, k, sim),
         inliers=inliers,
         selected=c,
-        coarse=(s, R, t),
-        fine=(s, R2, t2),
-        baseline=(s0, R1, t1),
+        coarse=coarse,
+        fine=(s, R, t, a),
+        assign=j,
+        feature_nn=S.argmax(axis=1),
+        baseline=(s0, R1, t1, a1),
         rows=rows,
+        options=o,
     )
+
+
+FIELDS = [
+    "stage", "candidate", "scale", "depth_factor", "n_matches", "n_inliers", "icp_kept",
+    "agreement", "part_agreement", "rms_to_target", "median_to_target", "frac_within_2pct",
+    "match_median", "match_within_5pct", "rot_err_deg", "scale_ratio", "pos_err_median",
+    "corr_acc_1pct", "corr_acc_5pct", "corr_median",
+]  # fmt: skip
+
+
+def write_rows(path, rows):
+    with open(path, "w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=FIELDS, extrasaction="ignore")
+        w.writeheader()
+        w.writerows(rows)
 
 
 def main():
@@ -435,106 +807,91 @@ def main():
     )
     ap.add_argument("--source", required=True, help="features of the partial mesh (.npz)")
     ap.add_argument("--target", required=True, help="features of the full mesh (.npz)")
-    ap.add_argument("--source_mesh", help="the partial mesh file, to write it transformed")
-    ap.add_argument("--target_mesh", help="the full mesh file, copied next to the outputs")
+    ap.add_argument("--source_mesh", help="the partial mesh file (normals, transformed output)")
+    ap.add_argument(
+        "--target_mesh", help="the full mesh file (normals, copied next to the outputs)"
+    )
+    ap.add_argument("--gt", help="_gt.npz from make_partial_mesh.py for ground-truth columns")
     ap.add_argument("--out_dir", required=True)
-    ap.add_argument(
-        "--inlier_dist",
-        type=float,
-        default=0.05,
-        help="RANSAC inlier distance, fraction of the target diagonal",
-    )
-    ap.add_argument(
-        "--icp_dist",
-        type=float,
-        default=0.05,
-        help="ICP pairing distance, fraction of the target diagonal",
-    )
-    ap.add_argument("--ransac_iters", type=int, default=5000)
-    ap.add_argument(
-        "--matches",
-        choices=["both", "mutual"],
-        default="both",
-        help="both: best match of every point in both directions; mutual: mutual best only",
-    )
-    ap.add_argument(
-        "--candidates", type=int, default=8, help="RANSAC hypotheses refined and scored"
-    )
-    ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--feature", choices=["full", "diffusion", "dino"], default="full")
+    ap.add_argument("--matches", choices=["both", "mutual"], default=DEFAULTS["match_mode"])
+    ap.add_argument("--consensus", action="store_true", help="local-consensus match filter")
+    ap.add_argument("--inlier_dist", type=float, default=DEFAULTS["inlier_dist"])
+    ap.add_argument("--icp_dist", type=float, default=DEFAULTS["icp_dist"])
+    ap.add_argument("--ransac_iters", type=int, default=DEFAULTS["n_iter"])
+    ap.add_argument("--seeds", type=int, nargs="+", default=list(DEFAULTS["seeds"]))
+    ap.add_argument("--candidates", type=int, default=DEFAULTS["n_candidates"])
+    ap.add_argument("--refine", choices=["icp", "joint"], default=DEFAULTS["refine"])
+    ap.add_argument("--normals", action="store_true", help="reject ICP pairs with opposite normals")
+    ap.add_argument("--depth_scale", action="store_true", help="also fit a depth factor on z")
+    ap.add_argument("--parts", type=int, default=DEFAULTS["n_parts"])
     args = ap.parse_args()
 
-    src_xyz, src_feat, src_col, src_meta = load_features(args.source)
-    dst_xyz, dst_feat, dst_col, dst_meta = load_features(args.target)
-    print(f"source {len(src_xyz)} points, target {len(dst_xyz)} points")
+    src = load_features(args.source, args.feature, args.source_mesh)
+    dst = load_features(args.target, args.feature, args.target_mesh)
+    gt = dict(np.load(args.gt, allow_pickle=False)) if args.gt else None
+    print(f"source {len(src['xyz'])} points, target {len(dst['xyz'])} points")
 
     res = register(
-        src_xyz,
-        src_feat,
-        dst_xyz,
-        dst_feat,
+        src,
+        dst,
+        gt,
         inlier_dist=args.inlier_dist,
         icp_dist=args.icp_dist,
         n_iter=args.ransac_iters,
-        seed=args.seed,
+        seeds=tuple(args.seeds),
         match_mode=args.matches,
+        consensus=args.consensus,
         n_candidates=args.candidates,
+        refine=args.refine,
+        normals=args.normals,
+        depth_scale=args.depth_scale,
+        n_parts=args.parts,
     )
-    i, k, sim = res["matches"]
-    s, R, t = res["fine"]
+    s, R, t, a = res["fine"]
     os.makedirs(args.out_dir, exist_ok=True)
-
-    fields = [
-        "stage",
-        "candidate",
-        "scale",
-        "n_matches",
-        "n_inliers",
-        "icp_kept",
-        "agreement",
-        "rms_to_target",
-        "median_to_target",
-        "frac_within_2pct",
-        "match_median",
-        "match_within_5pct",
-    ]
-    with open(os.path.join(args.out_dir, "metrics.csv"), "w", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=fields)
-        w.writeheader()
-        w.writerows(res["rows"])
+    write_rows(os.path.join(args.out_dir, "metrics.csv"), res["rows"])
     for row in res["rows"]:
-        print(row)
+        print({k: v for k, v in row.items() if v is not None})
 
+    opts = {k: (list(v) if isinstance(v, tuple) else v) for k, v in res["options"].items()}
     with open(os.path.join(args.out_dir, "transform.json"), "w") as f:
         json.dump(
             dict(
                 source=args.source,
                 target=args.target,
+                feature=args.feature,
                 scale=s,
                 rotation=R.tolist(),
                 translation=t.tolist(),
-                matrix=to_matrix(s, R, t).tolist(),
+                depth_factor=a,
+                matrix=to_matrix(s, R, t, a).tolist(),
                 coarse_matrix=to_matrix(*res["coarse"]).tolist(),
                 selected_candidate=res["selected"],
-                source_meta=src_meta,
-                target_meta=dst_meta,
-                inlier_dist=args.inlier_dist,
-                icp_dist=args.icp_dist,
-                matches=args.matches,
-                candidates=args.candidates,
-                seed=args.seed,
+                options=opts,
+                source_meta=src["meta"],
+                target_meta=dst["meta"],
             ),
             f,
             indent=1,
         )
+    np.savez_compressed(
+        os.path.join(args.out_dir, "correspondences.npz"),
+        source_idx=src["idx"],
+        target_idx=dst["idx"],
+        registered=res["assign"],
+        feature_nn=res["feature_nn"],
+    )
 
     # point clouds and meshes for MeshLab
-    aligned = transform(src_xyz, s, R, t)
+    src_xyz, dst_xyz = src["xyz"], dst["xyz"]
+    aligned = transform(apply_depth(src_xyz, a), s, R, t)
     if args.source_mesh:
         save_mesh_transformed(
-            os.path.join(args.out_dir, "aligned_source.ply"), args.source_mesh, s, R, t
+            os.path.join(args.out_dir, "aligned_source.ply"), args.source_mesh, s, R, t, a
         )
     else:
-        save_points(os.path.join(args.out_dir, "aligned_source.ply"), aligned, src_col)
+        save_points(os.path.join(args.out_dir, "aligned_source.ply"), aligned, src["colors"])
     if args.target_mesh:
         import trimesh
 
@@ -542,44 +899,46 @@ def main():
             os.path.join(args.out_dir, "target.ply")
         )
     else:
-        save_points(os.path.join(args.out_dir, "target.ply"), dst_xyz, dst_col)
+        save_points(os.path.join(args.out_dir, "target.ply"), dst_xyz, dst["colors"])
 
     # correspondence colours: source by position, target by its best-matching source point
     src_pc = position_colors(src_xyz)
-    t2s, _ = nearest_in_feature_space(dst_feat, src_feat)
+    t2s = similarity_matrix(dst["feat"], src["feat"]).argmax(axis=1)
     save_points(os.path.join(args.out_dir, "correspondence_source.ply"), src_xyz, src_pc)
     save_points(os.path.join(args.out_dir, "correspondence_target.ply"), dst_xyz, src_pc[t2s])
+    # albedo transfer: through features only, and through the registration (nearest aligned source
+    # point, only where the source covers the target)
+    src_col = src["colors"]
+    grey = np.full((len(dst_xyz), 3), 170, np.uint8)
+    reg_col = grey.copy()
+    d_t, near_src = cKDTree(aligned).query(dst_xyz)
+    covered = d_t < args.icp_dist * res["diag"]
     if src_col is not None:
         save_points(
             os.path.join(args.out_dir, "target_from_source_colors.ply"), dst_xyz, src_col[t2s]
         )
+        reg_col[covered] = src_col[near_src[covered]]
+        save_points(
+            os.path.join(args.out_dir, "target_from_source_colors_registered.ply"), dst_xyz, reg_col
+        )
 
-    grey = np.full((len(dst_xyz), 3), 170, np.uint8)
     red = np.full((len(src_xyz), 3), (220, 60, 60), np.uint8)
-    s0, R1, t1 = res["baseline"]
+    s0, R1, t1, a1 = res["baseline"]
     sc, Rc, tc = res["coarse"]
+    centred = transform(src_xyz, s0, np.eye(3), dst_xyz.mean(0) - s0 * src_xyz.mean(0))
+    coarse = transform(src_xyz, sc, Rc, tc)
+    base = transform(apply_depth(src_xyz, a1), s0, R1, t1)
     panels = [
-        (
-            "source (red) and target, centred",
-            [
-                (dst_xyz, grey, 1),
-                (transform(src_xyz, s0, np.eye(3), dst_xyz.mean(0) - s0 * src_xyz.mean(0)), red, 1),
-            ],
-        ),
-        (
-            "after RANSAC on feature matches",
-            [(dst_xyz, grey, 1), (transform(src_xyz, sc, Rc, tc), red, 1)],
-        ),
-        ("after ICP refinement", [(dst_xyz, grey, 1), (aligned, red, 1)]),
-        (
-            "baseline ICP without features",
-            [(dst_xyz, grey, 1), (transform(src_xyz, s0, R1, t1), red, 1)],
-        ),
+        ("source (red) and target, centred", [(dst_xyz, grey, 1), (centred, red, 1)]),
+        ("after RANSAC on feature matches", [(dst_xyz, grey, 1), (coarse, red, 1)]),
+        (f"selected after {args.refine} refinement", [(dst_xyz, grey, 1), (aligned, red, 1)]),
+        ("baseline ICP without features", [(dst_xyz, grey, 1), (base, red, 1)]),
         ("correspondence colours: source", [(src_xyz, src_pc, 2)]),
         ("correspondence colours: target", [(dst_xyz, src_pc[t2s], 2)]),
     ]
     if src_col is not None:
-        panels.append(("target with source colours", [(dst_xyz, src_col[t2s], 2)]))
+        panels.append(("target with source colours (features)", [(dst_xyz, src_col[t2s], 2)]))
+        panels.append(("target with source colours (registered)", [(dst_xyz, reg_col, 2)]))
     save_preview(os.path.join(args.out_dir, "preview.png"), panels)
     print("saved", args.out_dir)
 
