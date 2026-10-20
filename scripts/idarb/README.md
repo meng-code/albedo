@@ -22,6 +22,9 @@ Scripts we added around IDArb (whose code is in `third_party/IDArb/`).
 | `poisson_on_depth_points.py` | laptop | Experiment: screened Poisson on points taken straight from the depth map, compared with the other variants (not adopted, see `docs/decisions.md`) |
 | `diff3f_features.py` | server | Diff3F semantic feature vector for every (sampled) vertex of a mesh → `.npz` (section 5) |
 | `register_partial.py` | laptop or server | Registers a partial mesh to a full mesh with those features: feature matches → RANSAC similarity transform → ICP, with a feature-free ICP baseline (section 5) |
+| `make_partial_mesh.py` | laptop | Cuts the camera-visible part of a full mesh into a synthetic partial mesh with known ground truth (section 5) |
+| `eval_registration.py` | laptop | Runs the registration settings on every pair with feature files → `results/diff3f/ablation.csv` |
+| `render_registration.py` | laptop | Software renders of a registration result folder → `render.png` |
 
 ## 1. Server: image decomposition
 
@@ -383,3 +386,25 @@ the global alignment, because the cartoon head would need a scale below 0.8 and 
 15° (allowing 0.6 and 30°, `v2_piecewise_loose`, accepts transforms that lower the feature
 agreement, so the limits stay). Off by default; the stored cat result was produced with it
 (`aligned_source_piecewise.ply` next to `aligned_source.ply`; for the cow the two are the same).
+
+### More pairs (2026-10-20, server batch 1)
+
+Seven more pairs with the Diff3F sample meshes as targets, run on the server (features with
+`--no_cpu_offload`: 4 to 10 minutes per mesh, 10 to 13 GB) and registered with `--piecewise`.
+Numbers are the `selected` row and, after the arrow, the `piecewise` row of each `metrics.csv`
+(median distance as a fraction of the target diagonal, feature agreement, part agreement).
+`render.png` in each folder shows the aligned source on the target and the painted target
+(`render_registration.py`).
+
+| Pair | Source image → target mesh | Median | Agreement | Part agreement | Remarks |
+|---|---|---|---|---|---|
+| superman_man | superman → man.obj | 0.0277 → 0.0241 | 0.41 → 0.46 | 0.76 → 0.81 | suit, belt, boots and cape colours land on the right parts |
+| superman_posed | superman → posed_human.off (kneeling) | 0.0165 | 0.47 | 0.62 | a different pose still registers; no part was refined |
+| okapi_camel | okapi → camel.obj | 0.0237 | 0.60 | 0.90 | cross-species: dark body and striped legs transfer |
+| okapi1_camel | okapi1 → camel.obj | 0.0189 → 0.0180 | 0.66 → 0.67 | 0.88 → 0.91 | same, second photo |
+| cat5_cat | cat5 → cat.off | 0.0119 | 0.64 → 0.66 | 0.82 → 0.84 | walking pose |
+| cat_lion | cat → lion.off | 0.0154 → 0.0133 | 0.64 | 0.80 → 0.81 | cross-species: the lion gets the Bengal cat's spots |
+| labubu_man | labubu → man.obj | 0.0114 → 0.0107 | 0.32 → 0.34 | 0.60 → 0.67 | toy with a huge head on a human: shirt and trousers land on the body, the head stays uncovered; the low agreement says the features of a plush toy and a human differ, so the distances alone overstate this one |
+
+The camel scale of 50 to 65 is the unit of `camel.obj` (its extent is about 80), not an error.
+`man_full` has 515 vertices without features (surfaces no camera saw) against 2 to 43 elsewhere.

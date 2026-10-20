@@ -182,3 +182,10 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   helpful on the depth-squashed ones and on the cat (median 0.0116 → 0.0099, agreement
   0.689 → 0.707), no change on the cow because its head would need more deformation than the limits
   allow. Kept optional; the next step for such cases is a real non-rigid deformation of the head.
+- **Seven more pairs (server batch 1, same day; `results/diff3f/<pair>/`):** superman → man.obj and
+  posed_human.off, okapi and okapi1 → camel.obj, cat5 → cat.off, cat → lion.off, labubu → man.obj.
+  All register (medians 0.011 to 0.028 of the diagonal; table in `scripts/idarb/README.md`). The
+  cross-species pairs work as the paper claims: the okapi's striped legs land on the camel's legs and
+  the cat's spots on the lion. The toy-to-human pair has a low feature agreement (0.32), so its small
+  distances mean little. Next: chairs, panda, bird and dragon against CC-BY Objaverse meshes
+  (`results/diff3f/targets/`, batch 2).
