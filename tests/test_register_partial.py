@@ -82,8 +82,9 @@ def test_register_end_to_end_on_synthetic_features():
     assert abs(s2 / s - 1) < 0.02
     assert rp.rotation_angle_deg(R, R2) < 2.0
     rows = {r["stage"]: r for r in res["rows"]}
-    assert rows["ransac+icp"]["rms_to_target"] < 0.01
-    assert rows["ransac+icp"]["rms_to_target"] <= rows["baseline_icp_no_features"]["rms_to_target"]
+    assert rows["selected"]["rms_to_target"] < 0.01
+    assert rows["selected"]["rms_to_target"] <= rows["baseline_icp_no_features"]["rms_to_target"]
+    assert rows["selected"]["agreement"] > rows["baseline_icp_no_features"]["agreement"]
 
 
 def test_ransac_rejects_too_few_matches():

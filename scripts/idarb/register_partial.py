@@ -76,6 +76,36 @@ def mutual_matches(fs, ft):
     return i, s2t[i], sim[i]
 
 
+def collect_matches(fs, ft, mode="both", keep_frac=0.5):
+    """Candidate matches for RANSAC. mode "mutual": only mutual nearest neighbours (few, clean).
+    mode "both": every source point with its best target point plus every target point with its
+    best source point, keeping the most similar keep_frac of them (many, with outliers that RANSAC
+    has to reject). Returns source indices, target indices and similarities."""
+    if mode == "mutual":
+        return mutual_matches(fs, ft)
+    s2t, sim_s = nearest_in_feature_space(fs, ft)
+    t2s, sim_t = nearest_in_feature_space(ft, fs)
+    i = np.concatenate([np.arange(len(fs)), t2s])
+    k = np.concatenate([s2t, np.arange(len(ft))])
+    sim = np.concatenate([sim_s, sim_t])
+    _, first = np.unique(np.stack([i, k], axis=1), axis=0, return_index=True)
+    i, k, sim = i[first], k[first], sim[first]
+    keep = sim >= np.quantile(sim, 1.0 - keep_frac)
+    return i[keep], k[keep], sim[keep]
+
+
+def feature_agreement(src_xyz, src_feat, dst_tree, dst_feat, s, R, t, max_dist):
+    """How well a transform agrees with the features: the mean cosine similarity between each
+    source point's feature and the feature of the target point it lands next to. Source points
+    farther than max_dist from the target count as 0. A transform that puts the body on the head
+    scores low here even if it brings many feature matches close together."""
+    p = transform(src_xyz, s, R, t)
+    d, j = dst_tree.query(p)
+    a = np.einsum("ij,ij->i", src_feat, dst_feat[j])
+    a[d > max_dist] = 0.0
+    return float(a.mean())
+
+
 # ------------------------------------------------------------------------------
 # similarity transforms
 # ------------------------------------------------------------------------------
@@ -121,15 +151,26 @@ def umeyama(src, dst, with_scale=True):
     return s, R, t
 
 
-def ransac_similarity(src, dst, inlier_dist, n_iter=5000, seed=0, scale_range=(0.1, 10.0)):
-    """Similarity transform from matched points with outliers. src[i] is supposed to correspond to
-    dst[i]. Returns s, R, t and the boolean inlier mask."""
+def ransac_candidates(
+    src,
+    dst,
+    inlier_dist,
+    n_iter=5000,
+    seed=0,
+    scale_range=(0.1, 10.0),
+    n_keep=8,
+    min_angle_deg=15.0,
+):
+    """RANSAC over matched points with outliers (src[i] is supposed to correspond to dst[i]).
+    Every hypothesis is a similarity transform from 3 matches, scored by the number of matches it
+    brings within inlier_dist. Returns up to n_keep distinct hypotheses as (s, R, t, inlier mask),
+    best first, each refitted on its inliers. Hypotheses whose rotations differ by less than
+    min_angle_deg and whose scales differ by less than 20 % count as the same."""
     rng = np.random.default_rng(seed)
     n = len(src)
     if n < 3:
         raise ValueError("need at least 3 matches")
-    best_count = -1
-    best_inliers = None
+    hyps = []
     for _ in range(n_iter):
         k = rng.choice(n, 3, replace=False)
         a = src[k]
@@ -140,19 +181,41 @@ def ransac_similarity(src, dst, inlier_dist, n_iter=5000, seed=0, scale_range=(0
         if not (scale_range[0] <= s <= scale_range[1]):
             continue
         d = np.linalg.norm(transform(src, s, R, t) - dst, axis=1)
-        inliers = d < inlier_dist
-        count = int(inliers.sum())
-        if count > best_count:
-            best_count = count
-            best_inliers = inliers
-    if best_count < 3:
-        raise RuntimeError("RANSAC found no transform with 3 inliers")
-    inliers = best_inliers
-    for _ in range(3):  # refit on the inliers, then recount
-        s, R, t = umeyama(src[inliers], dst[inliers])
+        count = int((d < inlier_dist).sum())
+        if count >= 3:
+            hyps.append((count, s, R, t))
+    hyps.sort(key=lambda h: -h[0])
+    kept = []
+    for count, s, R, t in hyps:
+        same = any(
+            rotation_angle_deg(R, R2) < min_angle_deg and abs(np.log(s / s2)) < np.log(1.2)
+            for _, s2, R2, _ in kept
+        )
+        if same:
+            continue
+        kept.append((count, s, R, t))
+        if len(kept) == n_keep:
+            break
+    out = []
+    for _, s, R, t in kept:
         d = np.linalg.norm(transform(src, s, R, t) - dst, axis=1)
         inliers = d < inlier_dist
-    return s, R, t, inliers
+        for _ in range(3):  # refit on the inliers, then recount
+            if inliers.sum() < 3:
+                break
+            s, R, t = umeyama(src[inliers], dst[inliers])
+            d = np.linalg.norm(transform(src, s, R, t) - dst, axis=1)
+            inliers = d < inlier_dist
+        out.append((s, R, t, inliers))
+    return out
+
+
+def ransac_similarity(src, dst, inlier_dist, n_iter=5000, seed=0, scale_range=(0.1, 10.0)):
+    """The best RANSAC hypothesis only: s, R, t and the boolean inlier mask."""
+    cands = ransac_candidates(src, dst, inlier_dist, n_iter, seed, scale_range, n_keep=1)
+    if not cands:
+        raise RuntimeError("RANSAC found no transform with 3 inliers")
+    return cands[0]
 
 
 def icp_rigid(src, dst, s, R, t, max_dist, iters=100, tol=1e-7):
@@ -270,40 +333,95 @@ def save_preview(path, panels):
 
 
 def register(
-    src_xyz, src_feat, dst_xyz, dst_feat, inlier_dist=0.05, icp_dist=0.05, n_iter=5000, seed=0
+    src_xyz,
+    src_feat,
+    dst_xyz,
+    dst_feat,
+    inlier_dist=0.05,
+    icp_dist=0.05,
+    n_iter=5000,
+    seed=0,
+    match_mode="both",
+    n_candidates=8,
 ):
-    """The whole pipeline on arrays. Returns a dict with matches, transforms and metric rows."""
+    """The whole pipeline on arrays. Up to n_candidates distinct RANSAC hypotheses are each refined
+    by ICP and scored by feature_agreement; the best score wins ("selected"). The scale is limited
+    to 0.4 to 2.5 times the ratio of the bounding-box diagonals. Returns a dict with matches,
+    transforms and metric rows (one per stage and candidate)."""
     diag = float(np.linalg.norm(dst_xyz.max(0) - dst_xyz.min(0)))
+    src_diag = float(np.linalg.norm(src_xyz.max(0) - src_xyz.min(0)))
     dst_tree = cKDTree(dst_xyz)
-    i, k, sim = mutual_matches(src_feat, dst_feat)
+    i, k, sim = collect_matches(src_feat, dst_feat, match_mode)
     matches = (i, k, dst_xyz)
+    n_matches = int(len(i))
 
-    s, R, t, inliers = ransac_similarity(
-        src_xyz[i], dst_xyz[k], inlier_dist * diag, n_iter=n_iter, seed=seed
+    ratio = diag / src_diag
+    cands = ransac_candidates(
+        src_xyz[i],
+        dst_xyz[k],
+        inlier_dist * diag,
+        n_iter=n_iter,
+        seed=seed,
+        scale_range=(0.4 * ratio, 2.5 * ratio),
+        n_keep=n_candidates,
     )
+    if not cands:
+        raise RuntimeError("RANSAC found no transform with 3 inliers")
+
+    def agreement(s, R, t):
+        return feature_agreement(src_xyz, src_feat, dst_tree, dst_feat, s, R, t, icp_dist * diag)
+
     rows = []
+    s, R, t, inliers = cands[0]
     row = stage_metrics("ransac", src_xyz, dst_tree, s, R, t, diag, matches)
-    row.update(n_matches=int(len(i)), n_inliers=int(inliers.sum()))
+    row.update(
+        candidate=0,
+        n_matches=n_matches,
+        n_inliers=int(inliers.sum()),
+        agreement=round(agreement(s, R, t), 4),
+    )
     rows.append(row)
 
-    R2, t2, _, kept = icp_rigid(src_xyz, dst_xyz, s, R, t, icp_dist * diag)
-    row = stage_metrics("ransac+icp", src_xyz, dst_tree, s, R2, t2, diag, matches)
-    row.update(n_matches=int(len(i)), n_inliers=int(inliers.sum()), icp_kept=round(kept, 3))
+    refined = []
+    for c, (s, R, t, inliers) in enumerate(cands):
+        R2, t2, _, kept = icp_rigid(src_xyz, dst_xyz, s, R, t, icp_dist * diag)
+        a = agreement(s, R2, t2)
+        refined.append((a, c, s, R, t, R2, t2, inliers, kept))
+        row = stage_metrics(f"candidate{c}+icp", src_xyz, dst_tree, s, R2, t2, diag, matches)
+        row.update(
+            candidate=c,
+            n_matches=n_matches,
+            n_inliers=int(inliers.sum()),
+            icp_kept=round(kept, 3),
+            agreement=round(a, 4),
+        )
+        rows.append(row)
+
+    a, c, s, R, t, R2, t2, inliers, kept = max(refined, key=lambda r: r[0])
+    row = stage_metrics("selected", src_xyz, dst_tree, s, R2, t2, diag, matches)
+    row.update(
+        candidate=c,
+        n_matches=n_matches,
+        n_inliers=int(inliers.sum()),
+        icp_kept=round(kept, 3),
+        agreement=round(a, 4),
+    )
     rows.append(row)
 
     # baseline without features: same size and centre, no rotation
-    s0 = diag / float(np.linalg.norm(src_xyz.max(0) - src_xyz.min(0)))
+    s0 = ratio
     R0 = np.eye(3)
     t0 = dst_xyz.mean(0) - s0 * src_xyz.mean(0)
     R1, t1, _, kept1 = icp_rigid(src_xyz, dst_xyz, s0, R0, t0, icp_dist * diag)
     row = stage_metrics("baseline_icp_no_features", src_xyz, dst_tree, s0, R1, t1, diag, matches)
-    row.update(icp_kept=round(kept1, 3))
+    row.update(icp_kept=round(kept1, 3), agreement=round(agreement(s0, R1, t1), 4))
     rows.append(row)
 
     return dict(
         diag=diag,
         matches=(i, k, sim),
         inliers=inliers,
+        selected=c,
         coarse=(s, R, t),
         fine=(s, R2, t2),
         baseline=(s0, R1, t1),
@@ -333,6 +451,15 @@ def main():
         help="ICP pairing distance, fraction of the target diagonal",
     )
     ap.add_argument("--ransac_iters", type=int, default=5000)
+    ap.add_argument(
+        "--matches",
+        choices=["both", "mutual"],
+        default="both",
+        help="both: best match of every point in both directions; mutual: mutual best only",
+    )
+    ap.add_argument(
+        "--candidates", type=int, default=8, help="RANSAC hypotheses refined and scored"
+    )
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
 
@@ -349,6 +476,8 @@ def main():
         icp_dist=args.icp_dist,
         n_iter=args.ransac_iters,
         seed=args.seed,
+        match_mode=args.matches,
+        n_candidates=args.candidates,
     )
     i, k, sim = res["matches"]
     s, R, t = res["fine"]
@@ -356,10 +485,12 @@ def main():
 
     fields = [
         "stage",
+        "candidate",
         "scale",
         "n_matches",
         "n_inliers",
         "icp_kept",
+        "agreement",
         "rms_to_target",
         "median_to_target",
         "frac_within_2pct",
@@ -383,10 +514,13 @@ def main():
                 translation=t.tolist(),
                 matrix=to_matrix(s, R, t).tolist(),
                 coarse_matrix=to_matrix(*res["coarse"]).tolist(),
+                selected_candidate=res["selected"],
                 source_meta=src_meta,
                 target_meta=dst_meta,
                 inlier_dist=args.inlier_dist,
                 icp_dist=args.icp_dist,
+                matches=args.matches,
+                candidates=args.candidates,
                 seed=args.seed,
             ),
             f,
