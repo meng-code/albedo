@@ -83,6 +83,20 @@ for _n, (_src, _dst, _base) in SYNTH.items():
         # scale is wrong by 1/squash (the features stay those of the correct geometry)
         _name = f"{_n}_synth" if _squash == 1.0 else f"{_n}_synth_z{_squash:g}"
         PAIRS.append((_name, _src, _dst, _base + ".ply", _base + "_gt.npz", _squash, _n))
+# the same two deformations built into the mesh before the features were computed
+# (make_partial_mesh.py --depth_factor 0.5 / 2): the true depth factor is 2 and 0.5
+for _d in ("0.5", "2"):
+    PAIRS.append(
+        (
+            f"cow_synth_d{_d}",
+            f"cow_synth_d{_d}_partial.npz",
+            "cow_full.npz",
+            f"results/diff3f/synthetic/cow_synth_d{_d}.ply",
+            f"results/diff3f/synthetic/cow_synth_d{_d}_gt.npz",
+            1.0,
+            "cow",
+        )
+    )
 
 CONFIGS = [
     # name, feature, options for register()

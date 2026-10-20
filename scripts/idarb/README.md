@@ -476,3 +476,26 @@ the target is covered. Two changes:
   tried first, rewards size rather than correctness (it moved the dragon to a worse larger-scale
   solution). With the discount the bird registers at scale 0.98 (part agreement 0.46 → 0.63) and the
   other pairs keep their results.
+
+### Depth factor with features computed on the deformed mesh (2026-10-21)
+
+The earlier depth-factor test squashed the coordinates after the features had been computed.
+`results/diff3f/synthetic/cow_synth_d0.5.ply` and `cow_synth_d2.ply` are cut with the depth already
+halved and doubled, and their Diff3F features come from the deformed meshes (the feature-only
+correspondence drops from 30.5 % to 24 % / 21 % within 1 %, so the squashing does reach the
+features). Ground truth: the depth factor should come out as 2 and 0.5.
+
+| Pair (true factor) | Setting | Factor found | Rotation error | Position error | Correspondences within 1 % |
+|---|---|---|---|---|---|
+| cow_synth_d0.5 (2) | default | 1 | 12.8° | 0.0226 | 15 % |
+| | `--depth_scale` | 1.76 | 2.1° | 0.0062 | 94 % |
+| | `--depth_scale --piecewise` | 1.76 | 2.1° | 0.0046 | 87 % |
+| cow_synth_d2 (0.5) | default | 1 | 16.4° | 0.0288 | 14 % |
+| | `--depth_scale` | 0.65 | 5.5° | 0.0229 | 11 % (99.8 % within 5 %) |
+| | `--depth_scale --piecewise` | 0.65 | 5.5° | 0.0140 | 38 % |
+| cow_synth (1) | `--depth_scale` | 1.00 | 0.1° | 0.0005 | 100 % |
+
+So the depth factor repairs a relief whose depth is off by a factor of two, more completely when the
+relief is too shallow (factor found 1.76 of 2) than when it is too deep (0.65 of 0.5), and does no harm
+when the depth is right. It stays off by default only because on the real, thin cat the agreement cannot
+tell 0.48 from 1.76 (see above); on objects as wide as the cow it is safe to use.

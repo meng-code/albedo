@@ -214,3 +214,8 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   larger): 24 MB for 18 folders instead of 192 MB. The branch history still carries the larger files
   the first result pushes contained (about 180 MB in `diff3f-more-pairs`, `diff3f-more-pairs2` and
   earlier commits); whether to rebuild the branch without them before merging is the owner's call.
+- **Depth factor with ground truth on deformed geometry (2026-10-21, night):** synthetic cow partials
+  cut with the depth halved / doubled and featured as such: `--depth_scale` finds 1.76 (true 2) and
+  0.65 (true 0.5), cutting the rotation error from 12.8° / 16.4° to 2.1° / 5.5° and lifting the
+  correspondences within 1 % from 15 % to 94 % (halved case); harmless when the depth is right.
+  Still optional, because on thin real objects the agreement cannot pick the factor.
