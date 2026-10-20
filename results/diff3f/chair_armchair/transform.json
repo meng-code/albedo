@@ -1,0 +1,142 @@
+{
+ "source": "outputs/diff3f/chair_partial.npz",
+ "target": "outputs/diff3f/armchair_full.npz",
+ "feature": "full",
+ "scale": 1.2487285704175333,
+ "rotation": [
+  [
+   0.9753704087356473,
+   0.16046225661816474,
+   -0.15134209580900868
+  ],
+  [
+   -0.12213456071434742,
+   0.96423959824409,
+   0.23521298063072385
+  ],
+  [
+   0.1836728473181877,
+   -0.21093568066849708,
+   0.9600887582817265
+  ]
+ ],
+ "translation": [
+  -0.03790267259564982,
+  0.0009178085154852994,
+  -0.016381121864659634
+ ],
+ "depth_factor": 1.0,
+ "matrix": [
+  [
+   1.2179728961280298,
+   0.2003738043127722,
+   -0.18898519894357677,
+   -0.03790267259564982
+  ],
+  [
+   -0.15251291539940048,
+   1.204073535055319,
+   0.29371716904665074,
+   0.0009178085154852994
+  ],
+  [
+   0.2293575320561584,
+   -0.26340141097122166,
+   1.1988902626030848,
+   -0.016381121864659634
+  ],
+  [
+   0.0,
+   0.0,
+   0.0,
+   1.0
+  ]
+ ],
+ "coarse_matrix": [
+  [
+   1.2158836147460235,
+   0.10248670484476917,
+   -0.2654176959044378,
+   -0.04141602086405935
+  ],
+  [
+   -0.06265264944203464,
+   1.2327525554316825,
+   0.1889942463980459,
+   0.03787498079587026
+  ],
+  [
+   0.27753328356622875,
+   -0.17070634136941987,
+   1.205469893488108,
+   -0.0505053849865513
+  ],
+  [
+   0.0,
+   0.0,
+   0.0,
+   1.0
+  ]
+ ],
+ "selected_candidate": 1,
+ "options": {
+  "inlier_dist": 0.05,
+  "icp_dist": 0.05,
+  "n_iter": 5000,
+  "seeds": [
+   0
+  ],
+  "match_mode": "both",
+  "consensus": false,
+  "n_candidates": 8,
+  "refine": "icp",
+  "n_joint": 3,
+  "joint_refit_scale": false,
+  "depth_grid": [
+   0.5,
+   0.7,
+   1.0,
+   1.4,
+   2.0
+  ],
+  "n_depth": 3,
+  "piecewise": true,
+  "part_scale_range": [
+   0.8,
+   1.25
+  ],
+  "part_max_rot": 15.0,
+  "blend_sigma": 0.05,
+  "normals": false,
+  "depth_scale": false,
+  "n_parts": 6
+ },
+ "source_meta": {
+  "command": "scripts/idarb/diff3f_features.py --mesh outputs/mesh_depth/chair/relief.ply --prompt chair --front_only --no_cpu_offload --out outputs/diff3f/chair_partial.npz",
+  "commit": "085b1c8",
+  "mesh": "outputs/mesh_depth/chair/relief.ply",
+  "prompt": "chair",
+  "num_views": 100,
+  "front_only": true,
+  "tolerance": 0.004,
+  "seed": 0,
+  "sd_repo": "stable-diffusion-v1-5/stable-diffusion-v1-5",
+  "n_vertices": 61146,
+  "n_features": 15000,
+  "seconds": 535.1
+ },
+ "target_meta": {
+  "command": "scripts/idarb/diff3f_features.py --mesh results/diff3f/targets/armchair.ply --prompt chair --no_cpu_offload --out outputs/diff3f/armchair_full.npz",
+  "commit": "085b1c8",
+  "mesh": "results/diff3f/targets/armchair.ply",
+  "prompt": "chair",
+  "num_views": 100,
+  "front_only": false,
+  "tolerance": 0.004,
+  "seed": 0,
+  "sd_repo": "stable-diffusion-v1-5/stable-diffusion-v1-5",
+  "n_vertices": 5442,
+  "n_features": 5442,
+  "seconds": 274.8
+ }
+}

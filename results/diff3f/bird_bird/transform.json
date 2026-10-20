@@ -1,0 +1,142 @@
+{
+ "source": "outputs/diff3f/bird_partial.npz",
+ "target": "outputs/diff3f/bird_full.npz",
+ "feature": "full",
+ "scale": 0.4636107237471733,
+ "rotation": [
+  [
+   0.49890743649915986,
+   -0.14258349952606422,
+   0.8548457846119013
+  ],
+  [
+   0.44438973355758443,
+   0.8889189763732959,
+   -0.11108923508635105
+  ],
+  [
+   -0.7440491479159527,
+   0.43530793595609096,
+   0.5068509311219543
+  ]
+ ],
+ "translation": [
+  0.4357692417862668,
+  -0.03548974202717269,
+  0.3273623962243534
+ ],
+ "depth_factor": 1.0,
+ "matrix": [
+  [
+   0.23129883771822243,
+   -0.06610323940968338,
+   0.39631567289614383,
+   0.4357692417862668
+  ],
+  [
+   0.20602384600044524,
+   0.4121123699890202,
+   -0.05150216067890309,
+   -0.03548974202717269
+  ],
+  [
+   -0.34494916396878245,
+   0.2018134272414915,
+   0.23498152700937794,
+   0.3273623962243534
+  ],
+  [
+   0.0,
+   0.0,
+   0.0,
+   1.0
+  ]
+ ],
+ "coarse_matrix": [
+  [
+   0.20353675233367266,
+   -0.05634715478837946,
+   0.4127138133986956,
+   0.43517943977259105
+  ],
+  [
+   0.15142999032112966,
+   0.4379293729736049,
+   -0.014890449679773219,
+   -3.0508236036320968e-05
+  ],
+  [
+   -0.388042074592668,
+   0.1413427239286752,
+   0.21066676508556956,
+   0.3258780078820081
+  ],
+  [
+   0.0,
+   0.0,
+   0.0,
+   1.0
+  ]
+ ],
+ "selected_candidate": 0,
+ "options": {
+  "inlier_dist": 0.05,
+  "icp_dist": 0.05,
+  "n_iter": 5000,
+  "seeds": [
+   0
+  ],
+  "match_mode": "both",
+  "consensus": false,
+  "n_candidates": 8,
+  "refine": "icp",
+  "n_joint": 3,
+  "joint_refit_scale": false,
+  "depth_grid": [
+   0.5,
+   0.7,
+   1.0,
+   1.4,
+   2.0
+  ],
+  "n_depth": 3,
+  "piecewise": true,
+  "part_scale_range": [
+   0.8,
+   1.25
+  ],
+  "part_max_rot": 15.0,
+  "blend_sigma": 0.05,
+  "normals": false,
+  "depth_scale": false,
+  "n_parts": 6
+ },
+ "source_meta": {
+  "command": "scripts/idarb/diff3f_features.py --mesh outputs/mesh_depth/bird/relief.ply --prompt bird --front_only --no_cpu_offload --out outputs/diff3f/bird_partial.npz",
+  "commit": "085b1c8",
+  "mesh": "outputs/mesh_depth/bird/relief.ply",
+  "prompt": "bird",
+  "num_views": 100,
+  "front_only": true,
+  "tolerance": 0.004,
+  "seed": 0,
+  "sd_repo": "stable-diffusion-v1-5/stable-diffusion-v1-5",
+  "n_vertices": 49622,
+  "n_features": 15000,
+  "seconds": 493.4
+ },
+ "target_meta": {
+  "command": "scripts/idarb/diff3f_features.py --mesh results/diff3f/targets/bird.ply --prompt bird --no_cpu_offload --out outputs/diff3f/bird_full.npz",
+  "commit": "085b1c8",
+  "mesh": "results/diff3f/targets/bird.ply",
+  "prompt": "bird",
+  "num_views": 100,
+  "front_only": false,
+  "tolerance": 0.004,
+  "seed": 0,
+  "sd_repo": "stable-diffusion-v1-5/stable-diffusion-v1-5",
+  "n_vertices": 20006,
+  "n_features": 15000,
+  "seconds": 337.7
+ }
+}

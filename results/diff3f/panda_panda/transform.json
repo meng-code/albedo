@@ -1,0 +1,142 @@
+{
+ "source": "outputs/diff3f/panda_partial.npz",
+ "target": "outputs/diff3f/panda_full.npz",
+ "feature": "full",
+ "scale": 0.8085928236987848,
+ "rotation": [
+  [
+   0.9998320505843161,
+   0.017812570672664407,
+   -0.004310794635966184
+  ],
+  [
+   -0.016787771100257143,
+   0.9845249486652778,
+   0.17443851695401652
+  ],
+  [
+   0.007351283278959324,
+   -0.17433685147341252,
+   0.9846586316345831
+  ]
+ ],
+ "translation": [
+  -0.0031817913198279,
+  0.07693568785416571,
+  0.2011433169467588
+ ],
+ "depth_factor": 1.0,
+ "matrix": [
+  [
+   0.8084570210065184,
+   0.014403116817543875,
+   -0.003485677607081472,
+   -0.0031817913198279
+  ],
+  [
+   -0.013574471237565779,
+   0.7960798082431582,
+   0.14104973298567658,
+   0.07693568785416571
+  ],
+  [
+   0.005944194904343381,
+   -0.14096752700764228,
+   0.7961879033327892,
+   0.2011433169467588
+  ],
+  [
+   0.0,
+   0.0,
+   0.0,
+   1.0
+  ]
+ ],
+ "coarse_matrix": [
+  [
+   0.8085103974727349,
+   0.010542089364879903,
+   -0.00470702320761612,
+   -0.002073526545093201
+  ],
+  [
+   -0.009650563321844066,
+   0.7980598869444726,
+   0.12972909471248448,
+   0.03896863540864248
+  ],
+  [
+   0.006337061087383497,
+   -0.12965969203716543,
+   0.7981043543639995,
+   0.20365333184967832
+  ],
+  [
+   0.0,
+   0.0,
+   0.0,
+   1.0
+  ]
+ ],
+ "selected_candidate": 0,
+ "options": {
+  "inlier_dist": 0.05,
+  "icp_dist": 0.05,
+  "n_iter": 5000,
+  "seeds": [
+   0
+  ],
+  "match_mode": "both",
+  "consensus": false,
+  "n_candidates": 8,
+  "refine": "icp",
+  "n_joint": 3,
+  "joint_refit_scale": false,
+  "depth_grid": [
+   0.5,
+   0.7,
+   1.0,
+   1.4,
+   2.0
+  ],
+  "n_depth": 3,
+  "piecewise": true,
+  "part_scale_range": [
+   0.8,
+   1.25
+  ],
+  "part_max_rot": 15.0,
+  "blend_sigma": 0.05,
+  "normals": false,
+  "depth_scale": false,
+  "n_parts": 6
+ },
+ "source_meta": {
+  "command": "scripts/idarb/diff3f_features.py --mesh outputs/mesh_depth/panda/relief.ply --prompt panda --front_only --no_cpu_offload --out outputs/diff3f/panda_partial.npz",
+  "commit": "085b1c8",
+  "mesh": "outputs/mesh_depth/panda/relief.ply",
+  "prompt": "panda",
+  "num_views": 100,
+  "front_only": true,
+  "tolerance": 0.004,
+  "seed": 0,
+  "sd_repo": "stable-diffusion-v1-5/stable-diffusion-v1-5",
+  "n_vertices": 80502,
+  "n_features": 15000,
+  "seconds": 610.9
+ },
+ "target_meta": {
+  "command": "scripts/idarb/diff3f_features.py --mesh results/diff3f/targets/panda.ply --prompt panda --no_cpu_offload --out outputs/diff3f/panda_full.npz",
+  "commit": "085b1c8",
+  "mesh": "results/diff3f/targets/panda.ply",
+  "prompt": "panda",
+  "num_views": 100,
+  "front_only": false,
+  "tolerance": 0.004,
+  "seed": 0,
+  "sd_repo": "stable-diffusion-v1-5/stable-diffusion-v1-5",
+  "n_vertices": 20002,
+  "n_features": 15000,
+  "seconds": 324.3
+ }
+}

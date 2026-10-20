@@ -1,0 +1,142 @@
+{
+ "source": "outputs/diff3f/fire_dragon_partial.npz",
+ "target": "outputs/diff3f/lizard_full.npz",
+ "feature": "full",
+ "scale": 0.587387399601633,
+ "rotation": [
+  [
+   0.9402925273128641,
+   -0.054824157452530595,
+   0.3359230192160213
+  ],
+  [
+   -0.050616608208952335,
+   0.9534449042643988,
+   0.29728904033898357
+  ],
+  [
+   -0.3365827120530833,
+   -0.29654194693478436,
+   0.893742105786182
+  ]
+ ],
+ "translation": [
+  0.07297479589801692,
+  0.21623308720904713,
+  0.2366846736131668
+ ],
+ "depth_factor": 1.0,
+ "matrix": [
+  [
+   0.5523159824831507,
+   -0.032203019281392437,
+   0.19731694872362815,
+   0.07297479589801692
+  ],
+  [
+   -0.029731557872511184,
+   0.5600415229792931,
+   0.17462383633478054,
+   0.21623308720904713
+  ],
+  [
+   -0.19770444398372583,
+   -0.17418500308282842,
+   0.524972851432233,
+   0.2366846736131668
+  ],
+  [
+   0.0,
+   0.0,
+   0.0,
+   1.0
+  ]
+ ],
+ "coarse_matrix": [
+  [
+   0.4017920939244837,
+   -0.11642241866240063,
+   0.41235044671170673,
+   0.09062273214593015
+  ],
+  [
+   0.03343573265066505,
+   0.5720839424583334,
+   0.12894173790597085,
+   0.23851901066375591
+  ],
+  [
+   -0.4271640460673873,
+   -0.06472820424587365,
+   0.39795112078396294,
+   0.23264809471612455
+  ],
+  [
+   0.0,
+   0.0,
+   0.0,
+   1.0
+  ]
+ ],
+ "selected_candidate": 2,
+ "options": {
+  "inlier_dist": 0.05,
+  "icp_dist": 0.05,
+  "n_iter": 5000,
+  "seeds": [
+   0
+  ],
+  "match_mode": "both",
+  "consensus": false,
+  "n_candidates": 8,
+  "refine": "icp",
+  "n_joint": 3,
+  "joint_refit_scale": false,
+  "depth_grid": [
+   0.5,
+   0.7,
+   1.0,
+   1.4,
+   2.0
+  ],
+  "n_depth": 3,
+  "piecewise": true,
+  "part_scale_range": [
+   0.8,
+   1.25
+  ],
+  "part_max_rot": 15.0,
+  "blend_sigma": 0.05,
+  "normals": false,
+  "depth_scale": false,
+  "n_parts": 6
+ },
+ "source_meta": {
+  "command": "scripts/idarb/diff3f_features.py --mesh outputs/mesh_depth/fire_dragon/relief.ply --prompt cartoon dragon --front_only --no_cpu_offload --out outputs/diff3f/fire_dragon_partial.npz",
+  "commit": "085b1c8",
+  "mesh": "outputs/mesh_depth/fire_dragon/relief.ply",
+  "prompt": "cartoon dragon",
+  "num_views": 100,
+  "front_only": true,
+  "tolerance": 0.004,
+  "seed": 0,
+  "sd_repo": "stable-diffusion-v1-5/stable-diffusion-v1-5",
+  "n_vertices": 78668,
+  "n_features": 15000,
+  "seconds": 587.2
+ },
+ "target_meta": {
+  "command": "scripts/idarb/diff3f_features.py --mesh results/diff3f/targets/lizard.ply --prompt cartoon lizard --no_cpu_offload --out outputs/diff3f/lizard_full.npz",
+  "commit": "085b1c8",
+  "mesh": "results/diff3f/targets/lizard.ply",
+  "prompt": "cartoon lizard",
+  "num_views": 100,
+  "front_only": false,
+  "tolerance": 0.004,
+  "seed": 0,
+  "sd_repo": "stable-diffusion-v1-5/stable-diffusion-v1-5",
+  "n_vertices": 20032,
+  "n_features": 15000,
+  "seconds": 333.9
+ }
+}
