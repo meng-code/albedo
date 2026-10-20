@@ -25,24 +25,52 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import register_partial as rp  # noqa: E402
 
-MESHES = dict(cow="third_party/Diff3F/meshes/cow.obj", cat="third_party/Diff3F/meshes/cat.off")
+MESHES = dict(
+    cow="third_party/Diff3F/meshes/cow.obj",
+    cat="third_party/Diff3F/meshes/cat.off",
+    man="third_party/Diff3F/meshes/man.obj",
+    posed_human="third_party/Diff3F/meshes/posed_human.off",
+    camel="third_party/Diff3F/meshes/camel.obj",
+    lion="third_party/Diff3F/meshes/lion.off",
+)
 
 SYNTH = dict(
     cow=("cow_synth_partial.npz", "cow_full.npz", "results/diff3f/synthetic/cow_synth"),
     cat=("cat_synth_partial.npz", "cat_full.npz", "results/diff3f/synthetic/cat_synth"),
 )
 
+# real pairs: name, source image, target mesh key
+REAL = [
+    ("cow", "cow", "cow"),
+    ("cat", "cat", "cat"),
+    ("superman_man", "superman", "man"),
+    ("superman_posed", "superman", "posed_human"),
+    ("okapi_camel", "okapi", "camel"),
+    ("okapi1_camel", "okapi1", "camel"),
+    ("cat5_cat", "cat5", "cat"),
+    ("cat_lion", "cat", "lion"),
+    ("labubu_man", "labubu", "man"),
+]
+
 PAIRS = [
-    # name, source npz, target npz, source mesh, gt npz, z squash of the source
-    ("cow", "cow_partial.npz", "cow_full.npz", "outputs/mesh_depth/cow/relief.ply", None, 1.0),
-    ("cat", "cat_partial.npz", "cat_full.npz", "outputs/mesh_depth/cat/relief.ply", None, 1.0),
+    # name, source npz, target npz, source mesh, gt npz, z squash of the source, target mesh key
+    (
+        _n,
+        f"{_s}_partial.npz",
+        f"{_t}_full.npz",
+        f"outputs/mesh_depth/{_s}/relief.ply",
+        None,
+        1.0,
+        _t,
+    )
+    for _n, _s, _t in REAL
 ]
 for _n, (_src, _dst, _base) in SYNTH.items():
     for _squash in (1.0, 0.5, 2.0):
         # squash != 1 multiplies the source's z after loading, to imitate a relief mesh whose depth
         # scale is wrong by 1/squash (the features stay those of the correct geometry)
         _name = f"{_n}_synth" if _squash == 1.0 else f"{_n}_synth_z{_squash:g}"
-        PAIRS.append((_name, _src, _dst, _base + ".ply", _base + "_gt.npz", _squash))
+        PAIRS.append((_name, _src, _dst, _base + ".ply", _base + "_gt.npz", _squash, _n))
 
 CONFIGS = [
     # name, feature, options for register()
@@ -84,7 +112,7 @@ def main():
     args = ap.parse_args()
 
     rows = []
-    for name, src_file, dst_file, src_mesh, gt_file, squash in PAIRS:
+    for name, src_file, dst_file, src_mesh, gt_file, squash, target_key in PAIRS:
         if args.pairs and name not in args.pairs:
             continue
         src_path = os.path.join(args.feature_dir, src_file)
@@ -93,7 +121,7 @@ def main():
             print(f"{name}: feature files missing, skipped")
             continue
         gt = dict(np.load(gt_file, allow_pickle=False)) if gt_file else None
-        dst_mesh = MESHES[name.split("_")[0]]
+        dst_mesh = MESHES[target_key]
         for cfg, feature, options in CONFIGS:
             if args.configs and cfg not in args.configs:
                 continue

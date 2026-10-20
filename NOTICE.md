@@ -93,3 +93,24 @@ Add each future dependency with its source URL, version or commit, license, inte
 - **Paper:** Qin et al., "U²-Net: Going deeper with nested U-structure for salient object detection",
   Pattern Recognition 106 (2020).
 - **Use:** The default model (`--model u2net`) used by `prepare_images.py` through rembg.
+
+## Objaverse sample meshes (included, `results/diff3f/targets/`)
+
+Five full meshes used as registration targets for the sample images that have no counterpart among
+Diff3F's sample meshes. They come from Objaverse (Deitke et al., "Objaverse: A Universe of Annotated 3D
+Objects", CVPR 2023; https://huggingface.co/datasets/allenai/objaverse), which mirrors Sketchfab models
+under Creative Commons licenses. All five are **CC BY 4.0**; the author must be credited when the meshes
+or results made from them are shown. `results/diff3f/targets/sources.json` holds the same data. The
+meshes are stored without textures, cleaned, decimated to at most 40000 triangles, centred and scaled to
+a bounding-box diagonal of 2.
+
+| File | Sketchfab model (uid) | Author | License |
+|---|---|---|---|
+| `armchair.ply` | "Fri, 21 Sep 2018 19:46:37" (`e9696f0f630949a4b0360804a02d0ce6`), a museum chair scan | newfields-3dprinting | CC BY 4.0 |
+| `roundchair.ply` | "Sat, 18 May 2019 20:26:15" (`a911adbf46d14001954e6b41d4f52ff0`), a museum chair scan | newfields-3dprinting | CC BY 4.0 |
+| `panda.ply` | "Panda Shake Head" (`229c3e79701b4485b33bc93e2fa6156f`) | Wang.Jun.Jie | CC BY 4.0 |
+| `bird.ply` | "The Sparrow 3rd November 2021" (`4809199aa426497daa46aeee398dd387`) | cornsoup | CC BY 4.0 |
+| `lizard.ply` | "Charmeleon" (`6fe52b29551e4e27bdf4e2a830fb90db`) | bharat_bk | CC BY 4.0 (fan model of a Pokémon character; the character itself is Nintendo/Game Freak property, so use it for research only, not in publications) |
+
+Each model's page is `https://sketchfab.com/3d-models/<uid>`. Fetched on 2026-10-20 with the `objaverse`
+Python package (Apache-2.0), which is not needed to run anything in this repository.
