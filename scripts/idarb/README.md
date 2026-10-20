@@ -20,6 +20,8 @@ Scripts we added around IDArb (whose code is in `third_party/IDArb/`).
 | `eval_method_b.py` | laptop | Distance between the method-B and method-A surfaces → `results/analysis/method_b_vs_a.csv` |
 | `compare_depth_models.py` | laptop or server | Correlation between two sets of depth maps, e.g. Depth Anything V2 Small vs Large → `results/analysis/depth_small_vs_large.csv` |
 | `poisson_on_depth_points.py` | laptop | Experiment: screened Poisson on points taken straight from the depth map, compared with the other variants (not adopted, see `docs/decisions.md`) |
+| `diff3f_features.py` | server | Diff3F semantic feature vector for every (sampled) vertex of a mesh → `.npz` (section 5) |
+| `register_partial.py` | laptop or server | Registers a partial mesh to a full mesh with those features: feature matches → RANSAC similarity transform → ICP, with a feature-free ICP baseline (section 5) |
 
 ## 1. Server: image decomposition
 
@@ -208,3 +210,73 @@ writes them to `results/analysis/`.
 | Failed cats: mean n_z, scale s, depth ranges | `plot_failure_cases.py` | printed, `failure_cats.png` |
 | IDArb normals vs ground truth (8 Arb-Objaverse training objects × 2 views): mean angle 17.2° (mean of per-image means); outline n_z 0.59 GT vs 0.59 predicted (mean of per-image medians on the outline ring); integrated depth ratio median 1.00 (0.43 to 1.55) | `eval_idarb_gt.py --data_dir <Arb-Objaverse folder>` (server, idarb environment) | `idarb_normals_vs_gt.csv` |
 | Depth Anything V2 Small vs Large on chair1, superman, labubu, panda, bird: correlation 0.93 to 0.996 (inside the full object mask) | `estimate_depth.py --model depth-anything/Depth-Anything-V2-Large-hf` (server), then `compare_depth_models.py` | `depth_small_vs_large.csv` |
+
+## 5. Registering a partial mesh to a full mesh with Diff3F features
+
+The mesh from a single image is only the visible front of the object (a *partial mesh*). The next step
+(supervisor, 2026-10-20) is to *register* it to a full mesh of the same kind of object, that is, to find
+the scale, rotation and translation that put the partial mesh onto the full one, and the point-to-point
+correspondence between them. Later this correspondence is what carries the albedo from the image onto
+the full mesh.
+
+Shape alone cannot do this: the two meshes differ in pose, proportions and coordinate system, and the
+partial mesh has no back. We therefore use **Diff3F** (Dutt, Muralikrishnan and Mitra, CVPR 2024, code in
+`third_party/Diff3F/`): it gives every vertex a 2048-number *semantic* feature vector, so that "left ear"
+on one mesh is close to "left ear" on the other, regardless of shape. Diff3F renders the untextured mesh
+from many views as depth and normal maps, has Stable Diffusion 1.5 with two ControlNets paint a textured
+image from them, takes the diffusion UNet features and DINOv2 features of that image, projects them back
+onto the vertices and averages over the views. No training is needed.
+
+### Server: feature extraction (`diff3f_features.py`)
+
+Install the `diff3f` environment as described in `requirements-diff3f.txt` (Python 3.10, torch 2.1, pytorch3d
+0.7.5, diffusers 0.21.4). The first run downloads about 4 GB of weights. Then, from the repository root:
+
+```bash
+# the partial mesh: cameras only in front of it (+z, the camera side of relief.ply)
+python scripts/idarb/diff3f_features.py --mesh outputs/mesh_depth/cow/relief.ply --prompt cow \
+    --front_only --out outputs/diff3f/cow_partial.npz
+# the full mesh: cameras all around
+python scripts/idarb/diff3f_features.py --mesh third_party/Diff3F/meshes/cow.obj --prompt cow \
+    --out outputs/diff3f/cow_full.npz
+```
+
+Options: `--num_views` (default 100, a square number; `--front_only` uses a grid over elevations ±45°
+and azimuths ±75°), `--max_vertices` (default 15000; the whole mesh is rendered but features are stored
+for a random subset of this size, which keeps a 90k-vertex relief mesh tractable), `--tolerance`
+(ball-query radius as a fraction of the mesh extent, 0.004 as in the Diff3F notebook), `--seed`.
+The `.npz` holds `idx` (vertex indices), `xyz`, `feat` (float16, unit length), `colors` (vertex colours if
+the mesh has them) and `meta` (command, git commit, settings, run time). A 15000-vertex file is about 60 MB
+and stays out of git. Expect 2 to 4 minutes per mesh on an A40.
+
+### Laptop or server: registration (`register_partial.py`)
+
+```bash
+python scripts/idarb/register_partial.py --source outputs/diff3f/cow_partial.npz \
+    --target outputs/diff3f/cow_full.npz --source_mesh outputs/mesh_depth/cow/relief.ply \
+    --target_mesh third_party/Diff3F/meshes/cow.obj --out_dir outputs/diff3f/cow_registration
+```
+
+Steps, all in NumPy/SciPy (no GPU):
+
+1. **Matches.** Cosine similarity between every source vector and every target vector; keep the pairs
+   that are each other's best match (mutual nearest neighbours).
+2. **Coarse alignment.** RANSAC over the matches: take 3 matches, fit a similarity transform (scale,
+   rotation, translation; Umeyama 1991), count how many matches it brings within `--inlier_dist` (default
+   5 % of the target's bounding-box diagonal); keep the best and refit it on its inliers.
+3. **Fine alignment.** ICP with the scale fixed: pair every source point with its nearest target point,
+   drop pairs farther apart than `--icp_dist`, refit the rotation and translation, repeat.
+4. **Baseline.** The same ICP started from centroid-and-size alignment only, without features, to show
+   what the features add.
+
+`metrics.csv` has one row per stage: `n_matches`, `n_inliers`, `scale`, `rms_to_target` and
+`median_to_target` (distance from the aligned source points to the nearest target point),
+`frac_within_2pct` (fraction closer than 2 % of the diagonal), and `match_median` / `match_within_5pct`
+(distance between the two points of each feature match after alignment: small when the features and the
+geometry agree). All distances are fractions of the target diagonal. `transform.json` has the transform;
+`aligned_source.ply` is the partial mesh moved onto the target; `correspondence_*.ply` colour matched points
+alike; `target_from_source_colors.ply` paints the target with the source's albedo through the feature
+matches; `preview.png` shows the stages side by side.
+
+`pytest tests/ -q` checks the registration maths on synthetic data (a known transform must be recovered
+from matches with 40 % outliers, and ICP must remove a small misalignment).

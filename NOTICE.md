@@ -36,6 +36,48 @@ Add each future dependency with its source URL, version or commit, license, inte
 - **Paper:** Yang et al., "Depth Anything V2", arXiv:2406.09414.
 - **Use:** Relative depth maps used as a prior for normal-to-mesh reconstruction, produced by `scripts/idarb/estimate_depth.py`. The model is downloaded at run time; the resulting depth maps for the samples are stored in `results/idarb_single/depth/`.
 
+## Diff3F (source code)
+
+- **Path:** `third_party/Diff3F/`
+- **Source:** https://github.com/niladridutt/Diffusion-3D-Features, commit `5bda687` ("Update README.md",
+  2025-02-11)
+- **License:** MIT, Copyright (c) 2024 Niladri Shekhar Dutt. The full license text is kept at
+  `third_party/Diff3F/LICENSE`. The directory also contains a copy of pyFM (functional maps, by Robin
+  Magnet, https://github.com/RobinMagnet/pyFM, MIT) as shipped upstream, and sample meshes in `meshes/`
+  for which upstream states "provided as examples from various sources and we do not claim any
+  copyright". We use `meshes/cow.obj` and `meshes/cat.off` as full-mesh targets in registration
+  experiments; their original sources are not stated upstream, so review them before any publication.
+- **Use:** Per-vertex semantic features for meshes (`scripts/idarb/diff3f_features.py`), which
+  `scripts/idarb/register_partial.py` uses to register our partial meshes to full meshes.
+- **Modifications:** The first commit that adds this directory is an unmodified copy of upstream. Our
+  script replaces the Stable Diffusion repository id and the camera set from outside the directory; later
+  commits that touch `third_party/Diff3F/` are local changes; see `git log -- third_party/Diff3F`.
+- **Paper:** Dutt, Muralikrishnan and Mitra, "Diffusion 3D Features (Diff3F): Decorating Untextured
+  Shapes with Distilled Semantic Features", CVPR 2024, arXiv:2311.17024.
+
+## Stable Diffusion v1.5 (not included)
+
+- **Source:** https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5 (community mirror of
+  `runwayml/stable-diffusion-v1-5`, which was removed from Hugging Face in 2024; same weights)
+- **License:** CreativeML Open RAIL-M
+- **Use:** The image generator inside Diff3F (`diff3f_features.py`), fp16 weight files. Downloaded at run
+  time.
+
+## ControlNet v1.1 depth and normal (not included)
+
+- **Source:** https://huggingface.co/lllyasviel/control_v11f1p_sd15_depth and
+  https://huggingface.co/lllyasviel/control_v11p_sd15_normalbae
+- **License:** CreativeML Open RAIL-M (`openrail` on the model cards)
+- **Use:** Condition Stable Diffusion on the rendered depth and normal maps inside Diff3F. Downloaded at
+  run time (fp16 files).
+
+## DINOv2 ViT-B/14 (not included)
+
+- **Source:** https://github.com/facebookresearch/dinov2 (`dinov2_vitb14` through `torch.hub`)
+- **License:** Apache-2.0
+- **Paper:** Oquab et al., "DINOv2: Learning Robust Visual Features without Supervision", arXiv:2304.07193.
+- **Use:** Image features fused with the diffusion features inside Diff3F. Downloaded at run time.
+
 ## rembg (Python package)
 
 - **Source:** https://github.com/danielgatis/rembg, version 2.0.61 (from PyPI)

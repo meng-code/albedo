@@ -105,3 +105,31 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   The report now quotes 0.93 to 0.996.
 - `AGENTS.md` was merged into `CLAUDE.md` and removed. `README.md` was rewritten for the current project,
   and `NOTICE.md` now lists rembg (MIT) and the U²-Net model it downloads (Apache-2.0).
+
+## 2026-10-20 — Next step: register partial meshes to full meshes with Diff3F features
+
+- **Direction (supervisor):** after the single-image mesh, do "3D point set registration" and "mesh and
+  partial mesh registration", using the features of Diff3F (Dutt, Muralikrishnan and Mitra, CVPR 2024,
+  https://diff3f.github.io). Our relief mesh is the partial mesh; a full mesh of the same kind of object
+  is the target. The correspondence found this way is what will later carry the albedo from the image
+  onto a full mesh.
+- **Why Diff3F:** its per-vertex features are semantic, not geometric, so they match across different
+  poses, proportions and coordinate systems and need no training; the paper reports state-of-the-art
+  correspondence on SHREC'19/'20. The paper does not test partial shapes; whether its features hold up on
+  our one-sided relief meshes is the open question of this experiment.
+- **Code:** `third_party/Diff3F/` (unmodified upstream, commit 5bda687, MIT; see `NOTICE.md`),
+  `scripts/idarb/diff3f_features.py` (server, new `diff3f` environment) and
+  `scripts/idarb/register_partial.py` (CPU). Design choices:
+  - `runwayml/stable-diffusion-v1-5` no longer exists on Hugging Face; the script loads the same weights
+    from the `stable-diffusion-v1-5/stable-diffusion-v1-5` mirror, fp16 files only (about 4 GB in total
+    with the two ControlNets and DINOv2).
+  - Features are stored for at most 15000 randomly chosen vertices (the whole mesh is still rendered),
+    as the paper does for point clouds; a full relief mesh has 36k to 92k vertices.
+  - `--front_only` renders the partial mesh only from the hemisphere in front of it (elevation ±45°,
+    azimuth ±75°), because a one-sided sheet seen from behind would give meaningless images.
+  - Registration: mutual nearest-neighbour feature matches → RANSAC similarity transform (Umeyama) →
+    rigid ICP with the scale fixed, plus a feature-free ICP baseline. Distances are reported as fractions
+    of the target's bounding-box diagonal.
+- **First experiment (planned):** cow and cat. Source: `outputs/mesh_depth/{cow,cat}/relief.ply` (our
+  meshes with the depth prior); target: `third_party/Diff3F/meshes/cow.obj` (2759 vertices) and
+  `meshes/cat.off` (7207 vertices), the sample meshes that ship with Diff3F. Results will be added here.
