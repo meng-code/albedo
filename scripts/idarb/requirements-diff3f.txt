@@ -4,6 +4,7 @@
 #
 #   conda create -n diff3f python=3.10 -y && conda activate diff3f
 #   pip install torch==2.1.0 torchvision==0.16.0 --index-url https://download.pytorch.org/whl/cu118
+#   pip install fvcore iopath   # pytorch3d's dependencies; --no-index below would block them
 #   pip install --no-index pytorch3d \
 #       -f https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/py310_cu118_pyt210/download.html
 #   pip install -r scripts/idarb/requirements-diff3f.txt
