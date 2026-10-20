@@ -532,3 +532,19 @@ full-resolution source vertex nearest to the target vertex inside that region
 target is subdivided twice by default (`--paint_subdiv 2`). The cat's stripes and the panda's eye
 patches come out sharp; the cartoon cow's face still lands where the registration puts it. Stored
 painted meshes are decimated to 100000 triangles.
+
+### Functional maps: tried, not adopted (2026-10-21)
+
+Diff3F reports that its descriptors make functional maps (a smooth, global surface-to-surface
+correspondence in the Laplace-Beltrami eigenbasis) work on non-isometric full shapes.
+`eval_functional_map.py` tries them for our partial-to-full case, with the vendored pyFM, 50 or 100
+eigenfunctions, with and without cutting the target to the part the registration says the source
+covers, and with ZoomOut refinement (`results/diff3f/functional_map_eval.csv`). On the synthetic
+pairs with ground truth the functional map puts 13 to 24 % of the target vertices within 1 % of the
+true source vertex (best: cropped target, 100 eigenfunctions), against 40 to 52 % for plain feature
+matching and 100 % for the registration; its mapped points also lie 3 to 4 % of the diagonal from
+the target vertex. The reason is partiality: a one-sided relief and a full body do not share their
+low-frequency structure, which functional maps assume, and cropping repairs that only in part. On
+the real relief meshes (36k to 92k vertices, several components) pyFM's pipeline also breaks down
+numerically. Not adopted; the registration plus the feature- and part-aware painting stays.
+`potpourri3d` and `robust_laplacian` (pip) are needed only for this script.

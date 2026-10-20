@@ -227,3 +227,10 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   how the transferred texture is stored and rendered; adopting it means Mitsuba 3 + Dr.Jit on the
   GPU, deferred until the supervisor confirms the direction. Functional maps (pyFM inside
   third_party/Diff3F) are the more relevant next step for placement.
+- **Functional maps, not adopted (2026-10-21):** with Diff3F descriptors and pyFM, 50 or 100
+  eigenfunctions, whole or cropped target, with ZoomOut: 13 to 24 % of the target vertices land
+  within 1 % of the true source vertex on the synthetic pairs, against 40 to 52 % for feature
+  matching and 100 % for the registration (`results/diff3f/functional_map_eval.csv`). The method
+  assumes shared low-frequency structure, which a one-sided relief and a full body lack. The eye
+  placement therefore needs either a non-rigid deformation driven by the features or a better
+  single-image mesh, not a different correspondence solver.
