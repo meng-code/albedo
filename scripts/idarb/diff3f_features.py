@@ -82,9 +82,10 @@ def to_pytorch3d(verts, faces, device):
     return Meshes(verts=[v], faces=[f], textures=tex).to(device)
 
 
-def init_pipe(device, sd_repo, fp16_variant=True):
+def init_pipe(device, sd_repo, fp16_variant=True, cpu_offload=True):
     """Diff3F's init_pipe, with the SD repository replaced and fp16 weight files where available
-    (downloads about 4 GB instead of 8 GB)."""
+    (downloads about 4 GB instead of 8 GB). cpu_offload=False keeps every model on the GPU; the
+    run needs more memory but skips the CPU-GPU copies of every denoising step."""
     from diffusers import ControlNetModel, DDIMScheduler
     from huggingface_hub import hf_hub_download
     from pipeline_controlnet_img2img import StableDiffusionControlNetImg2ImgPipeline
@@ -119,7 +120,8 @@ def init_pipe(device, sd_repo, fp16_variant=True):
     pipe.set_progress_bar_config(disable=True)
     pipe = pipe.to(device)
     pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
-    pipe.enable_model_cpu_offload()
+    if cpu_offload:
+        pipe.enable_model_cpu_offload()
     return pipe
 
 
@@ -202,6 +204,11 @@ def main():
         action="store_true",
         help="download the full-precision weight files instead",
     )
+    ap.add_argument(
+        "--no_cpu_offload",
+        action="store_true",
+        help="keep all models on the GPU (faster, needs about 10 GB more memory)",
+    )
     args = ap.parse_args()
 
     import diff3f as d3f
@@ -231,7 +238,12 @@ def main():
     else:
         num_views = args.num_views
 
-    pipe = init_pipe(device, args.sd_repo, fp16_variant=not args.no_fp16_variant)
+    pipe = init_pipe(
+        device,
+        args.sd_repo,
+        fp16_variant=not args.no_fp16_variant,
+        cpu_offload=not args.no_cpu_offload,
+    )
     dino = init_dino(device)
     print(f"models ready after {time.time() - t0:.0f} s")
 
