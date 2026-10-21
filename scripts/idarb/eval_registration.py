@@ -132,7 +132,7 @@ FIELDS = [
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--feature_dir", default="outputs/diff3f")
+    ap.add_argument("--feature_dir", default="outputs/diff3f/features")
     ap.add_argument("--out", default="results/diff3f/ablation.csv")
     ap.add_argument("--pairs", nargs="*", help="subset of pair names")
     ap.add_argument("--configs", nargs="*", help="subset of config names")

@@ -6,9 +6,9 @@ Two steps, both from the repository root in the mesh environment:
 
 1. A grid image to read coordinates from (the relief with its albedo, any other mesh shaded grey):
        python scripts/idarb/pick_landmarks.py --mesh outputs/mesh_depth/cat/relief.ply \
-           --out outputs/diff3f/landmarks/cat_grid.png
+           --out outputs/diff3f/05_texture_landmarks/picking/cat_grid.png
        python scripts/idarb/pick_landmarks.py --mesh third_party/Diff3F/meshes/lion.off \
-           --view 0.9 0.1 0.4 --out outputs/diff3f/landmarks/lion_grid.png
+           --view 0.9 0.1 0.4 --out outputs/diff3f/05_texture_landmarks/picking/lion_grid.png
    --view is the direction the camera looks from (a registration's transform.json gives the
    relief's camera as the third column of its rotation).
 2. The same command with --pick x,y x,y ... (pixel coordinates in that image, same --view and
@@ -19,10 +19,10 @@ Pick the same features in the same order on both meshes. Before using them, veri
 the contact sheet (one column per landmark, the source crop above the target crop, the picked
 vertex at the red cross):
        python scripts/idarb/pick_landmarks.py --check cat_points.json lion_points.json \
-           --out outputs/diff3f/landmarks/cat_lion_check.png
+           --out outputs/diff3f/05_texture_landmarks/picking/cat_lion_check.png
 Then merge the two files into the --landmarks JSON of refine_correspondence.py:
        python scripts/idarb/pick_landmarks.py --merge cat_points.json lion_points.json \
-           --out outputs/diff3f/landmarks/cat_lion.json
+           --out outputs/diff3f/05_texture_landmarks/picking/cat_lion.json
 MeshLab's PickPoints tool (.pp files) is the alternative; refine_correspondence.py reads those too.
 """
 

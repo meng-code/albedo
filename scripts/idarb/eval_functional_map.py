@@ -131,7 +131,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--pairs", nargs="+", default=["cow_synth", "cat_synth"])
     ap.add_argument("--n_ev", type=int, nargs="+", default=[50, 100])
-    ap.add_argument("--feature_dir", default="outputs/diff3f")
+    ap.add_argument("--feature_dir", default="outputs/diff3f/features")
     ap.add_argument("--out", default="results/diff3f/functional_map_eval.csv")
     args = ap.parse_args()
 

@@ -21,9 +21,9 @@ N x 2048, unit length), colors (uint8 vertex colours if the mesh has them, else 
 
 Usage (repository root, diff3f environment):
     python scripts/idarb/diff3f_features.py --mesh outputs/mesh_depth/cow/relief.ply --prompt cow \
-        --front_only --out outputs/diff3f/cow_partial.npz
+        --front_only --out outputs/diff3f/features/cow_partial.npz
     python scripts/idarb/diff3f_features.py --mesh third_party/Diff3F/meshes/cow.obj --prompt cow \
-        --out outputs/diff3f/cow_full.npz
+        --out outputs/diff3f/features/cow_full.npz
 """
 
 import argparse

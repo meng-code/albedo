@@ -25,10 +25,12 @@ the fraction of target vertices matched within 1 % / 5 % of the diagonal of thei
 vertex, next to the plain nearest neighbour.
 
 Usage (repository root, mesh environment):
-    python scripts/idarb/refine_correspondence.py --source outputs/diff3f/cat_partial.npz \
-        --source_mesh outputs/mesh_depth/cat/relief.ply --target outputs/diff3f/lion_full.npz \
+    python scripts/idarb/refine_correspondence.py \
+        --source outputs/diff3f/features/cat_partial.npz \
+        --source_mesh outputs/mesh_depth/cat/relief.ply \
+        --target outputs/diff3f/features/lion_full.npz \
         --target_mesh third_party/Diff3F/meshes/lion.off \
-        --out outputs/diff3f/maps_cat_lion/refined.npz
+        --out outputs/diff3f/04_texture_refined/same_category/cat_lion/refined.npz
 """
 
 import argparse

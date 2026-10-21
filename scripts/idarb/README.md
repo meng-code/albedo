@@ -244,10 +244,10 @@ Install the `diff3f` environment as described in `requirements-diff3f.txt` (Pyth
 ```bash
 # the partial mesh: cameras only in front of it (+z, the camera side of relief.ply)
 python scripts/idarb/diff3f_features.py --mesh outputs/mesh_depth/cow/relief.ply --prompt cow \
-    --front_only --out outputs/diff3f/cow_partial.npz
+    --front_only --out outputs/diff3f/features/cow_partial.npz
 # the full mesh: cameras all around
 python scripts/idarb/diff3f_features.py --mesh third_party/Diff3F/meshes/cow.obj --prompt cow \
-    --out outputs/diff3f/cow_full.npz
+    --out outputs/diff3f/features/cow_full.npz
 ```
 
 Options: `--num_views` (default 100, a square number; `--front_only` uses a grid over elevations ±45°
@@ -261,9 +261,9 @@ and stays out of git. Expect 2 to 4 minutes per mesh on an A40.
 ### Laptop or server: registration (`register_partial.py`)
 
 ```bash
-python scripts/idarb/register_partial.py --source outputs/diff3f/cow_partial.npz \
-    --target outputs/diff3f/cow_full.npz --source_mesh outputs/mesh_depth/cow/relief.ply \
-    --target_mesh third_party/Diff3F/meshes/cow.obj --out_dir outputs/diff3f/cow_registration
+python scripts/idarb/register_partial.py --source outputs/diff3f/features/cow_partial.npz \
+    --target outputs/diff3f/features/cow_full.npz --source_mesh outputs/mesh_depth/cow/relief.ply \
+    --target_mesh third_party/Diff3F/meshes/cow.obj --out_dir outputs/diff3f/00_archive_registration_painting/registration_results/cow_registration
 ```
 
 Steps, all in NumPy/SciPy (no GPU):

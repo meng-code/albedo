@@ -44,9 +44,12 @@ and the accuracy of the correspondences (fraction within 1 % and 5 % of the diag
 point), including the feature-only correspondence without any transform ("feature_nn").
 
 Usage (repository root, mesh environment):
-    python scripts/idarb/register_partial.py --source outputs/diff3f/cow_partial.npz \
-        --target outputs/diff3f/cow_full.npz --source_mesh outputs/mesh_depth/cow/relief.ply \
-        --target_mesh third_party/Diff3F/meshes/cow.obj --out_dir outputs/diff3f/cow_registration
+    python scripts/idarb/register_partial.py \
+        --source outputs/diff3f/features/cow_partial.npz \
+        --target outputs/diff3f/features/cow_full.npz \
+        --source_mesh outputs/mesh_depth/cow/relief.ply \
+        --target_mesh third_party/Diff3F/meshes/cow.obj \
+        --out_dir outputs/diff3f/00_archive_registration_painting/registration_results/cow
 """
 
 import argparse

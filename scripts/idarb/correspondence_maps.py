@@ -22,10 +22,13 @@ sampled point. The target is drawn from the direction of the relief's camera; --
 from a transform.json of register_partial.py, otherwise the pair is registered first.
 
 Usage (repository root, mesh environment):
-    python scripts/idarb/correspondence_maps.py --source outputs/diff3f/cow_partial.npz \
-        --source_mesh outputs/mesh_depth/cow/relief.ply --target outputs/diff3f/cow_full.npz \
+    python scripts/idarb/correspondence_maps.py \
+        --source outputs/diff3f/features/cow_partial.npz \
+        --source_mesh outputs/mesh_depth/cow/relief.ply \
+        --target outputs/diff3f/features/cow_full.npz \
         --target_mesh third_party/Diff3F/meshes/cow.obj \
-        --transform results/diff3f/cow/transform.json --out_dir outputs/diff3f/maps_cow
+        --transform results/diff3f/cow/transform.json \
+        --out_dir outputs/diff3f/01_correspondence_maps/same_category/cow
 """
 
 import argparse

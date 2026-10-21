@@ -85,7 +85,7 @@ def score(painted, truth, mask):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--feature_dir", default="outputs/diff3f")
+    ap.add_argument("--feature_dir", default="outputs/diff3f/features")
     ap.add_argument("--out", default="results/diff3f/painting_eval.csv")
     args = ap.parse_args()
 

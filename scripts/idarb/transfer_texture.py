@@ -22,10 +22,13 @@ every triangle as a face colour (target_uv_span.ply: green small, red large). A 
 correspondence shows up directly as higher fractions.
 
 Usage (repository root, mesh environment):
-    python scripts/idarb/transfer_texture.py --source outputs/diff3f/cat_partial.npz \
-        --source_mesh outputs/mesh_depth/cat/relief.ply --target outputs/diff3f/lion_full.npz \
+    python scripts/idarb/transfer_texture.py \
+        --source outputs/diff3f/features/cat_partial.npz \
+        --source_mesh outputs/mesh_depth/cat/relief.ply \
+        --target outputs/diff3f/features/lion_full.npz \
         --target_mesh third_party/Diff3F/meshes/lion.off \
-        --transform results/diff3f/cat_lion/transform.json --out_dir outputs/diff3f/maps_cat_lion
+        --transform results/diff3f/cat_lion/transform.json \
+        --out_dir outputs/diff3f/03_texture_nearest_neighbour/same_category/cat_lion
 """
 
 import argparse
