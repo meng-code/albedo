@@ -278,3 +278,21 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   zero), which the stone bird showed (67.7 % within 2 % while using 28 % of its relief).
   `transfer_texture.py` therefore also reports **source used**, the fraction of the relief's image
   cells that receive at least one match; the two are read together.
+
+## 2026-10-21 — Improving the details: one side only, a prior for the matching, manual landmarks
+
+- Supervisor's verdict on the nearest-neighbour texture transfer: fine from afar, poor in the
+  details; improve it; texture one side only and leave the back blank; try manual landmarks.
+- `transfer_texture.py` textures only the faces visible from the relief's camera (depth-buffer
+  visibility); the rest point at a grey strip of the texture. Numbers are on the textured faces.
+- `refine_correspondence.py`: anchors (mutual nearest neighbours, or landmarks) → a smooth
+  target-to-source position prior (affine + Gaussian RBF) → each target vertex takes the most
+  similar of its 64 candidates near its predicted position → two smoothing passes. Synthetic ground
+  truth: cat 52 → 73 % within 1 %, cow 40 → 57 %; with 8 exact landmarks 92 % (the synthetic pairs
+  are rigidly related, so exact landmarks pin the map down). The prior is what helps; smoothing on
+  its own does nothing.
+- Landmarks: MeshLab .pp files or `pick_landmarks.py` (grid render, pixel coordinates, snap to the
+  silhouette). Eleven picked on cat → lion: 71 % / 93 % of the textured triangles within 2 % / 5 %,
+  against 69 % / 91 % for nearest neighbour and 74 % / 96 % for the automatic anchors; adding the
+  mutual anchors to the landmarks gives 72 % / 96 %. On a real pair a few landmarks do not beat the
+  automatic anchors; they guarantee the picked features and little else.

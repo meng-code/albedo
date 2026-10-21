@@ -1,12 +1,16 @@
 {
  "faces": 13776,
- "span_median": 0.014,
- "within_2pct": 0.6455,
- "within_5pct": 0.8271,
- "source_used": 0.5807,
- "covered_faces": 7172,
- "covered_within_2pct": 0.6549,
- "covered_within_5pct": 0.7932,
+ "textured_faces": 5482,
+ "span_median": 0.0149,
+ "within_2pct": 0.6074,
+ "within_5pct": 0.7692,
+ "source_used": 0.3865,
+ "all_within_2pct": 0.6503,
+ "all_within_5pct": 0.8294,
+ "all_source_used": 0.5824,
+ "covered_faces": 4672,
+ "covered_within_2pct": 0.6357,
+ "covered_within_5pct": 0.8042,
  "source": "outputs/diff3f/labubu_partial.npz",
  "target": "outputs/diff3f/man_full.npz"
 }

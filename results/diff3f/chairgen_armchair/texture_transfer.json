@@ -1,12 +1,16 @@
 {
  "faces": 10860,
- "span_median": 0.0203,
- "within_2pct": 0.4878,
- "within_5pct": 0.6983,
- "source_used": 0.5709,
- "covered_faces": 2372,
- "covered_within_2pct": 0.4933,
- "covered_within_5pct": 0.7698,
+ "textured_faces": 4566,
+ "span_median": 0.0218,
+ "within_2pct": 0.4809,
+ "within_5pct": 0.6875,
+ "source_used": 0.5168,
+ "all_within_2pct": 0.5007,
+ "all_within_5pct": 0.7027,
+ "all_source_used": 0.5896,
+ "covered_faces": 813,
+ "covered_within_2pct": 0.5486,
+ "covered_within_5pct": 0.8315,
  "source": "outputs/diff3f/ipadapter_result_00_chair_partial.npz",
  "target": "outputs/diff3f/armchair_full.npz"
 }

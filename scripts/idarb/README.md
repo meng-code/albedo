@@ -663,3 +663,101 @@ pair also produces a picture (the seat on the body, the wooden legs on the legs)
 the numbers matter: it sits at the bottom together with the stone bird, whose relief is a ball and
 whose matching collapses onto a few source points (source used 28 %), something the span alone
 would have scored as consistent.
+
+### One side only
+
+The supervisor's next instruction: texture only the side the relief shows and leave the back
+blank. `transfer_texture.py` now textures only the faces visible from the target's viewing
+direction (a depth-buffer test at 1024 px, plus the front-facing faces whose centroid is not behind
+the buffer) and points every other face at a grey strip of the texture image; `--both_sides`
+restores the old behaviour. The consistency numbers are computed on the textured faces
+(`textured_faces` in `texture_transfer.json`; the `all_*` fields keep the whole mesh for
+comparison).
+
+### Refining the correspondence (`refine_correspondence.py`)
+
+The supervisor's verdict on the nearest-neighbour texture: fine from afar, poor in the details,
+improve it, and try manual landmarks. Nearest neighbour matches every target vertex on its own, so
+neighbours jump between distant source points. `refine_correspondence.py` keeps the features and
+adds three things, each optional:
+
+- **anchors**: reliable pairs. Manual landmarks (see below), or automatically the mutual nearest
+  neighbours (the target point's best source point has that target point as its best match),
+  thinned to a spread subset by farthest-point sampling (`--max_anchors`, default 400).
+- **prior**: a smooth map from target positions to source positions fitted on the anchors (an
+  affine map plus Gaussian radial basis functions, ridge-regularised; a similarity transform
+  instead of the affine map when there are fewer than 8 anchors). Every target vertex then chooses
+  among its `--k` most similar source points (default 64) the one minimising
+  `(1 - similarity) + w_prior * (distance to its predicted position / radius)^2`, with the radius
+  5 % of the source diagonal.
+- **smoothing**: `--iters` passes (default 2) in which every vertex re-chooses among its candidates
+  with a penalty on the distance to the mean matched position of its one-ring neighbours.
+
+The output is the same `t2s` table the other scripts read with `--correspondence`. On the synthetic
+pairs (ground truth; fraction of target vertices within 1 % / 5 % of the diagonal of the true
+source vertex):
+
+| correspondence | cat | cow |
+|---|---|---|
+| nearest neighbour | 52.2 % / 94.3 % | 40.1 % / 87.2 % |
+| + prior from 150 mutual anchors (k 32, radius 10 %) | 69.0 % / 97.5 % | 51.5 % / 98.7 % |
+| + 400 anchors, k 64, radius 5 % | 73.0 % / 99.1 % | 55.3 % / 99.0 % |
+| + 2 smoothing passes (the defaults) | 73.0 % / 99.2 % | 56.6 % / 99.0 % |
+| smoothing alone, no prior | 52.3 % / 93.7 % | |
+| 8 exact landmarks (from the ground truth), no smoothing | 92.3 % / 98.0 % | 91.6 % / 99.6 % |
+| 16 exact landmarks | 92.7 % / 98.0 % | 91.8 % / 99.6 % |
+| 32 exact landmarks | 92.8 % / 98.0 % | 92.0 % / 99.6 % |
+
+The prior is what helps; smoothing on its own does nothing. Exact landmarks nearly solve the
+synthetic pairs, but those pairs are rigidly related (the partial mesh is cut from the full one),
+so a handful of exact pairs pins the map down; a real pair has different shapes.
+
+**Manual landmarks.** Two ways in: MeshLab's PickPoints tool on both meshes (`.pp` files, same
+features in the same order, `--landmarks_source` / `--landmarks_target`), or
+`pick_landmarks.py`, which needs no 3D viewer: it renders a mesh with a pixel grid, you read the
+pixel coordinates of the features off the image, and `--pick x,y ...` turns them into vertices
+(a pick on the background snaps to the nearest surface pixel, for ear tips and paws), writes them
+to a JSON and draws them numbered on the image for checking; `--merge` joins the source and target
+files into the `--landmarks` JSON of `refine_correspondence.py`. Landmark vertices keep their
+pair exactly; `--add_mutual` uses the mutual anchors as well. Eleven landmarks were picked this
+way on the cat relief and the lion (nose, ear tip, eye, chin, a front and a hind paw, tail tip,
+rump, back, belly, chest; `results/diff3f/landmarks/`). Cat → lion, textured side only:
+
+| correspondence | within 2 % | within 5 % | source used |
+|---|---|---|---|
+| nearest neighbour | 69.0 % | 90.9 % | 58 % |
+| automatic: 131 mutual anchors + prior + smoothing | 73.7 % | 96.1 % | 67 % |
+| 11 manual landmarks | 70.8 % | 92.9 % | 62 % |
+| 11 landmarks + the mutual anchors | 72.5 % | 96.0 % | 68 % |
+
+On this real pair the automatic anchors do at least as well as eleven manual landmarks; the
+landmarks guarantee the picked features themselves and change little elsewhere.
+
+**All pairs, automatic anchors**, textured side only (`texture_transfer_refined.{png,json}` next
+to the nearest-neighbour files in every result folder):
+
+| pair | textured triangles | nearest neighbour: 2 % / 5 % / used | refined: 2 % / 5 % / used |
+|---|---|---|---|
+| cow | 2 525 | 41.8 % / 84.1 % / 59 % | 49.4 % / 90.2 % / 70 % |
+| cat | 4 343 | 66.7 % / 92.6 % / 61 % | 75.3 % / 97.8 % / 70 % |
+| superman_man | 6 453 | 75.2 % / 92.8 % / 59 % | 88.4 % / 96.5 % / 59 % |
+| superman_posed | 4 783 | 71.4 % / 88.4 % / 49 % | 77.2 % / 93.3 % / 52 % |
+| okapi_camel | 1 629 | 35.8 % / 74.9 % / 52 % | 39.4 % / 84.7 % / 58 % |
+| okapi1_camel | 1 398 | 32.4 % / 78.2 % / 61 % | 40.6 % / 91.2 % / 67 % |
+| cat5_cat | 4 491 | 76.0 % / 92.0 % / 52 % | 79.1 % / 95.6 % / 66 % |
+| cat_lion | 3 666 | 69.0 % / 90.9 % / 58 % | 73.7 % / 96.1 % / 67 % |
+| labubu_man | 5 482 | 60.7 % / 76.9 % / 39 % | 67.9 % / 83.0 % / 50 % |
+| chair1_armchair | 4 302 | 50.3 % / 75.8 % / 45 % | 53.3 % / 83.2 % / 66 % |
+| chair_armchair | 4 120 | 48.3 % / 80.1 % / 49 % | 62.5 % / 87.0 % / 57 % |
+| chair10_roundchair | 6 849 | 63.3 % / 76.2 % / 35 % | 67.1 % / 82.6 % / 51 % |
+| chairgen_armchair | 4 566 | 48.1 % / 68.8 % / 52 % | 50.7 % / 75.6 % / 72 % |
+| panda_panda | 16 153 | 78.3 % / 95.5 % / 73 % | 86.4 % / 97.8 % / 78 % |
+| bird_bird | 16 661 | 49.1 % / 74.3 % / 51 % | 58.2 % / 83.8 % / 62 % |
+| dragon_lizard | 15 622 | 64.8 % / 82.9 % / 50 % | 76.3 % / 87.5 % / 54 % |
+| mean | | 58.2 % / 82.8 % / 53 % | 65.4 % / 89.1 % / 62 % |
+
+Every real pair improves on all three numbers. The cross-category pairs gain less (mean
+46.0 % / 67.1 % / 37 % → 48.5 % / 72.8 % / 45 %), and the four weakest of them (Labubu on the camel
+and the lion, the stone bird on the cat, the chair on the cow) do not improve at 2 %: their mutual
+anchors are as unreliable as the rest of the matching, so the prior fitted on them has nothing to
+add.

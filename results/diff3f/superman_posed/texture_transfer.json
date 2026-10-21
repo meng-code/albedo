@@ -1,12 +1,16 @@
 {
  "faces": 10410,
- "span_median": 0.0124,
- "within_2pct": 0.6793,
- "within_5pct": 0.8556,
- "source_used": 0.5504,
- "covered_faces": 6484,
- "covered_within_2pct": 0.6703,
- "covered_within_5pct": 0.8515,
+ "textured_faces": 4783,
+ "span_median": 0.0118,
+ "within_2pct": 0.7138,
+ "within_5pct": 0.8844,
+ "source_used": 0.4881,
+ "all_within_2pct": 0.6793,
+ "all_within_5pct": 0.8572,
+ "all_source_used": 0.5392,
+ "covered_faces": 3723,
+ "covered_within_2pct": 0.7177,
+ "covered_within_5pct": 0.8969,
  "source": "outputs/diff3f/superman_partial.npz",
  "target": "outputs/diff3f/posed_human_full.npz"
 }

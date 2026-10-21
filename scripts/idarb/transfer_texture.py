@@ -8,15 +8,18 @@ relief's texture coordinates are its pixel positions and its texture is the albe
 is rebuilt here from the relief's vertex colours on their pixel grid, with the background filled
 from the nearest foreground pixel so that a triangle reaching outside the silhouette does not turn
 black. Every target vertex is matched to a relief vertex (nearest neighbour in Diff3F feature
-space, or a table given with --correspondence) and takes that vertex's texture coordinates. The
-textured target is written as OBJ + MTL + PNG (open in MeshLab) and drawn with a small software
-rasteriser, since matplotlib cannot sample a texture inside a triangle.
+space, or a table given with --correspondence) and takes that vertex's texture coordinates. Only
+the side of the target that faces the relief's camera is textured; the faces it cannot see stay
+blank (light grey), as the supervisor asked, unless --both_sides is given. The textured target is
+written as OBJ + MTL + PNG (open in MeshLab) and drawn with a small software rasteriser, since
+matplotlib cannot sample a texture inside a triangle.
 
 Consistency: a triangle whose three corners are matched to distant image points shows a stretched
-streak of the image. The script reports the fraction of triangles whose corners lie within 2 % and
-5 % of the image diagonal of each other (all triangles, and only those the registration says the
-relief covers), and writes the span of every triangle as a face colour (target_uv_span.ply: green
-small, red large). A better correspondence shows up directly as a higher fraction.
+streak of the image. The script reports the fraction of textured triangles whose corners lie within
+2 % and 5 % of the image diagonal of each other and the fraction of the relief's image that is used
+at all (the span alone rewards a matching that collapses onto a few points), and writes the span of
+every triangle as a face colour (target_uv_span.ply: green small, red large). A better
+correspondence shows up directly as higher fractions.
 
 Usage (repository root, mesh environment):
     python scripts/idarb/transfer_texture.py --source outputs/diff3f/cat_partial.npz \
@@ -39,6 +42,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import register_partial as rp  # noqa: E402
 from correspondence_maps import mesh_features, nearest_in_features  # noqa: E402
 
+BLANK = (217, 217, 217)  # the colour of the faces that are not textured
+
 
 def relief_grid(V, tol=0.05):
     """Pixel (column, row) of every relief vertex, recovered from the regular grid the vertices sit
@@ -57,9 +62,11 @@ def relief_grid(V, tol=0.05):
     return cols[0], rows[0]
 
 
-def relief_texture(V, C):
+def relief_texture(V, C, blank_rows=16):
     """The albedo image behind a relief mesh (uint8 HxWx3, background filled from the nearest
-    foreground pixel) and the texture coordinates (N,2) of its vertices, u right and v up."""
+    foreground pixel, plus `blank_rows` of light grey at the bottom for the untextured faces), the
+    texture coordinates (N,2) of its vertices (u right, v up) and the coordinates of the blank
+    strip's centre (None without a strip)."""
     col, row = relief_grid(V)
     W, H = int(col.max()) + 1, int(row.max()) + 1
     image = np.zeros((H, W, 3), dtype=np.uint8)
@@ -70,15 +77,20 @@ def relief_texture(V, C):
     if len(bg_r):
         _, nn = cKDTree(np.stack([row, col], axis=1)).query(np.stack([bg_r, bg_c], axis=1))
         image[bg_r, bg_c] = C[nn, :3]
-    uv = np.stack([(col + 0.5) / W, 1.0 - (row + 0.5) / H], axis=1)
-    return image, uv
+    blank_uv = None
+    if blank_rows:
+        image = np.concatenate([image, np.full((blank_rows, W, 3), BLANK, dtype=np.uint8)])
+        blank_uv = np.array([0.5, (blank_rows / 2.0) / image.shape[0]])
+    Ht = image.shape[0]
+    uv = np.stack([(col + 0.5) / W, 1.0 - (row + 0.5) / Ht], axis=1)
+    return image, uv, blank_uv
 
 
-def uv_span(F, uv, image_shape):
-    """Per triangle, the largest distance between its corners' texture positions, as a fraction of
-    the image diagonal."""
+def uv_span(uvc, image_shape):
+    """Per triangle, the largest distance between its corners' texture positions (uvc: (M,3,2)), as
+    a fraction of the image diagonal."""
     H, W = image_shape[:2]
-    P = uv[F] * np.array([W, H])
+    P = uvc * np.array([W, H])
     d01 = np.linalg.norm(P[:, 0] - P[:, 1], axis=1)
     d12 = np.linalg.norm(P[:, 1] - P[:, 2], axis=1)
     d20 = np.linalg.norm(P[:, 2] - P[:, 0], axis=1)
@@ -107,25 +119,26 @@ def view_frame(view, up=(0.0, 1.0, 0.0)):
     return np.stack([r, u, d])
 
 
-def rasterize(V, F, uv, image, view, size=640, fill=0.9, two_sided=True):
-    """Orthographic software render of a textured mesh seen from direction `view`: nearest-texel
-    sampling inside every triangle, a depth buffer, and the same brightness-by-orientation shading
-    as render_registration.draw. Returns float RGB (size, size, 3) on a white background."""
+def project(V, view, size, fill=0.9):
+    """Orthographic projection to pixel coordinates (x right, y down, image rows) and a depth that
+    grows towards the viewer."""
     P = V @ view_frame(view).T
     lo, hi = P[:, :2].min(axis=0), P[:, :2].max(axis=0)
     s = size * fill / max(float((hi - lo).max()), 1e-9)
     xy = (P[:, :2] - (lo + hi) / 2) * s + size / 2
-    xy[:, 1] = size - xy[:, 1]  # image rows go down
-    z = P[:, 2]
-    H, W = image.shape[:2]
-    tex = image[:, :, :3].astype(np.float64) / 255.0
-    out = np.ones((size, size, 3))
+    xy[:, 1] = size - xy[:, 1]
+    return xy, P[:, 2]
+
+
+def raster_buffers(V, F, view, size=640, fill=0.9):
+    """Depth-buffered rasterisation: per pixel the face in front (-1 for none), its first two
+    barycentric coordinates and its depth."""
+    xy, z = project(V, view, size, fill)
+    fid = np.full((size, size), -1, dtype=np.int64)
+    W0 = np.zeros((size, size))
+    W1 = np.zeros((size, size))
     zbuf = np.full((size, size), -np.inf)
     tri = xy[F]
-    n = np.cross(P[F][:, 1] - P[F][:, 0], P[F][:, 2] - P[F][:, 0])
-    n /= np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-9)
-    nz = np.abs(n[:, 2]) if two_sided else np.clip(n[:, 2], 0.0, 1.0)
-    shade = 0.55 + 0.45 * nz
     for k in range(len(F)):
         (ax, ay), (bx, by), (cx, cy) = tri[k]
         area = (bx - ax) * (cy - ay) - (by - ay) * (cx - ax)
@@ -147,35 +160,93 @@ def rasterize(V, F, uv, image, view, size=640, fill=0.9, two_sided=True):
         hit = (w0 >= 0) & (w1 >= 0) & (w2 >= 0) & (depth > zbuf[ys, xs])
         if not hit.any():
             continue
-        u = w0 * uv[i, 0] + w1 * uv[j, 0] + w2 * uv[m, 0]
-        v = w0 * uv[i, 1] + w1 * uv[j, 1] + w2 * uv[m, 1]
-        col = np.clip((u * W).astype(np.int64), 0, W - 1)
-        row = np.clip(((1.0 - v) * H).astype(np.int64), 0, H - 1)
-        out[ys[hit], xs[hit]] = tex[row[hit], col[hit]] * shade[k]
+        fid[ys[hit], xs[hit]] = k
+        W0[ys[hit], xs[hit]] = w0[hit]
+        W1[ys[hit], xs[hit]] = w1[hit]
         zbuf[ys[hit], xs[hit]] = depth[hit]
+    return dict(fid=fid, w0=W0, w1=W1, z=zbuf, xy=xy, zv=z)
+
+
+def face_shade(V, F, view, two_sided=True):
+    """Brightness by orientation, as render_registration.draw: 0.55 for a face seen edge-on, 1 for
+    one facing the viewer."""
+    P = V @ view_frame(view).T
+    n = np.cross(P[F][:, 1] - P[F][:, 0], P[F][:, 2] - P[F][:, 0])
+    n /= np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-9)
+    nz = np.abs(n[:, 2]) if two_sided else np.clip(n[:, 2], 0.0, 1.0)
+    return 0.55 + 0.45 * nz, n[:, 2]
+
+
+def rasterize(V, F, uvc, image, view, size=640, fill=0.9):
+    """Software render of a textured mesh seen from direction `view`: nearest-texel sampling
+    inside every triangle with per-corner texture coordinates uvc (M,3,2) (a (N,2) per-vertex
+    array is accepted too), a depth buffer and brightness by orientation. Returns float RGB
+    (size, size, 3) on a white background."""
+    uvc = np.asarray(uvc, dtype=np.float64)
+    if uvc.ndim == 2:
+        uvc = uvc[F]
+    buf = raster_buffers(V, F, view, size, fill)
+    shade, _ = face_shade(V, F, view)
+    H, W = image.shape[:2]
+    tex = image[:, :, :3].astype(np.float64) / 255.0
+    out = np.ones((size, size, 3))
+    hit = buf["fid"] >= 0
+    k = buf["fid"][hit]
+    w0, w1 = buf["w0"][hit], buf["w1"][hit]
+    w2 = 1.0 - w0 - w1
+    u = w0 * uvc[k, 0, 0] + w1 * uvc[k, 1, 0] + w2 * uvc[k, 2, 0]
+    v = w0 * uvc[k, 0, 1] + w1 * uvc[k, 1, 1] + w2 * uvc[k, 2, 1]
+    col = np.clip((u * W).astype(np.int64), 0, W - 1)
+    row = np.clip(((1.0 - v) * H).astype(np.int64), 0, H - 1)
+    out[hit] = tex[row, col] * shade[k][:, None]
     return out
 
 
-def export_textured_obj(path, V, F, uv, image):
-    """OBJ with texture coordinates, its MTL and the texture PNG next to it."""
-    mesh = trimesh.Trimesh(
-        vertices=V,
-        faces=F,
-        visual=trimesh.visual.TextureVisuals(uv=uv, image=Image.fromarray(image)),
-        process=False,
-    )
+def visible_faces(V, F, view, size=1024, depth_tol=0.01):
+    """Faces seen from direction `view`: those that win a pixel of the depth buffer, plus the
+    front-facing ones whose centroid is no deeper than the buffer at its pixel (small faces that
+    fell between pixel centres)."""
+    buf = raster_buffers(V, F, view, size)
+    vis = np.zeros(len(F), dtype=bool)
+    seen = np.unique(buf["fid"][buf["fid"] >= 0])
+    vis[seen] = True
+    xy, z = buf["xy"], buf["zv"]
+    c = xy[F].mean(axis=1)
+    cz = z[F].mean(axis=1)
+    px = np.clip(np.floor(c[:, 0]).astype(np.int64), 0, size - 1)
+    py = np.clip(np.floor(c[:, 1]).astype(np.int64), 0, size - 1)
+    _, nz = face_shade(V, F, view)
+    tol = depth_tol * float(z.max() - z.min())
+    vis |= (nz > 0) & (cz >= buf["z"][py, px] - tol)
+    return vis
+
+
+def export_textured_obj(path, V, F, uv, image, textured=None, blank_uv=None):
+    """OBJ with per-corner texture coordinates, its MTL and the texture PNG next to it. Faces with
+    textured=False point all three corners at blank_uv (the grey strip of the texture)."""
     stem = os.path.splitext(os.path.basename(path))[0]
-    mesh.visual.material.name = stem
     out_dir = os.path.dirname(os.path.abspath(path))
-    text = trimesh.exchange.obj.export_obj(
-        mesh,
-        include_texture=True,
-        write_texture=True,
-        resolver=trimesh.resolvers.FilePathResolver(out_dir),
-        mtl_name=stem + ".mtl",
-    )
+    Image.fromarray(image).save(os.path.join(out_dir, stem + ".png"))
+    with open(os.path.join(out_dir, stem + ".mtl"), "w") as f:
+        f.write(f"newmtl {stem}\nKa 1.0 1.0 1.0\nKd 1.0 1.0 1.0\nKs 0.0 0.0 0.0\n")
+        f.write(f"map_Kd {stem}.png\n")
+    n = len(V)
+    vt = np.asarray(uv, dtype=np.float64)
+    if textured is None:
+        textured = np.ones(len(F), dtype=bool)
+    if blank_uv is not None:
+        vt = np.concatenate([vt, np.asarray(blank_uv, dtype=np.float64)[None]])
+    corner = np.repeat(F + 1, 1, axis=0)  # 1-based vertex indices
+    tex_idx = np.where(textured[:, None], F + 1, n + 1)  # blank faces use the extra vt
+    lines = [f"mtllib {stem}.mtl", f"usemtl {stem}"]
+    lines += [f"v {x:.6f} {y:.6f} {z:.6f}" for x, y, z in V]
+    lines += [f"vt {u:.6f} {v:.6f}" for u, v in vt]
+    lines += [
+        f"f {a}/{ta} {b}/{tb} {c}/{tc}"
+        for (a, b, c), (ta, tb, tc) in zip(corner.tolist(), tex_idx.tolist())
+    ]
     with open(path, "w") as f:
-        f.write(text)
+        f.write("\n".join(lines) + "\n")
 
 
 def main():
@@ -195,6 +266,9 @@ def main():
     ap.add_argument("--feature", choices=["full", "diffusion", "dino"], default="full")
     ap.add_argument("--view", type=float, nargs=3, default=(0.0, 0.0, 1.0))
     ap.add_argument("--target_view", type=float, nargs=3, default=None)
+    ap.add_argument(
+        "--both_sides", action="store_true", help="texture every face, not only the seen side"
+    )
     ap.add_argument("--size", type=int, default=640, help="render size in pixels")
     ap.add_argument("--out_dir", required=True)
     args = ap.parse_args()
@@ -204,7 +278,7 @@ def main():
     Vd, Fd, fd, _ = mesh_features(args.target, args.target_mesh, args.feature)
     if cs is None:
         sys.exit("the source mesh has no colours; texture transfer needs the relief with albedo")
-    image, uv_s = relief_texture(Vs, cs)
+    image, uv_s, blank_uv = relief_texture(Vs, cs)
     Image.fromarray(image).save(os.path.join(args.out_dir, "source_texture.png"))
     print(
         f"source {len(Vs)} vertices on a {image.shape[1]}x{image.shape[0]} image, "
@@ -216,18 +290,10 @@ def main():
     else:
         t2s = nearest_in_features(fd, fs)
     uv_d = uv_s[t2s]
-    export_textured_obj(os.path.join(args.out_dir, "target_textured.obj"), Vd, Fd, uv_d, image)
 
-    # consistency of the three corners of every triangle
-    span = uv_span(Fd, uv_d, image.shape)
-    stats = dict(
-        faces=int(len(Fd)),
-        span_median=round(float(np.median(span)), 4),
-        within_2pct=round(float((span < 0.02).mean()), 4),
-        within_5pct=round(float((span < 0.05).mean()), 4),
-        source_used=round(source_usage(uv_d, uv_s), 4),
-    )
+    # the target's viewing direction: given, from the registration, or the source's
     tview = args.target_view
+    stats = dict(faces=int(len(Fd)))
     if args.transform:
         with open(args.transform) as f:
             tr = json.load(f)
@@ -241,28 +307,56 @@ def main():
         diag = float(np.linalg.norm(Vd.max(axis=0) - Vd.min(axis=0)))
         covered_v = cKDTree(aligned).query(Vd)[0] < 0.05 * diag
         covered_f = covered_v[Fd].all(axis=1)
-        stats.update(
-            covered_faces=int(covered_f.sum()),
-            covered_within_2pct=round(float((span[covered_f] < 0.02).mean()), 4),
-            covered_within_5pct=round(float((span[covered_f] < 0.05).mean()), 4),
-        )
         if tview is None:
             tview = R[:, 2]
     if tview is None:
         tview = (0.0, 0.0, 1.0)
     tview = np.asarray(tview, dtype=np.float64)
+
+    # one side: only the faces the relief's camera sees are textured
+    if args.both_sides:
+        textured = np.ones(len(Fd), dtype=bool)
+    else:
+        textured = visible_faces(Vd, Fd, tview)
+    uvc = uv_d[Fd].copy()
+    uvc[~textured] = blank_uv
+    export_textured_obj(
+        os.path.join(args.out_dir, "target_textured.obj"), Vd, Fd, uv_d, image, textured, blank_uv
+    )
+
+    # consistency of the corners of every textured triangle, and how much of the relief is used
+    span_all = uv_span(uv_d[Fd], image.shape)
+    span = span_all[textured]
+    stats.update(
+        textured_faces=int(textured.sum()),
+        span_median=round(float(np.median(span)), 4),
+        within_2pct=round(float((span < 0.02).mean()), 4),
+        within_5pct=round(float((span < 0.05).mean()), 4),
+        source_used=round(source_usage(uvc[textured].reshape(-1, 2), uv_s), 4),
+        all_within_2pct=round(float((span_all < 0.02).mean()), 4),
+        all_within_5pct=round(float((span_all < 0.05).mean()), 4),
+        all_source_used=round(source_usage(uv_d, uv_s), 4),
+    )
+    if args.transform:
+        sel = textured & covered_f
+        stats.update(
+            covered_faces=int(sel.sum()),
+            covered_within_2pct=round(float((span_all[sel] < 0.02).mean()), 4),
+            covered_within_5pct=round(float((span_all[sel] < 0.05).mean()), 4),
+        )
     print(stats)
     with open(os.path.join(args.out_dir, "texture_transfer.json"), "w") as f:
         json.dump(dict(stats, source=args.source, target=args.target), f, indent=1)
-    t = np.clip(span / 0.1, 0, 1)[:, None]
+    t = np.clip(span_all / 0.1, 0, 1)[:, None]
     fc = (np.array([[60, 200, 60]]) * (1 - t) + np.array([[220, 40, 40]]) * t).astype(np.uint8)
+    fc[~textured] = BLANK
     trimesh.Trimesh(vertices=Vd, faces=Fd, face_colors=fc, process=False).export(
         os.path.join(args.out_dir, "target_uv_span.ply")
     )
 
     # renders: the relief through its own texture, the target from the relief's side and from behind
-    front = rasterize(Vd, Fd, uv_d, image, tview, args.size)
-    back = rasterize(Vd, Fd, uv_d, image, -tview, args.size)
+    front = rasterize(Vd, Fd, uvc, image, tview, args.size)
+    back = rasterize(Vd, Fd, uvc, image, -tview, args.size)
     panels = [
         ("source: albedo texture", rasterize(Vs, Fs, uv_s, image, args.view, args.size)),
         ("target: texture through the correspondence", front),

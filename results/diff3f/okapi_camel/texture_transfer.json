@@ -1,12 +1,16 @@
 {
  "faces": 3576,
- "span_median": 0.0317,
- "within_2pct": 0.342,
- "within_5pct": 0.6756,
- "source_used": 0.6163,
- "covered_faces": 1566,
- "covered_within_2pct": 0.3027,
- "covered_within_5pct": 0.7037,
+ "textured_faces": 1629,
+ "span_median": 0.0289,
+ "within_2pct": 0.3579,
+ "within_5pct": 0.7489,
+ "source_used": 0.5225,
+ "all_within_2pct": 0.3507,
+ "all_within_5pct": 0.6823,
+ "all_source_used": 0.6127,
+ "covered_faces": 992,
+ "covered_within_2pct": 0.2984,
+ "covered_within_5pct": 0.7933,
  "source": "outputs/diff3f/okapi_partial.npz",
  "target": "outputs/diff3f/camel_full.npz"
 }

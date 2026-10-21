@@ -1,12 +1,16 @@
 {
  "faces": 13776,
- "span_median": 0.0124,
- "within_2pct": 0.6882,
- "within_5pct": 0.8688,
- "source_used": 0.5901,
- "covered_faces": 9864,
- "covered_within_2pct": 0.7118,
- "covered_within_5pct": 0.8668,
+ "textured_faces": 6453,
+ "span_median": 0.0118,
+ "within_2pct": 0.7524,
+ "within_5pct": 0.9278,
+ "source_used": 0.5853,
+ "all_within_2pct": 0.6882,
+ "all_within_5pct": 0.8707,
+ "all_source_used": 0.6058,
+ "covered_faces": 5605,
+ "covered_within_2pct": 0.7661,
+ "covered_within_5pct": 0.931,
  "source": "outputs/diff3f/superman_partial.npz",
  "target": "outputs/diff3f/man_full.npz"
 }
