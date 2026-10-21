@@ -51,6 +51,14 @@ def test_uv_span_fraction_of_diagonal():
     assert np.isclose(span[0], 50.0 / np.hypot(100, 100))
 
 
+def test_source_usage_collapse_versus_full():
+    rng = np.random.default_rng(1)
+    uv_s = rng.random((4000, 2))
+    assert tt.source_usage(uv_s, uv_s) == 1.0  # every source cell is hit
+    collapsed = np.repeat(uv_s[:1], 4000, axis=0)  # every target vertex on one source point
+    assert tt.source_usage(collapsed, uv_s) < 0.01
+
+
 def test_rasterize_samples_texture_inside_triangle():
     # a square facing +z, textured with a 2x2 image: the four quadrants show the four texels
     V = np.array([[-1, -1, 0], [1, -1, 0], [1, 1, 0], [-1, 1, 0]], dtype=float)

@@ -3,6 +3,7 @@
  "span_median": 0.0317,
  "within_2pct": 0.342,
  "within_5pct": 0.6756,
+ "source_used": 0.6163,
  "covered_faces": 1566,
  "covered_within_2pct": 0.3027,
  "covered_within_5pct": 0.7037,

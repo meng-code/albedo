@@ -85,6 +85,16 @@ def uv_span(F, uv, image_shape):
     return np.maximum(np.maximum(d01, d12), d20) / np.hypot(W, H)
 
 
+def source_usage(uv_d, uv_s, grid=32):
+    """Fraction of the source image's foreground cells (a grid x grid lattice over the texture) that
+    at least one target vertex is matched into: near 1 when the whole relief is used, small when
+    the matching collapses onto a few source points. The corner span alone rewards a collapse (all
+    corners on one point span nothing), so the two numbers are read together."""
+    cell_s = np.unique(np.floor(np.clip(uv_s, 0, 0.999999) * grid).astype(np.int64) @ [grid, 1])
+    cell_d = np.unique(np.floor(np.clip(uv_d, 0, 0.999999) * grid).astype(np.int64) @ [grid, 1])
+    return float(len(np.intersect1d(cell_s, cell_d)) / max(len(cell_s), 1))
+
+
 def view_frame(view, up=(0.0, 1.0, 0.0)):
     """Rows: screen right, screen up, towards the viewer (the frame of render_registration.draw)."""
     d = np.asarray(view, dtype=np.float64)
@@ -215,6 +225,7 @@ def main():
         span_median=round(float(np.median(span)), 4),
         within_2pct=round(float((span < 0.02).mean()), 4),
         within_5pct=round(float((span < 0.05).mean()), 4),
+        source_used=round(source_usage(uv_d, uv_s), 4),
     )
     tview = args.target_view
     if args.transform:

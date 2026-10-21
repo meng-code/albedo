@@ -1,0 +1,9 @@
+{
+ "faces": 5500,
+ "span_median": 0.0587,
+ "within_2pct": 0.3649,
+ "within_5pct": 0.4835,
+ "source_used": 0.3464,
+ "source": "outputs/diff3f/chair1_partial.npz",
+ "target": "outputs/diff3f/cow_full.npz"
+}

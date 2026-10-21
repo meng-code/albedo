@@ -595,33 +595,71 @@ running the same script). The result is an OBJ with MTL and PNG that MeshLab ope
 
 A triangle whose three corners are matched to distant image points shows a stretched streak of the
 image, so the span of the corners' texture positions measures the consistency of the
-correspondence triangle by triangle. `texture_transfer.json` records the fraction of triangles
-whose corners lie within 2 % and 5 % of the image diagonal of each other, over all triangles and
-over the ones the registration says the relief covers; `target_uv_span.ply` shows it as face
-colours. On cat → lion the rosettes and stripes now appear on the lion, with streaks on the
-inconsistent triangles. All 16 real pairs, nearest-neighbour correspondence, span of the corners
-as a fraction of the image diagonal (`texture_transfer.json` in each result folder):
+correspondence triangle by triangle: `texture_transfer.json` records the fraction of triangles
+whose corners lie within 2 % and 5 % of the image diagonal of each other (over all triangles, and
+over the ones the registration says the relief covers), and `target_uv_span.ply` shows it as face
+colours. The span alone rewards a collapse (if every target vertex matched the same source point,
+every span would be zero), so it is read together with **source used**: the fraction of the
+relief's image cells (a 32 × 32 lattice over the texture) that at least one target vertex is
+matched into. On cat → lion the rosettes and stripes now appear on the lion, with streaks on the
+inconsistent triangles. All 16 real pairs, nearest-neighbour correspondence:
 
-| pair | triangles | within 2 % | within 5 % | covered only: within 2 % | within 5 % |
-|---|---|---|---|---|---|
-| cow | 5 500 | 39.8 % | 77.0 % | 39.1 % | 77.3 % |
-| cat | 14 410 | 68.5 % | 87.6 % | 64.8 % | 87.8 % |
-| superman_man | 13 776 | 68.8 % | 86.9 % | 71.2 % | 86.7 % |
-| superman_posed | 10 410 | 67.9 % | 85.6 % | 67.0 % | 85.2 % |
-| okapi_camel | 3 576 | 34.2 % | 67.6 % | 30.3 % | 70.4 % |
-| okapi1_camel | 3 576 | 37.1 % | 74.9 % | 28.5 % | 72.6 % |
-| cat5_cat | 14 410 | 76.3 % | 90.5 % | 78.0 % | 92.6 % |
-| cat_lion | 9 996 | 66.9 % | 85.5 % | 65.0 % | 85.2 % |
-| labubu_man | 13 776 | 64.5 % | 82.7 % | 65.5 % | 79.3 % |
-| chair1_armchair | 10 860 | 50.7 % | 71.1 % | 51.7 % | 75.6 % |
-| chair_armchair | 10 860 | 49.6 % | 76.3 % | 52.1 % | 75.9 % |
-| chair10_roundchair | 16 028 | 56.8 % | 69.0 % | 54.0 % | 63.2 % |
-| chairgen_armchair | 10 860 | 48.8 % | 69.8 % | 49.3 % | 77.0 % |
-| panda_panda | 40 000 | 74.5 % | 92.5 % | 83.3 % | 96.9 % |
-| bird_bird | 40 000 | 47.1 % | 71.0 % | 42.4 % | 68.1 % |
-| dragon_lizard | 40 000 | 66.9 % | 81.2 % | 73.7 % | 88.3 % |
-| mean | | 57.4 % | 79.3 % | 57.3 % | 80.1 % |
+| pair | triangles | within 2 % | within 5 % | source used |
+|---|---|---|---|---|
+| cow | 5 500 | 39.8 % | 77.0 % | 64 % |
+| cat | 14 410 | 68.5 % | 87.6 % | 68 % |
+| superman_man | 13 776 | 68.8 % | 86.9 % | 59 % |
+| superman_posed | 10 410 | 67.9 % | 85.6 % | 55 % |
+| okapi_camel | 3 576 | 34.2 % | 67.6 % | 62 % |
+| okapi1_camel | 3 576 | 37.1 % | 74.9 % | 69 % |
+| cat5_cat | 14 410 | 76.3 % | 90.5 % | 60 % |
+| cat_lion | 9 996 | 66.9 % | 85.5 % | 66 % |
+| labubu_man | 13 776 | 64.5 % | 82.7 % | 58 % |
+| chair1_armchair | 10 860 | 50.7 % | 71.1 % | 50 % |
+| chair_armchair | 10 860 | 49.6 % | 76.3 % | 54 % |
+| chair10_roundchair | 16 028 | 56.8 % | 69.0 % | 43 % |
+| chairgen_armchair | 10 860 | 48.8 % | 69.8 % | 57 % |
+| panda_panda | 40 000 | 74.5 % | 92.5 % | 80 % |
+| bird_bird | 40 000 | 47.1 % | 71.0 % | 64 % |
+| dragon_lizard | 40 000 | 66.9 % | 81.2 % | 59 % |
+| mean | | 57.4 % | 79.3 % | 61 % |
 
 The coarse targets (cow, camel: a few thousand triangles, so each triangle covers a large patch of
-the image) and the chairs and the stone bird (weak correspondence) sit lowest. These fractions are
-the number to raise when the correspondence improves.
+the image) and the chairs sit lowest. These are the numbers to raise when the correspondence
+improves.
+
+### Cross-category pairs
+
+The supervisor asked for very different source and target, for example the Labubu toy on the
+camel. Ten such pairs were run from the features alone, with no registration of the pair itself
+(the target's viewing direction is borrowed from a same-target registration):
+`results/diff3f/cross/<source>_<target>/` holds `correspondence_maps.png`, `texture_transfer.png`
+and `texture_transfer.json`. The last pair, a chair on the cow, is a control with no semantic
+relation at all.
+
+| pair | triangles | within 2 % | within 5 % | source used |
+|---|---|---|---|---|
+| labubu → camel | 3 576 | 31.7 % | 55.4 % | 38 % |
+| labubu → cow | 5 500 | 37.7 % | 58.1 % | 48 % |
+| labubu → lion | 9 996 | 51.5 % | 70.2 % | 45 % |
+| superman → camel | 3 576 | 37.1 % | 60.4 % | 37 % |
+| panda → man | 13 776 | 56.7 % | 77.0 % | 70 % |
+| cat → man | 13 776 | 53.9 % | 70.1 % | 66 % |
+| cow → camel | 3 576 | 33.1 % | 64.1 % | 53 % |
+| fire_dragon → man | 13 776 | 54.8 % | 69.8 % | 46 % |
+| bird → cat | 14 410 | 67.7 % | 79.6 % | 28 % |
+| chair1 → cow (control) | 5 500 | 36.5 % | 48.4 % | 35 % |
+| mean | | 46.1 % | 65.3 % | 46 % |
+
+The part level holds across categories: the Labubu's head lands on the head of the camel, the cow
+and the lion (its pink eyes at their eyes), the shirt on the body, the jeans on the legs and the
+white shoes on the hooves and paws; Superman's suit covers the camel with the red boots at the
+bottom of the legs; the panda gives the man a white face with black eye patches, a white belly and
+black limbs; the cow's hooves and pink muzzle land on the camel's feet and mouth; the dragon's cream
+belly lands on the man's chest and belly. What the source lacks is filled with the nearest thing:
+the camel's hump takes the Labubu's head and Superman's emblem, the cape scatters over the legs.
+The numbers are lower than within a category (mean 46 % / 65 % against 57 % / 79 %). The control
+pair also produces a picture (the seat on the body, the wooden legs on the legs), which is why
+the numbers matter: it sits at the bottom together with the stone bird, whose relief is a ball and
+whose matching collapses onto a few source points (source used 28 %), something the span alone
+would have scored as consistent.

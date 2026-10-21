@@ -263,3 +263,18 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   each other (`texture_transfer.json`). Cat → lion: 66.9 % / 85.6 % of all triangles.
 - The correspondence table is an input (`--correspondence`), so any improvement of the matching is
   judged by rerunning this script: more consistent triangles, fewer streaks.
+
+## 2026-10-21 — Cross-category pairs, and a second number next to the triangle span
+
+- The supervisor asked for very different source and target (the Labubu toy on the camel). Ten
+  cross-category pairs were run from the features alone, without registering the pair:
+  `results/diff3f/cross/`. The part level holds (head on head with the eyes at the eyes, shirt on the
+  body, jeans on the legs, shoes on the hooves; Superman's boots at the bottom of the camel's legs;
+  the panda's black limbs and white belly on the man); what the source lacks is filled with the
+  nearest thing (the camel's hump takes the head). Mean consistency 46 % / 65 % against 57 % / 79 %
+  within a category. A control pair with no relation (chair on the cow) also gives a picture, so the
+  pictures are judged by the numbers.
+- The triangle span alone rewards a collapse of the matching onto a few source points (all spans
+  zero), which the stone bird showed (67.7 % within 2 % while using 28 % of its relief).
+  `transfer_texture.py` therefore also reports **source used**, the fraction of the relief's image
+  cells that receive at least one match; the two are read together.
