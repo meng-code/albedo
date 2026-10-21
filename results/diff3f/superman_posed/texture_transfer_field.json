@@ -1,0 +1,16 @@
+{
+ "faces": 10410,
+ "textured_faces": 4783,
+ "span_median": 0.0108,
+ "within_2pct": 0.7585,
+ "within_5pct": 0.9302,
+ "source_used": 0.558,
+ "all_within_2pct": 0.7013,
+ "all_within_5pct": 0.8993,
+ "all_source_used": 0.6212,
+ "covered_faces": 3723,
+ "covered_within_2pct": 0.7556,
+ "covered_within_5pct": 0.9264,
+ "source": "outputs/diff3f/features/superman_partial.npz",
+ "target": "outputs/diff3f/features/posed_human_full.npz"
+}

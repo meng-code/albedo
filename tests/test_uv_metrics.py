@@ -45,10 +45,10 @@ def test_stretched_texture_has_distortion():
 def test_blank_faces_are_skipped(tmp_path):
     V, F, uvc = square_facing_camera()
     uvc = uvc.copy()
-    uvc[1] = [0.5, 0.01]  # second triangle on the blank point
+    uvc[1] = [0.5, 0.01]  # second triangle collapsed on one point (distinct corners, same place)
     q = um.uv_quality(V, F, uvc, (0, 0, 1))
     assert q["triangles"] == 1 and q["collapsed"] == 0.5
-    # round trip through an OBJ with per-corner texture coordinates
+    # round trip through an OBJ: a face whose corners share one vt index is blank, not collapsed
     path = str(tmp_path / "t.obj")
     with open(path, "w") as f:
         for v in V:
@@ -58,4 +58,5 @@ def test_blank_faces_are_skipped(tmp_path):
         f.write("vt 0.5 0.01\n")
         f.write("f 1/1 2/2 3/3\nf 1/5 3/5 4/5\n")
     V2, F2, uvc2 = um.read_textured_obj(path)
-    assert um.uv_quality(V2, F2, uvc2, (0, 0, 1))["triangles"] == 1
+    q2 = um.uv_quality(V2, F2, uvc2, (0, 0, 1))
+    assert q2["triangles"] == 1 and q2["collapsed"] == 0.0

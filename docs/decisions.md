@@ -299,3 +299,30 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   for the automatic anchors; the landmarks plus the mutual anchors give 73 % / 96 %, the best of
   the four. Consistent picking matters more than the number of landmarks. On a real pair a few landmarks do not beat the
   automatic anchors; they guarantee the picked features and little else.
+
+## 2026-10-22 — Overnight: smooth field, texture-map quality, landmarks on the hard pairs
+
+- The owner asked for the texture to come out clearer and left the night to it. Three things:
+- **Smooth correspondence field** (`refine_correspondence.py --field 0.1 --field_order 2`): a
+  continuous source-position field fitted to the matches with Laplacian regularisation, texture
+  coordinates taken straight from it. Keeps the synthetic accuracy of the matches, lifts the
+  16 same-category pairs to 66.5 % / 91.1 % / 70 % (triangles within 2 % / 5 %, relief used) from
+  65.4 % / 89.1 % / 62 %, and visibly removes the streaks (rosettes and stripes stay whole on the
+  lion). Stronger smoothing is cleaner still but costs synthetic accuracy; left at 0.1.
+- **Texture-map quality** (`uv_metrics.py`, `results/diff3f/uv_quality.csv`): conformal distortion
+  and flipped triangles, the measures RealSkin (arXiv 2607.12495) reports for the same
+  image-to-3D setting (a partial surface from one photo, the target cut to the visible part). Same
+  category: median distortion 674 → 8.3 → 4.1 and flips 48 → 39 → 29 % for nearest neighbour,
+  refined matches and the field. Flips are the next target; a re-solve that down-weights the
+  vertices of flipped triangles (`--field_iters`) was tried and barely moved them (24 → 23 % on
+  cat → lion) while costing synthetic accuracy, so it is not used.
+- **Landmarks on Labubu → camel and Labubu → lion**: picked by two Opus annotation agents and
+  verified by two Opus checking agents (both annotators had put the Labubu chin on the fur under
+  the face; one camel toe was on the far foot; fixed before use). Ten landmarks reduce flips by
+  4 to 6 points and lift the 5 % figure by about 4 points on these pairs; they do not make a toy
+  and a camel correspond. The automatic pipeline already reaches 83 to 97 % within 2 % on the
+  cross pairs whose shapes are closer (panda, dragon and cat on the man).
+- Literature checked tonight: SemTex (the group's own paper; code not yet released) works in image
+  space with patch matching plus diffusion refinement; DenseMatcher and TriTex need trained
+  networks; RealSkin's code is unreleased. Nothing to pull and run on the laptop; the ideas taken
+  are the sub-mesh cut to the visible side and the distortion/flip metrics.

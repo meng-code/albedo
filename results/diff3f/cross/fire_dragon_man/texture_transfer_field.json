@@ -1,0 +1,13 @@
+{
+ "faces": 13776,
+ "textured_faces": 6453,
+ "span_median": 0.0028,
+ "within_2pct": 0.9157,
+ "within_5pct": 0.9661,
+ "source_used": 0.5624,
+ "all_within_2pct": 0.8662,
+ "all_within_5pct": 0.9377,
+ "all_source_used": 0.6479,
+ "source": "outputs/diff3f/features/fire_dragon_partial.npz",
+ "target": "outputs/diff3f/features/man_full.npz"
+}

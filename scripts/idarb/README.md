@@ -767,3 +767,116 @@ Every real pair improves on all three numbers. The cross-category pairs gain les
 and the lion, the stone bird on the cat, the chair on the cow) do not improve at 2 %: their mutual
 anchors are as unreliable as the rest of the matching, so the prior fitted on them has nothing to
 add.
+
+### Smooth correspondence field (`refine_correspondence.py --field`)
+
+Even after the prior, every target vertex still ends on one of the sampled source points, so
+neighbouring vertices land a sample apart and a triangle's three corners rarely form the small
+patch they should. `--field` fits a continuous source-position field to the matches instead: it
+minimises the weighted distance of every vertex to its matched position plus a Laplacian
+smoothness term along the target surface (a sparse linear solve; `--field_order 2` uses the
+bi-Laplacian). The weights are the match similarities scaled between their 10th and 90th
+percentiles, raised at the anchors and fixed high at landmarks. The texture coordinates come
+straight from the field (`transfer_texture.py` reads `src_pos` from the npz), so nothing jumps
+inside a triangle. On the synthetic ground truth a weak field (`--field 0.1 --field_order 2`, the
+setting used below) keeps the accuracy of the matches (cat 73.3 % within 1 %, cow 57.5 %);
+stronger smoothing trades it for continuity (`--field 1`: cat 64.8 %). Nearest neighbour,
+refined matches and the field on every pair, textured side only (triangles within 2 % / within
+5 % / relief used):
+
+| pair | nearest neighbour | refined | smooth field |
+|---|---|---|---|
+| cow | 41.8 % / 84.1 % / 59 % | 49.4 % / 90.2 % / 70 % | 48.8 % / 90.6 % / 72 % |
+| cat | 66.7 % / 92.6 % / 61 % | 75.3 % / 97.8 % / 70 % | 80.0 % / 99.7 % / 73 % |
+| superman_man | 75.2 % / 92.8 % / 59 % | 88.4 % / 96.5 % / 59 % | 97.6 % / 98.6 % / 62 % |
+| superman_posed | 71.4 % / 88.4 % / 49 % | 77.2 % / 93.3 % / 52 % | 75.8 % / 93.0 % / 56 % |
+| okapi_camel | 35.8 % / 74.9 % / 52 % | 39.4 % / 84.7 % / 58 % | 34.4 % / 93.4 % / 60 % |
+| okapi1_camel | 32.4 % / 78.2 % / 61 % | 40.6 % / 91.2 % / 67 % | 38.8 % / 97.4 % / 71 % |
+| cat5_cat | 76.0 % / 92.0 % / 52 % | 79.1 % / 95.6 % / 66 % | 80.6 % / 99.2 % / 68 % |
+| cat_lion | 69.0 % / 90.9 % / 58 % | 73.7 % / 96.1 % / 67 % | 76.2 % / 98.3 % / 70 % |
+| labubu_man | 60.7 % / 76.9 % / 39 % | 67.9 % / 83.0 % / 50 % | 87.3 % / 91.2 % / 63 % |
+| chair1_armchair | 50.3 % / 75.8 % / 45 % | 53.3 % / 83.2 % / 66 % | 51.8 % / 80.7 % / 82 % |
+| chair_armchair | 48.3 % / 80.1 % / 49 % | 62.5 % / 87.0 % / 57 % | 59.7 % / 82.7 % / 68 % |
+| chair10_roundchair | 63.3 % / 76.2 % / 35 % | 67.1 % / 82.6 % / 51 % | 57.1 % / 76.9 % / 78 % |
+| chairgen_armchair | 48.1 % / 68.8 % / 52 % | 50.7 % / 75.6 % / 72 % | 44.5 % / 77.2 % / 93 % |
+| panda_panda | 78.3 % / 95.5 % / 73 % | 86.4 % / 97.8 % / 78 % | 87.5 % / 96.3 % / 82 % |
+| bird_bird | 49.1 % / 74.3 % / 51 % | 58.2 % / 83.8 % / 62 % | 72.8 % / 92.9 % / 61 % |
+| dragon_lizard | 64.8 % / 82.9 % / 50 % | 76.3 % / 87.5 % / 54 % | 70.4 % / 88.9 % / 59 % |
+| mean, 16 same-category pairs | 58.2 % / 82.8 % / 53 % | 65.4 % / 89.1 % / 62 % | 66.5 % / 91.1 % / 70 % |
+| labubu → camel | 31.3 % / 52.5 % / 29 % | 30.3 % / 52.5 % / 35 % | 16.8 % / 56.5 % / 42 % |
+| labubu → cow | 40.8 % / 62.6 % / 35 % | 41.6 % / 68.2 % / 43 % | 31.4 % / 72.2 % / 55 % |
+| labubu → lion | 52.4 % / 71.9 % / 30 % | 46.6 % / 69.4 % / 43 % | 41.0 % / 73.8 % / 56 % |
+| superman → camel | 33.7 % / 56.0 % / 27 % | 38.8 % / 64.8 % / 31 % | 37.1 % / 73.0 % / 39 % |
+| panda → man | 58.9 % / 83.6 % / 63 % | 71.0 % / 93.3 % / 76 % | 96.5 % / 97.6 % / 84 % |
+| cat → man | 55.5 % / 73.7 % / 54 % | 62.0 % / 76.9 % / 59 % | 82.8 % / 89.1 % / 67 % |
+| cow → camel | 34.5 % / 71.5 % / 45 % | 34.8 % / 85.5 % / 51 % | 33.8 % / 97.2 % / 54 % |
+| fire_dragon → man | 56.4 % / 74.4 % / 42 % | 69.0 % / 85.2 % / 51 % | 91.6 % / 96.6 % / 56 % |
+| bird → cat | 58.4 % / 73.9 % / 22 % | 54.2 % / 74.4 % / 29 % | 50.1 % / 70.4 % / 62 % |
+| chair1 → cow | 37.8 % / 50.4 % / 26 % | 36.6 % / 57.6 % / 35 % | 15.4 % / 49.3 % / 56 % |
+| mean, 10 cross-category pairs | 46.0 % / 67.1 % / 37 % | 48.5 % / 72.8 % / 45 % | 49.6 % / 77.6 % / 57 % |
+
+The 2 % column can fall while the texture gets better (the chairs, Labubu on the camel): a
+collapsed triangle whose three corners sit on one source point spans nothing and counts as
+consistent, and the field undoes exactly those collapses. The next section measures the map
+itself.
+
+### Texture-map quality (`uv_metrics.py`)
+
+The transferred texture coordinates form a map from the mesh to the image, and a map is judged
+the way mesh parametrisations are: per textured triangle, the linear map from the triangle's own
+shape to its image has two singular values, their ratio is the **conformal distortion** (1: the
+patch keeps its shape; large: a streak), and a **flip** is a triangle that lands on the image
+mirrored (a reversed patch), tested against the triangle's winding on screen seen from the relief's
+camera. A **collapsed** triangle has its three corners on one point. These are the numbers that
+image-to-3D attribute-transfer papers report (for example RealSkin, arXiv 2607.12495, mCD and
+Flip%), so they put our results on the same footing. `uv_metrics.py` reads the OBJ written by
+`transfer_texture.py`; `results/diff3f/uv_quality.csv` has every pair and variant. Means over the
+pairs (median distortion is the median over the pairs of each pair's median):
+
+| 16 same-category pairs | median distortion | over tenfold | collapsed | flipped |
+|---|---|---|---|---|
+| nearest neighbour | 674 | 65.3 % | 15.2 % | 48.3 % |
+| refined matches | 8.3 | 46.9 % | 7.5 % | 39.1 % |
+| smooth field | 4.1 | 31.6 % | 1.7 % | 29.1 % |
+
+| 10 cross-category pairs | median distortion | over tenfold | collapsed | flipped |
+|---|---|---|---|---|
+| nearest neighbour | 11 819 | 72.0 % | 15.3 % | 52.1 % |
+| refined matches | 21.6 | 59.1 % | 6.4 % | 47.5 % |
+| smooth field | 9.1 | 45.5 % | 3.5 % | 43.9 % |
+
+Nearest neighbour alone maps half of the triangles mirrored and two thirds stretched more than
+tenfold; the field brings the median distortion of a same-category pair to 4 and the flips to
+under a third. Flips are the next thing to attack: a flipped triangle is a left-right confusion
+of the features at the scale of one triangle, which smoothing only partly removes.
+
+### Landmarks on the cross-category pairs
+
+The supervisor's landmark question matters most where the automatic anchors fail, so ten
+landmarks (nose, head top, ear tip, eye, chin, neck base, chest, belly, front toe, hind toe) were
+picked on the Labubu relief and on the camel and the lion. Two annotation agents picked them with
+`pick_landmarks.py`, two independent checking agents verified every pair on zoomed renders and
+against the meshes' extreme points, and their corrections (the Labubu chin had been put on the fur
+under the face by both annotators; one camel toe was on the far foot) were applied before use;
+the contact sheets are in `results/diff3f/landmarks/`. Textured side only:
+
+| pair | correspondence | within 2 % | within 5 % | relief used | median distortion | flipped |
+|---|---|---|---|---|---|---|
+| labubu → camel | nearest neighbour | 31.3 % | 52.5 % | 29 % | 56.4 | 47.0 % |
+| labubu → camel | automatic anchors | 30.3 % | 52.5 % | 35 % | 17.5 | 43.5 % |
+| labubu → camel | automatic anchors + field | 16.8 % | 56.5 % | 42 % | 9.5 | 49.7 % |
+| labubu → camel | 10 landmarks | 30.6 % | 57.0 % | 34 % | 17.5 | 40.7 % |
+| labubu → camel | landmarks + automatic anchors | 31.1 % | 55.2 % | 34 % | 16.9 | 42.6 % |
+| labubu → camel | landmarks + anchors + field | 18.5 % | 57.3 % | 40 % | 9.9 | 47.1 % |
+| labubu → lion | nearest neighbour | 52.4 % | 71.9 % | 30 % | (degenerate) | 55.3 % |
+| labubu → lion | automatic anchors | 46.6 % | 69.4 % | 43 % | 25.6 | 51.0 % |
+| labubu → lion | automatic anchors + field | 41.0 % | 73.8 % | 56 % | 8.5 | 42.9 % |
+| labubu → lion | 10 landmarks | 57.1 % | 75.8 % | 39 % | 20.9 | 50.7 % |
+| labubu → lion | landmarks + automatic anchors | 50.0 % | 72.0 % | 41 % | 19.7 | 49.8 % |
+| labubu → lion | landmarks + anchors + field | 44.2 % | 75.8 % | 52 % | 8.6 | 41.7 % |
+
+Ten landmarks help these pairs a little (the fewest flips without the field, the best 5 % figure
+with it) and do not change the picture: a toy and a camel differ too much for ten points to pin
+down, and the field remains the main source of continuity. Where the shapes are closer (the
+panda, the dragon and the cat on the man) the automatic pipeline already reaches 83 to 97 %
+within 2 %.

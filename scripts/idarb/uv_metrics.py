@@ -47,6 +47,9 @@ def read_textured_obj(path):
                 FT.append([int(c[1]) - 1 if len(c) > 1 and c[1] else -1 for c in corners])
     V, VT, F, FT = np.array(V), np.array(VT), np.array(F), np.array(FT)
     uvc = np.where(FT[:, :, None] >= 0, VT[np.maximum(FT, 0)], np.nan)
+    # a blank face points its three corners at one and the same texture coordinate
+    blank = (FT[:, 0] == FT[:, 1]) & (FT[:, 1] == FT[:, 2])
+    uvc[blank] = np.nan
     return V, F, uvc
 
 

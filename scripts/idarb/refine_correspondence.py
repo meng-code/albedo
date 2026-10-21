@@ -184,6 +184,27 @@ def smooth_field(Vd, Fd, S, w, lam=1.0, order=1):
     return np.asarray(P)
 
 
+def bad_triangles(Vd, Fd, P, view, max_distortion=10.0):
+    """Triangles whose image under the field P (projected on the relief plane x, y) is mirrored
+    with respect to their winding on screen seen from `view`, or stretched more than
+    `max_distortion`-fold: the triangles that would show as reversed patches or streaks."""
+    from transfer_texture import view_frame
+    from uv_metrics import triangle_maps
+
+    R = view_frame(view)
+    S = Vd[Fd] @ R.T
+    s1, s2 = S[:, 1, :2] - S[:, 0, :2], S[:, 2, :2] - S[:, 0, :2]
+    sign_screen = np.sign(s1[:, 0] * s2[:, 1] - s1[:, 1] * s2[:, 0])
+    Q = P[Fd][:, :, :2]
+    q1, q2 = Q[:, 1] - Q[:, 0], Q[:, 2] - Q[:, 0]
+    sign_field = np.sign(q1[:, 0] * q2[:, 1] - q1[:, 1] * q2[:, 0])
+    flipped = (sign_field != sign_screen) & (sign_screen != 0)
+    uvc = np.concatenate([Q, np.zeros_like(Q[:, :, :1])], axis=2)[:, :, :2]
+    sv, _, _ = triangle_maps(Vd, Fd, uvc, (1.0, 1.0))
+    distorted = sv[:, 0] / np.maximum(sv[:, 1], 1e-12) > max_distortion
+    return flipped | distorted, flipped, distorted
+
+
 def confidence(sim, Vd, anchors=None, landmarks_t=None):
     """Data weight per target vertex: the similarity of its match scaled between its 10th and
     90th percentiles, raised for the vertices at anchors and fixed high at landmarks."""
@@ -302,6 +323,21 @@ def main():
         "(0: off); the npz then also holds src_pos, which transfer_texture.py prefers",
     )
     ap.add_argument("--field_order", type=int, choices=[1, 2], default=1)
+    ap.add_argument(
+        "--field_iters",
+        type=int,
+        default=0,
+        help="re-solve the field this many times, each time lowering the confidence of the "
+        "vertices of triangles that came out mirrored or over-stretched (needs --target_view)",
+    )
+    ap.add_argument(
+        "--target_view",
+        type=float,
+        nargs=3,
+        default=None,
+        help="direction of the relief's camera in target space (the third column of the "
+        "registration's rotation), for the orientation test of --field_iters",
+    )
     ap.add_argument("--out", required=True, help="npz with t2s")
     args = ap.parse_args()
 
@@ -355,6 +391,20 @@ def main():
         S = Vs[t2s]
         w = confidence(sim, Vd, anchors, t_lm if lm is not None else None)
         P = smooth_field(Vd, Fd, S, w, args.field, args.field_order)
+        if args.field_iters and args.target_view is not None:
+            protected = np.zeros(len(Vd), dtype=bool)
+            if lm is not None:
+                protected[t_lm] = True
+            history = []
+            for _ in range(args.field_iters):
+                bad, flipped, distorted = bad_triangles(Vd, Fd, P, args.target_view)
+                history.append([int(flipped.sum()), int(distorted.sum())])
+                bad_v = np.unique(Fd[bad])
+                w[bad_v[~protected[bad_v]]] *= 0.3
+                P = smooth_field(Vd, Fd, S, w, args.field, args.field_order)
+            bad, flipped, distorted = bad_triangles(Vd, Fd, P, args.target_view)
+            history.append([int(flipped.sum()), int(distorted.sum())])
+            stats["field_iters_flipped_distorted"] = history
         extra["src_pos"] = P.astype(np.float32)
         t2s_field = src["idx"][cKDTree(src["xyz"]).query(P)[1]].astype(np.int64)
     if gt is not None:

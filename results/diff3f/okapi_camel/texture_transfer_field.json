@@ -1,0 +1,16 @@
+{
+ "faces": 3576,
+ "textured_faces": 1629,
+ "span_median": 0.0258,
+ "within_2pct": 0.3438,
+ "within_5pct": 0.9343,
+ "source_used": 0.6025,
+ "all_within_2pct": 0.3196,
+ "all_within_5pct": 0.936,
+ "all_source_used": 0.6865,
+ "covered_faces": 992,
+ "covered_within_2pct": 0.2258,
+ "covered_within_5pct": 0.9335,
+ "source": "outputs/diff3f/features/okapi_partial.npz",
+ "target": "outputs/diff3f/features/camel_full.npz"
+}
