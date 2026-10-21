@@ -41,6 +41,7 @@ import xml.etree.ElementTree as ET
 
 import numpy as np
 import scipy.sparse as sp
+from scipy.sparse.linalg import spsolve
 from scipy.spatial import cKDTree
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -161,7 +162,38 @@ def refine(
             M = A @ C[rows, choice]
             d = np.linalg.norm(C - M[:, None], axis=2) / (radius_s * diag_s)
             choice = (cost + w_smooth * d**2).argmin(axis=1)
-    return cand[rows, choice]
+    return cand[rows, choice], sim[rows, choice]
+
+
+def smooth_field(Vd, Fd, S, w, lam=1.0, order=1):
+    """A source-space position per target vertex that follows the matched positions S (n,3) where
+    the confidence w (n,) is high and varies smoothly along the target surface elsewhere. Minimises
+    sum_i w_i |P_i - S_i|^2 + lam |L P|^2, L the graph Laplacian of the mesh (order 2: the
+    bi-Laplacian, smoother). The result is continuous, so the texture coordinates derived from it
+    have no jumps inside a triangle."""
+    n = len(Vd)
+    i = np.concatenate([Fd[:, 0], Fd[:, 1], Fd[:, 2], Fd[:, 1], Fd[:, 2], Fd[:, 0]])
+    j = np.concatenate([Fd[:, 1], Fd[:, 2], Fd[:, 0], Fd[:, 0], Fd[:, 1], Fd[:, 2]])
+    A = sp.coo_matrix((np.ones(len(i)), (i, j)), shape=(n, n)).tocsr()
+    A.data[:] = 1.0
+    L = sp.diags(np.asarray(A.sum(axis=1)).ravel()) - A
+    if order == 2:
+        L = L.T @ L
+    W = sp.diags(np.asarray(w, dtype=np.float64))
+    P = spsolve((W + lam * L).tocsc(), W @ np.asarray(S, dtype=np.float64))
+    return np.asarray(P)
+
+
+def confidence(sim, Vd, anchors=None, landmarks_t=None):
+    """Data weight per target vertex: the similarity of its match scaled between its 10th and
+    90th percentiles, raised for the vertices at anchors and fixed high at landmarks."""
+    lo, hi = np.percentile(sim, 10), np.percentile(sim, 90)
+    w = np.clip((sim - lo) / max(hi - lo, 1e-6), 0.05, 1.0)
+    if anchors is not None and len(anchors[0]):
+        w[cKDTree(Vd).query(anchors[0])[1]] = 3.0
+    if landmarks_t is not None and len(landmarks_t):
+        w[landmarks_t] = 10.0
+    return w
 
 
 def read_pp(path):
@@ -211,6 +243,23 @@ def evaluate(t2s, Vd, gt):
     )
 
 
+def evaluate_positions(P, Vs, Vd, gt):
+    """Like evaluate, for continuous source-space positions P (n,3): the distance to the true
+    source vertex of each target vertex, in units of the target's diagonal (full = s R partial + t,
+    so source-space distances are target distances divided by gt['s'])."""
+    orig = gt["orig_idx"]
+    s_of_t = -np.ones(len(Vd), dtype=np.int64)
+    s_of_t[orig] = np.arange(len(orig))
+    has = s_of_t >= 0
+    diag = float(np.linalg.norm(Vd.max(axis=0) - Vd.min(axis=0))) / float(gt["s"])
+    err = np.linalg.norm(P[has] - Vs[s_of_t[has]], axis=1) / diag
+    return dict(
+        acc_1pct=round(float((err < 0.01).mean()), 4),
+        acc_5pct=round(float((err < 0.05).mean()), 4),
+        err_median=round(float(np.median(err)), 4),
+    )
+
+
 def main():
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -245,6 +294,14 @@ def main():
     ap.add_argument("--iters", type=int, default=2, help="smoothing passes (0: none)")
     ap.add_argument("--radius_s", type=float, default=0.05, help="smoothing scale, of the diagonal")
     ap.add_argument("--w_smooth", type=float, default=0.3)
+    ap.add_argument(
+        "--field",
+        type=float,
+        default=0.0,
+        help="smoothness weight of a continuous source-position field fitted to the matches "
+        "(0: off); the npz then also holds src_pos, which transfer_texture.py prefers",
+    )
+    ap.add_argument("--field_order", type=int, choices=[1, 2], default=1)
     ap.add_argument("--out", required=True, help="npz with t2s")
     args = ap.parse_args()
 
@@ -275,7 +332,7 @@ def main():
             )
         kind += f" + {len(keep)} mutual anchors (of {len(t)} mutual pairs)"
 
-    t2s_sample = refine(
+    t2s_sample, sim = refine(
         Vd,
         Fd,
         fd,
@@ -292,14 +349,26 @@ def main():
     t2s = src["idx"][t2s_sample].astype(np.int64)
     if lm is not None:
         t2s[t_lm] = s_lm
-    stats = dict(anchors=kind, k=args.k, iters=args.iters)
+    stats = dict(anchors=kind, k=args.k, iters=args.iters, field=args.field)
+    extra = {}
+    if args.field > 0:
+        S = Vs[t2s]
+        w = confidence(sim, Vd, anchors, t_lm if lm is not None else None)
+        P = smooth_field(Vd, Fd, S, w, args.field, args.field_order)
+        extra["src_pos"] = P.astype(np.float32)
+        t2s_field = src["idx"][cKDTree(src["xyz"]).query(P)[1]].astype(np.int64)
     if gt is not None:
         nn = src["idx"][topk_candidates(fd, src["feat"], 1)[0][:, 0]]
         stats["nearest_neighbour"] = evaluate(nn, Vd, gt)
         stats["refined"] = evaluate(t2s, Vd, gt)
+        if args.field > 0:
+            stats["field_positions"] = evaluate_positions(P, Vs, Vd, gt)
+            stats["field_snapped"] = evaluate(t2s_field, Vd, gt)
     print(json.dumps(stats))
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
-    np.savez_compressed(args.out, t2s=t2s, options=json.dumps(vars(args)), stats=json.dumps(stats))
+    np.savez_compressed(
+        args.out, t2s=t2s, options=json.dumps(vars(args)), stats=json.dumps(stats), **extra
+    )
 
 
 if __name__ == "__main__":

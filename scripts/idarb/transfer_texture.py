@@ -65,6 +65,23 @@ def relief_grid(V, tol=0.05):
     return cols[0], rows[0]
 
 
+def relief_frame(V):
+    """The pixel grid behind a relief: x of column 0, y of row 0 and the pixel step."""
+    col, row = relief_grid(V)
+    step = float((V[:, 0].max() - V[:, 0].min()) / max(col.max(), 1))
+    return float(V[:, 0].min()), float(V[:, 1].max()), step
+
+
+def relief_uv_of_points(P, V, image_shape):
+    """Texture coordinates of arbitrary source-space points P (n,3) over the relief's image, the
+    same convention as relief_texture's uv for the vertices themselves."""
+    x0, y1, step = relief_frame(V)
+    Ht, W = image_shape[:2]
+    col = (P[:, 0] - x0) / step
+    row = (y1 - P[:, 1]) / step
+    return np.stack([(col + 0.5) / W, 1.0 - (row + 0.5) / Ht], axis=1)
+
+
 def relief_texture(V, C, blank_rows=16):
     """The albedo image behind a relief mesh (uint8 HxWx3, background filled from the nearest
     foreground pixel, plus `blank_rows` of light grey at the bottom for the untextured faces), the
@@ -288,11 +305,16 @@ def main():
         f"target {len(Vd)} vertices"
     )
 
+    src_pos = None
     if args.correspondence:
-        t2s = np.load(args.correspondence)["t2s"].astype(np.int64)
+        z = np.load(args.correspondence)
+        t2s = z["t2s"].astype(np.int64)
+        if "src_pos" in z.files:  # a continuous field: texture coordinates straight from it
+            src_pos = z["src_pos"].astype(np.float64)
     else:
         t2s = nearest_in_features(fd, fs)
-    uv_d = uv_s[t2s]
+    uv_d = uv_s[t2s] if src_pos is None else relief_uv_of_points(src_pos, Vs, image.shape)
+    uv_d = np.clip(uv_d, 0.0, 1.0)
 
     # the target's viewing direction: given, from the registration, or the source's
     tview = args.target_view

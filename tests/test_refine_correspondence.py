@@ -62,8 +62,25 @@ def test_refine_prefers_candidates_near_the_prior():
     Fd = np.array([[i, i + 1, (i + 2) % n] for i in range(n - 2)])
     fd = unit(np.ones((n, 4)) + 0.01 * rng.normal(size=(n, 4))).astype(np.float32)
     anchors = (Vd[::5], src_xyz[::5])
-    choice = rc.refine(Vd, Fd, fd, src_xyz, fs, anchors, k=n, radius=0.1, iters=0)
+    choice, sim = rc.refine(Vd, Fd, fd, src_xyz, fs, anchors, k=n, radius=0.1, iters=0)
     assert np.abs(choice - np.arange(n)).max() <= 1
+    assert sim.shape == (n,) and np.all(sim > 0.9)
     # without a prior the nearly identical features give an arbitrary match
-    plain = rc.refine(Vd, Fd, fd, src_xyz, fs, None, k=n, radius=0.1, iters=0)
+    plain, _ = rc.refine(Vd, Fd, fd, src_xyz, fs, None, k=n, radius=0.1, iters=0)
     assert np.abs(plain - np.arange(n)).max() > 1
+
+
+def test_smooth_field_follows_confident_matches_and_smooths_the_rest():
+    # a strip of vertices; matched positions are the vertex positions plus noise, with every
+    # fifth vertex confident and exact: the field must stay close to the exact positions
+    rng = np.random.default_rng(4)
+    n = 60
+    Vd = np.stack([np.linspace(0, 1, n), np.zeros(n), np.zeros(n)], axis=1)
+    Fd = np.array([[i, i + 1, (i + 2) % n] for i in range(n - 2)])
+    S = Vd + 0.2 * rng.normal(size=(n, 3))
+    w = np.full(n, 0.05)
+    S[::5] = Vd[::5]
+    w[::5] = 10.0
+    P = rc.smooth_field(Vd, Fd, S, w, lam=1.0)
+    assert np.linalg.norm(P - Vd, axis=1).max() < 0.1
+    assert np.linalg.norm(S - Vd, axis=1).max() > 0.3
