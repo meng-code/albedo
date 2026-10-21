@@ -293,8 +293,9 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   its own does nothing.
 - Landmarks: MeshLab .pp files or `pick_landmarks.py` (grid render, pixel coordinates, snap to the
   silhouette). Eleven picked on cat → lion (nose, ear tip, eye, chin, paws, tail tip, rump, back,
-  belly, chest, checked on zoomed renders after the owner caught a chin matched to a throat and a
-  cheek matched to a nose): 70 % / 93 % of the textured triangles within 2 % / 5 %, against
-  69 % / 91 % for nearest neighbour and 74 % / 96 % for the automatic anchors; adding the mutual
-  anchors to the landmarks gives 72 % / 96 %. On a real pair a few landmarks do not beat the
+  belly, chest, checked on zoomed renders and silhouette extremes after the owner caught a chin
+  matched to a throat, a cheek matched to a nose and a heel matched to a toe): 70 % / 95 % of the
+  textured triangles within 2 % / 5 %, against 69 % / 91 % for nearest neighbour and 74 % / 96 %
+  for the automatic anchors; the landmarks plus the mutual anchors give 73 % / 96 %, the best of
+  the four. Consistent picking matters more than the number of landmarks. On a real pair a few landmarks do not beat the
   automatic anchors; they guarantee the picked features and little else.

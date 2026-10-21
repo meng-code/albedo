@@ -730,11 +730,14 @@ rump, back, belly, chest; `results/diff3f/landmarks/`). Cat → lion, textured s
 |---|---|---|---|
 | nearest neighbour | 69.0 % | 90.9 % | 58 % |
 | automatic: 131 mutual anchors + prior + smoothing | 73.7 % | 96.1 % | 67 % |
-| 11 manual landmarks | 69.8 % | 93.1 % | 64 % |
-| 11 landmarks + the mutual anchors | 71.9 % | 96.0 % | 68 % |
+| 11 manual landmarks | 70.3 % | 94.8 % | 63 % |
+| 11 landmarks + the mutual anchors | 73.0 % | 96.2 % | 69 % |
 
-On this real pair the automatic anchors do at least as well as eleven manual landmarks; the
-landmarks guarantee the picked features themselves and change little elsewhere.
+On this real pair eleven landmarks alone sit between nearest neighbour and the automatic anchors;
+with the mutual anchors added they edge past the automatic result. The landmarks guarantee the
+picked features themselves (nose on nose, toes on toes) and change little elsewhere. Picking them
+consistently matters more than their number: a throat paired with a chin, a cheek with a nose and
+a heel with a toe went unnoticed until the owner checked the picked images.
 
 **All pairs, automatic anchors**, textured side only (`texture_transfer_refined.{png,json}` next
 to the nearest-neighbour files in every result folder):
