@@ -1,12 +1,12 @@
 {
  "faces": 9996,
- "textured_faces": 3666,
+ "textured_faces": 3665,
  "span_median": 0.0223,
- "within_2pct": 0.4291,
- "within_5pct": 0.9236,
+ "within_2pct": 0.4303,
+ "within_5pct": 0.9241,
  "source_used": 0.5188,
- "all_within_2pct": 0.4619,
- "all_within_5pct": 0.9313,
+ "all_within_2pct": 0.4626,
+ "all_within_5pct": 0.9315,
  "all_source_used": 0.6719,
  "source": "outputs/diff3f/features/labubu_partial.npz",
  "target": "outputs/diff3f/features/lion_full.npz"

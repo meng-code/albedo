@@ -1,13 +1,13 @@
 {
  "faces": 13776,
- "textured_faces": 6453,
- "span_median": 0.0122,
- "within_2pct": 0.6902,
- "within_5pct": 0.8515,
- "source_used": 0.5077,
- "all_within_2pct": 0.627,
- "all_within_5pct": 0.7829,
- "all_source_used": 0.5487,
- "source": "outputs/diff3f/fire_dragon_partial.npz",
- "target": "outputs/diff3f/man_full.npz"
+ "textured_faces": 6451,
+ "span_median": 0.0145,
+ "within_2pct": 0.6314,
+ "within_5pct": 0.8406,
+ "source_used": 0.4974,
+ "all_within_2pct": 0.5846,
+ "all_within_5pct": 0.7673,
+ "all_source_used": 0.5299,
+ "source": "outputs/diff3f/features/fire_dragon_partial.npz",
+ "target": "outputs/diff3f/features/man_full.npz"
 }

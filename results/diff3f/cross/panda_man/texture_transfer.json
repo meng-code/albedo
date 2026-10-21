@@ -1,6 +1,6 @@
 {
  "faces": 13776,
- "textured_faces": 6453,
+ "textured_faces": 6451,
  "span_median": 0.0157,
  "within_2pct": 0.5887,
  "within_5pct": 0.836,
@@ -8,6 +8,6 @@
  "all_within_2pct": 0.5813,
  "all_within_5pct": 0.7755,
  "all_source_used": 0.7005,
- "source": "outputs/diff3f/panda_partial.npz",
- "target": "outputs/diff3f/man_full.npz"
+ "source": "outputs/diff3f/features/panda_partial.npz",
+ "target": "outputs/diff3f/features/man_full.npz"
 }

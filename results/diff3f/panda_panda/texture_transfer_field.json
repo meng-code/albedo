@@ -1,16 +1,16 @@
 {
  "faces": 40000,
- "textured_faces": 16153,
- "span_median": 0.0079,
- "within_2pct": 0.8755,
- "within_5pct": 0.9626,
+ "textured_faces": 15964,
+ "span_median": 0.008,
+ "within_2pct": 0.8742,
+ "within_5pct": 0.9622,
  "source_used": 0.8206,
  "all_within_2pct": 0.836,
  "all_within_5pct": 0.95,
  "all_source_used": 0.8918,
- "covered_faces": 14198,
- "covered_within_2pct": 0.9237,
- "covered_within_5pct": 0.9882,
+ "covered_faces": 14011,
+ "covered_within_2pct": 0.9226,
+ "covered_within_5pct": 0.9881,
  "source": "outputs/diff3f/features/panda_partial.npz",
  "target": "outputs/diff3f/features/panda_full.npz"
 }

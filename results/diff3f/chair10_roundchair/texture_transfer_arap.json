@@ -1,16 +1,16 @@
 {
  "faces": 16028,
- "textured_faces": 6849,
+ "textured_faces": 6829,
  "span_median": 0.0123,
- "within_2pct": 0.7115,
- "within_5pct": 0.9251,
- "source_used": 0.6504,
+ "within_2pct": 0.712,
+ "within_5pct": 0.9252,
+ "source_used": 0.6454,
  "all_within_2pct": 0.5589,
  "all_within_5pct": 0.9097,
  "all_source_used": 0.7647,
- "covered_faces": 867,
- "covered_within_2pct": 0.5179,
- "covered_within_5pct": 0.8997,
+ "covered_faces": 851,
+ "covered_within_2pct": 0.5147,
+ "covered_within_5pct": 0.9001,
  "source": "outputs/diff3f/features/chair10_partial.npz",
  "target": "outputs/diff3f/features/roundchair_full.npz"
 }

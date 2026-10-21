@@ -1,16 +1,16 @@
 {
  "faces": 14410,
- "textured_faces": 4343,
+ "textured_faces": 4339,
  "span_median": 0.0109,
- "within_2pct": 0.8004,
- "within_5pct": 0.997,
+ "within_2pct": 0.8006,
+ "within_5pct": 0.9972,
  "source_used": 0.731,
  "all_within_2pct": 0.7942,
  "all_within_5pct": 0.9754,
  "all_source_used": 0.8134,
- "covered_faces": 3405,
- "covered_within_2pct": 0.7938,
- "covered_within_5pct": 0.9968,
+ "covered_faces": 3403,
+ "covered_within_2pct": 0.794,
+ "covered_within_5pct": 0.9971,
  "source": "outputs/diff3f/features/cat_partial.npz",
  "target": "outputs/diff3f/features/cat_full.npz"
 }

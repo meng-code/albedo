@@ -1,9 +1,9 @@
 {
  "faces": 3576,
- "textured_faces": 1629,
+ "textured_faces": 1628,
  "span_median": 0.0305,
- "within_2pct": 0.3714,
- "within_5pct": 0.7305,
+ "within_2pct": 0.3716,
+ "within_5pct": 0.731,
  "source_used": 0.3925,
  "all_within_2pct": 0.403,
  "all_within_5pct": 0.7595,

@@ -1,12 +1,12 @@
 {
  "faces": 5500,
  "textured_faces": 2525,
- "span_median": 0.0315,
- "within_2pct": 0.2087,
- "within_5pct": 0.8226,
+ "span_median": 0.0313,
+ "within_2pct": 0.2099,
+ "within_5pct": 0.823,
  "source_used": 0.4436,
- "all_within_2pct": 0.172,
- "all_within_5pct": 0.7613,
+ "all_within_2pct": 0.1727,
+ "all_within_5pct": 0.7615,
  "all_source_used": 0.6893,
  "source": "outputs/diff3f/features/chair1_partial.npz",
  "target": "outputs/diff3f/features/cow_full.npz"

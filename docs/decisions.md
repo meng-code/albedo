@@ -335,3 +335,18 @@ The repository will be used beyond the original course, so the owner rewrote `AG
 - Not adopted: subdividing the target before matching (no gain per triangle), the rigid
   registration as the prior (no better than the mutual anchors), re-solving the field with the
   flipped triangles down-weighted (no gain, accuracy lost).
+
+## 2026-10-22 — Correction after a code review (same night)
+
+- An Opus review agent checked `uv_metrics.py`, `refine_correspondence.py` and `transfer_texture.py`
+  and found: flips had been counted on triangles with no texture area (so "flips 48 → 29 %" was the
+  disappearance of degenerate triangles, not of mirrored ones); the distortion was measured in
+  normalised uv instead of pixels; `man.obj` loaded as a triangle soup (41 320 vertices for 6 890
+  positions), so no smoothing had acted on the five pairs with the man; field positions could land
+  in the texture's blank strip; the rigid-registration prior had been mixed into the anchors in the
+  comparison. All fixed; the five man pairs rerun through every step, the field and ARAP textures
+  of every pair rebuilt, every number recomputed. Corrected picture, 16 same-category pairs:
+  nearest neighbour / refined / smooth field / ARAP within 5 % 82.8 / 88.9 / 89.3 / 96.6 %;
+  triangles with no texture patch 65 / 38 / 0 / 1 %; median conformal distortion of the rest
+  4.1 / 3.2 / 3.6 / 2.0; mirrored screen area 23 / 19 / 21 / 23 %, i.e. unchanged by any step.
+  The numbers in the two entries above that disagree with these are superseded.
