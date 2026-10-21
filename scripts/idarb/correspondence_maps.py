@@ -45,15 +45,23 @@ import register_partial as rp  # noqa: E402
 from render_registration import draw  # noqa: E402
 
 
+def load_mesh(mesh_path):
+    """The mesh with its vertex numbering as in the file, unless the file is a triangle soup (an
+    OBJ with a normal or texture coordinate per corner loads as one vertex per corner: the man has
+    41 320 vertices for 6 890 positions), in which case the vertices are merged by position so
+    that the surface is connected and smoothing along it can work. A relief keeps its numbering,
+    which the feature file's sample indices refer to."""
+    m = trimesh.load(mesh_path, process=False, force="mesh")
+    merged = m.copy()
+    merged.merge_vertices(merge_tex=True, merge_norm=True)
+    return merged if len(merged.vertices) < 0.5 * len(m.vertices) else m
+
+
 def mesh_features(npz_path, mesh_path, feature="full"):
     """Mesh vertices, faces, a feature per vertex (nearest sampled point) and a colour per vertex:
     the mesh's own vertex colours, else the nearest sampled point's, else None."""
     z = rp.load_features(npz_path, feature)
-    m = trimesh.load(mesh_path, process=False, force="mesh")
-    # an OBJ with a normal or texture coordinate per corner loads as one vertex per corner (the
-    # man: 41 320 vertices for 6 890 positions, a triangle soup); merge by position so that the
-    # mesh is connected again and smoothing along the surface can work
-    m.merge_vertices(merge_tex=True, merge_norm=True)
+    m = load_mesh(mesh_path)
     V = np.asarray(m.vertices, dtype=np.float64)
     F = np.asarray(m.faces, dtype=np.int64)
     _, nn = cKDTree(z["xyz"]).query(V)

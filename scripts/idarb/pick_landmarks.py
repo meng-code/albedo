@@ -35,9 +35,9 @@ import os
 import sys
 
 import numpy as np
-import trimesh
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from correspondence_maps import load_mesh  # noqa: E402
 from transfer_texture import face_shade, project, raster_buffers  # noqa: E402
 
 
@@ -127,8 +127,7 @@ def check_sheet(point_files, size, half, out):
     for path in point_files:
         with open(path) as f:
             d = json.load(f)
-        m = trimesh.load(d["mesh"], process=False, force="mesh")
-        m.merge_vertices(merge_tex=True, merge_norm=True)
+        m = load_mesh(d["mesh"])
         V = np.asarray(m.vertices, dtype=np.float64)
         F = np.asarray(m.faces, dtype=np.int64)
         colors = None
@@ -209,8 +208,7 @@ def main():
         print("saved", args.out, n, "landmark pairs")
         return
 
-    m = trimesh.load(args.mesh, process=False, force="mesh")
-    m.merge_vertices(merge_tex=True, merge_norm=True)  # same vertex set as mesh_features
+    m = load_mesh(args.mesh)  # the same vertex set as mesh_features
     V = np.asarray(m.vertices, dtype=np.float64)
     F = np.asarray(m.faces, dtype=np.int64)
     colors = None
