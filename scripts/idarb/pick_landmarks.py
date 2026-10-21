@@ -52,12 +52,16 @@ def render_grid(V, F, view, size, grid, colors=None):
     return out, buf
 
 
-def pick_vertices(buf, F, picks, snap=0):
-    """Pixel coordinates (x, y) -> the mesh vertex under them (the corner with the largest
-    barycentric weight). A pixel on the background snaps to the nearest surface pixel within
-    `snap` pixels (silhouette landmarks such as ear tips and paws), else gives -1."""
+def pick_vertices(buf, F, picks, snap=0, depth_tol=0.02):
+    """Pixel coordinates (x, y) -> the mesh vertex under them: the vertex whose projection is
+    nearest to the pick among those on the visible surface (no deeper than the depth buffer
+    there), so that on a coarse mesh an ear tip gives the tip vertex and not another corner of
+    its triangle. A pick on the background snaps to the nearest surface pixel within `snap`
+    pixels (silhouette landmarks such as ear tips and paws), else gives -1."""
     out = []
     size = buf["fid"].shape[0]
+    xy, zv = buf["xy"], buf["zv"]
+    tol = depth_tol * float(zv.max() - zv.min())
     for x, y in picks:
         xi, yi = int(round(x)), int(round(y))
         k = buf["fid"][yi, xi]
@@ -73,9 +77,15 @@ def pick_vertices(buf, F, picks, snap=0):
         if k < 0:
             out.append(-1)
             continue
-        w0, w1 = buf["w0"][yi, xi], buf["w1"][yi, xi]
-        w = np.array([w0, w1, 1 - w0 - w1])
-        out.append(int(F[k, int(w.argmax())]))
+        d = np.linalg.norm(xy - [xi + 0.5, yi + 0.5], axis=1)
+        front = zv >= buf["z"][yi, xi] - tol
+        d[~front] = np.inf
+        near = int(d.argmin())
+        if d[near] <= max(snap, 3):
+            out.append(near)
+        else:  # no visible vertex close by: the corner of the face under the pixel
+            w0, w1 = buf["w0"][yi, xi], buf["w1"][yi, xi]
+            out.append(int(F[k, int(np.argmax([w0, w1, 1 - w0 - w1]))]))
     return out
 
 
@@ -87,6 +97,13 @@ def main():
     ap.add_argument("--view", type=float, nargs=3, default=(0.0, 0.0, 1.0))
     ap.add_argument("--size", type=int, default=800)
     ap.add_argument("--grid", type=int, default=50, help="grid spacing in pixels")
+    ap.add_argument(
+        "--zoom",
+        type=float,
+        nargs=4,
+        metavar=("X0", "Y0", "X1", "Y1"),
+        help="show only this pixel box of the render (coordinates stay those of the full render)",
+    )
     ap.add_argument("--pick", nargs="*", default=[], help="pixel coordinates x,y of the landmarks")
     ap.add_argument(
         "--snap", type=int, default=15, help="snap a background pick to the surface within pixels"
@@ -127,10 +144,12 @@ def main():
     import matplotlib.pyplot as plt
 
     fig, ax = plt.subplots(figsize=(args.size / 100, args.size / 100), dpi=100)
-    ax.imshow(img, extent=(0, args.size, args.size, 0))
-    ticks = np.arange(0, args.size + 1, args.grid)
-    ax.set_xticks(ticks)
-    ax.set_yticks(ticks)
+    ax.imshow(img, extent=(0, args.size, args.size, 0), interpolation="nearest")
+    x0, y0, x1, y1 = args.zoom if args.zoom else (0, 0, args.size, args.size)
+    ax.set_xlim(x0, x1)
+    ax.set_ylim(y1, y0)
+    ax.set_xticks(np.arange(np.ceil(x0 / args.grid) * args.grid, x1 + 1, args.grid))
+    ax.set_yticks(np.arange(np.ceil(y0 / args.grid) * args.grid, y1 + 1, args.grid))
     ax.tick_params(labelsize=6)
     ax.grid(color="deepskyblue", linewidth=0.4, alpha=0.8)
     picks = [tuple(float(v) for v in p.split(",")) for p in args.pick]

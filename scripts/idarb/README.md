@@ -716,9 +716,12 @@ so a handful of exact pairs pins the map down; a real pair has different shapes.
 features in the same order, `--landmarks_source` / `--landmarks_target`), or
 `pick_landmarks.py`, which needs no 3D viewer: it renders a mesh with a pixel grid, you read the
 pixel coordinates of the features off the image, and `--pick x,y ...` turns them into vertices
-(a pick on the background snaps to the nearest surface pixel, for ear tips and paws), writes them
-to a JSON and draws them numbered on the image for checking; `--merge` joins the source and target
-files into the `--landmarks` JSON of `refine_correspondence.py`. Landmark vertices keep their
+(a pick on the background snaps to the nearest surface pixel, for ear tips and paws, and a pick
+returns the visible vertex nearest to it, so on a coarse mesh an ear tip gives the tip vertex),
+writes them to a JSON and draws them numbered on the image for checking; `--zoom x0 y0 x1 y1`
+with a finer `--grid` shows one region of the render for small features such as a nose or an eye,
+and the picked image is the check that the same feature was picked on both meshes. `--merge`
+joins the source and target files into the `--landmarks` JSON of `refine_correspondence.py`. Landmark vertices keep their
 pair exactly; `--add_mutual` uses the mutual anchors as well. Eleven landmarks were picked this
 way on the cat relief and the lion (nose, ear tip, eye, chin, a front and a hind paw, tail tip,
 rump, back, belly, chest; `results/diff3f/landmarks/`). Cat → lion, textured side only:
@@ -727,8 +730,8 @@ rump, back, belly, chest; `results/diff3f/landmarks/`). Cat → lion, textured s
 |---|---|---|---|
 | nearest neighbour | 69.0 % | 90.9 % | 58 % |
 | automatic: 131 mutual anchors + prior + smoothing | 73.7 % | 96.1 % | 67 % |
-| 11 manual landmarks | 70.8 % | 92.9 % | 62 % |
-| 11 landmarks + the mutual anchors | 72.5 % | 96.0 % | 68 % |
+| 11 manual landmarks | 69.8 % | 93.1 % | 64 % |
+| 11 landmarks + the mutual anchors | 71.9 % | 96.0 % | 68 % |
 
 On this real pair the automatic anchors do at least as well as eleven manual landmarks; the
 landmarks guarantee the picked features themselves and change little elsewhere.
