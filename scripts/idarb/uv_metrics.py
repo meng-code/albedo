@@ -45,6 +45,8 @@ def read_textured_obj(path):
                 corners = [c.split("/") for c in line.split()[1:4]]
                 F.append([int(c[0]) - 1 for c in corners])
                 FT.append([int(c[1]) - 1 if len(c) > 1 and c[1] else -1 for c in corners])
+    if not VT:
+        raise ValueError(f"{path} has no texture coordinates")
     V, VT, F, FT = np.array(V), np.array(VT), np.array(F), np.array(FT)
     uvc = np.where(FT[:, :, None] >= 0, VT[np.maximum(FT, 0)], np.nan)
     # a blank face points its three corners at one and the same texture coordinate
@@ -88,17 +90,20 @@ def triangle_maps(V, F, uvc, image_wh):
 
 
 def uv_quality(V, F, uvc, view, image_wh=(1.0, 1.0)):
-    """Dict with the number of textured triangles that map to a real patch, the fraction whose
-    three corners collapsed onto one texture point (a texture-less smear), the median conformal
-    distortion, the fraction distorted more than tenfold, and the flipped fraction. A triangle is
+    """Dict with the number of textured triangles whose corners are not all on one texture point,
+    the fraction whose three corners collapsed onto one point, the fraction (of the rest) that are
+    degenerate (two corners on one point or three in a line: no patch at all), and over the
+    triangles with a real patch the median conformal distortion, the fraction distorted more than
+    tenfold and the flipped fraction (plus its screen-area-weighted version). A triangle is
     flipped when its winding on the texture is opposite to its winding on screen seen from
-    `view`."""
+    `view`. image_wh scales u and v to pixels so a non-square image does not count as
+    distortion."""
     textured = ~np.isnan(uvc).any(axis=(1, 2))
     span = uvc[textured]
     distinct = (np.abs(span - span[:, :1]) > 1e-9).any(axis=(1, 2))  # not all three on one point
     keep = np.nonzero(textured)[0][distinct]
     collapsed = 1.0 - distinct.mean() if textured.any() else 0.0
-    sv, sign_tex, n = triangle_maps(V, F[keep], uvc[keep], image_wh)
+    sv, _, _ = triangle_maps(V, F[keep], uvc[keep], image_wh)
     R = view_frame(view)
     # screen winding: project the triangle onto (screen right, screen up)
     P = V[F[keep]] @ R.T
@@ -106,21 +111,27 @@ def uv_quality(V, F, uvc, view, image_wh=(1.0, 1.0)):
     s2 = P[:, 2, :2] - P[:, 0, :2]
     screen_area2 = s1[:, 0] * s2[:, 1] - s1[:, 1] * s2[:, 0]
     sign_screen = np.sign(screen_area2)
-    # the local 2D frame of triangle_maps is right-handed around the face normal; its sign
-    # relative to the screen is the sign of n . view
-    sign_local = np.sign(n @ R[2])
-    flipped = sign_tex * sign_local != sign_screen
+    # texture winding, in the same orientation convention (u right, v up)
+    Q = uvc[keep] * np.array(image_wh)
+    qa, qb = Q[:, 1] - Q[:, 0], Q[:, 2] - Q[:, 0]
+    tex2 = qa[:, 0] * qb[:, 1] - qa[:, 1] * qb[:, 0]
+    # two corners on one point or three in a line: no patch at all, no orientation either
+    degenerate = np.abs(tex2) <= 1e-12 * ((qa**2).sum(axis=1) + (qb**2).sum(axis=1))
+    ok = ~degenerate & (sign_screen != 0)
+    flipped = (np.sign(tex2) != sign_screen) & ok
     cd = sv[:, 0] / np.maximum(sv[:, 1], 1e-12)
     # a triangle seen edge-on has no reliable winding on screen; weighting the flips by screen
     # area discounts those silhouette slivers
-    area = np.abs(screen_area2)
+    area = np.abs(screen_area2) * ok
     flipped_area = float((area * flipped).sum() / max(area.sum(), 1e-12))
+    n_ok = max(int(ok.sum()), 1)
     return dict(
         triangles=int(len(keep)),
         collapsed=round(float(collapsed), 4),
-        conformal_median=round(float(np.median(cd)), 3),
-        distortion_over_10=round(float((cd > 10).mean()), 4),
-        flipped=round(float(flipped.mean()), 4),
+        degenerate=round(float(degenerate.mean()) if len(keep) else 0.0, 4),
+        conformal_median=round(float(np.median(cd[ok])) if ok.any() else float("nan"), 3),
+        distortion_over_10=round(float((cd[ok] > 10).mean()) if ok.any() else 0.0, 4),
+        flipped=round(float(flipped.sum() / n_ok), 4),
         flipped_area=round(flipped_area, 4),
     )
 
@@ -135,7 +146,13 @@ def main():
     ap.add_argument("--csv", help="append a row here")
     args = ap.parse_args()
     V, F, uvc = read_textured_obj(args.obj)
-    q = uv_quality(V, F, uvc, args.view)
+    png = os.path.splitext(args.obj)[0] + ".png"
+    image_wh = (1.0, 1.0)
+    if os.path.exists(png):
+        from PIL import Image
+
+        image_wh = tuple(float(x) for x in Image.open(png).size)
+    q = uv_quality(V, F, uvc, args.view, image_wh)
     print(dict(label=args.label, **q))
     if args.csv:
         new = not os.path.exists(args.csv)

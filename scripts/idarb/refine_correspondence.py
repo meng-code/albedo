@@ -141,20 +141,20 @@ def refine(
     radius_s=0.05,
     w_smooth=0.3,
     sigma=0.25,
+    pred=None,
 ):
     """Target vertex -> source sample. fd: a feature per target vertex; fs, src_xyz: the source
-    samples. anchors: (target positions, source positions) or None. radius, radius_s and sigma are
-    fractions of the source / target bounding-box diagonals."""
+    samples. anchors: (target positions, source positions) or None; pred: a predicted source
+    position per target vertex that replaces the map fitted on the anchors. radius, radius_s and
+    sigma are fractions of the source / target bounding-box diagonals."""
     diag_s = float(np.linalg.norm(src_xyz.max(axis=0) - src_xyz.min(axis=0)))
     diag_d = float(np.linalg.norm(Vd.max(axis=0) - Vd.min(axis=0)))
     cand, sim = topk_candidates(fd, fs, k)
     C = src_xyz[cand]  # (n, k, 3)
     cost = 1.0 - sim.astype(np.float64)
-    if anchors is not None and len(anchors[0]) >= 3:
-        if len(anchors[0]) == len(Vd) and anchors[0] is Vd:  # a dense prior, one per vertex
-            pred = anchors[1]
-        else:
-            pred = fit_prior(anchors[0], anchors[1], sigma * diag_d)(Vd)
+    if pred is None and anchors is not None and len(anchors[0]) >= 3:
+        pred = fit_prior(anchors[0], anchors[1], sigma * diag_d)(Vd)
+    if pred is not None:
         d = np.linalg.norm(C - pred[:, None], axis=2) / (radius * diag_s)
         cost = cost + w_prior * d**2
     rows = np.arange(len(fd))
@@ -171,9 +171,10 @@ def refine(
 def smooth_field(Vd, Fd, S, w, lam=1.0, order=1):
     """A source-space position per target vertex that follows the matched positions S (n,3) where
     the confidence w (n,) is high and varies smoothly along the target surface elsewhere. Minimises
-    sum_i w_i |P_i - S_i|^2 + lam |L P|^2, L the graph Laplacian of the mesh (order 2: the
-    bi-Laplacian, smoother). The result is continuous, so the texture coordinates derived from it
-    have no jumps inside a triangle."""
+    sum_i w_i |P_i - S_i|^2 + lam * sum_edges |P_i - P_j|^2 (order 1, the Dirichlet energy, solved
+    through the graph Laplacian L) or + lam |L P|^2 (order 2, the bi-Laplacian, smoother). The
+    result is continuous, so the texture coordinates derived from it have no jumps inside a
+    triangle."""
     n = len(Vd)
     i = np.concatenate([Fd[:, 0], Fd[:, 1], Fd[:, 2], Fd[:, 1], Fd[:, 2], Fd[:, 0]])
     j = np.concatenate([Fd[:, 1], Fd[:, 2], Fd[:, 0], Fd[:, 0], Fd[:, 1], Fd[:, 2]])
@@ -249,10 +250,11 @@ def bad_triangles(Vd, Fd, P, view, max_distortion=10.0):
     Q = P[Fd][:, :, :2]
     q1, q2 = Q[:, 1] - Q[:, 0], Q[:, 2] - Q[:, 0]
     sign_field = np.sign(q1[:, 0] * q2[:, 1] - q1[:, 1] * q2[:, 0])
-    flipped = (sign_field != sign_screen) & (sign_screen != 0)
+    front = sign_screen > 0  # only the side the camera sees carries texture
+    flipped = (sign_field != sign_screen) & front
     uvc = np.concatenate([Q, np.zeros_like(Q[:, :, :1])], axis=2)[:, :, :2]
     sv, _, _ = triangle_maps(Vd, Fd, uvc, (1.0, 1.0))
-    distorted = sv[:, 0] / np.maximum(sv[:, 1], 1e-12) > max_distortion
+    distorted = (sv[:, 0] / np.maximum(sv[:, 1], 1e-12) > max_distortion) & front
     return flipped | distorted, flipped, distorted
 
 
@@ -415,16 +417,15 @@ def main():
     lm = load_landmarks(args, Vs, Vd)
     if lm is None and gt is not None and args.gt_landmarks:
         lm = gt_landmarks(gt, Vd, args.gt_landmarks)
-    anchors, kind = None, "no anchors"
+    anchors, kind, dense_pred, mutual = None, "no anchors", None, None
     if args.prior_transform:
         # the registration maps source to target: y = s R (depth a applied to x) + t; invert it to
-        # predict a source position for every target vertex and hand those over as dense anchors
+        # predict a source position for every target vertex (replaces the map fitted on anchors)
         with open(args.prior_transform) as f:
             tr = json.load(f)
         R = np.array(tr["rotation"], dtype=np.float64)
-        x = ((Vd - np.array(tr["translation"])) / tr["scale"]) @ R
-        x[:, 2] /= tr.get("depth_factor", 1.0)
-        anchors = (Vd, x)
+        dense_pred = ((Vd - np.array(tr["translation"])) / tr["scale"]) @ R
+        dense_pred[:, 2] /= tr.get("depth_factor", 1.0)
         kind = "rigid registration prior"
     if lm is not None:
         s_lm, t_lm = lm
@@ -456,6 +457,7 @@ def main():
         iters=args.iters,
         radius_s=args.radius_s,
         w_smooth=args.w_smooth,
+        pred=dense_pred,
     )
     t2s = src["idx"][t2s_sample].astype(np.int64)
     if lm is not None:
@@ -464,6 +466,8 @@ def main():
     extra = {}
     if args.field > 0:
         S = Vs[t2s]
+        if mutual is not None:  # an anchor's vertex follows the anchor, not its refined match
+            S[cKDTree(Vd).query(mutual[0])[1]] = mutual[1]
         w = confidence(sim, Vd, anchors, t_lm if lm is not None else None)
         P = smooth_field(Vd, Fd, S, w, args.field, args.field_order)
         if args.arap:

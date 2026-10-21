@@ -128,6 +128,7 @@ def check_sheet(point_files, size, half, out):
         with open(path) as f:
             d = json.load(f)
         m = trimesh.load(d["mesh"], process=False, force="mesh")
+        m.merge_vertices(merge_tex=True, merge_norm=True)
         V = np.asarray(m.vertices, dtype=np.float64)
         F = np.asarray(m.faces, dtype=np.int64)
         colors = None
@@ -209,6 +210,7 @@ def main():
         return
 
     m = trimesh.load(args.mesh, process=False, force="mesh")
+    m.merge_vertices(merge_tex=True, merge_norm=True)  # same vertex set as mesh_features
     V = np.asarray(m.vertices, dtype=np.float64)
     F = np.asarray(m.faces, dtype=np.int64)
     colors = None

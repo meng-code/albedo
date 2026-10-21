@@ -33,6 +33,36 @@ def test_mirrored_texture_is_flipped():
     assert q["flipped"] == 1.0 and q["flipped_area"] == 1.0
 
 
+def test_back_facing_triangle_with_projective_uv_is_not_flipped():
+    # the same square with reversed winding (normal -z) seen from +z: its texture is what the
+    # camera sees, so it is not mirrored; mirroring u then is a flip
+    V, F, uvc = square_facing_camera()
+    F = F[:, ::-1]
+    uvc = uvc[:, ::-1]
+    assert um.uv_quality(V, F, uvc, (0, 0, 1))["flipped"] == 0.0
+    mirrored = uvc.copy()
+    mirrored[:, :, 0] = 1.0 - mirrored[:, :, 0]
+    assert um.uv_quality(V, F, mirrored, (0, 0, 1))["flipped"] == 1.0
+
+
+def test_degenerate_triangle_is_neither_flipped_nor_measured():
+    V, F, uvc = square_facing_camera()
+    uvc = uvc.copy()
+    uvc[1, 1] = uvc[1, 0]  # two corners of the second triangle on one texture point
+    q = um.uv_quality(V, F, uvc, (0, 0, 1))
+    assert q["degenerate"] == 0.5 and q["flipped"] == 0.0
+    assert abs(q["conformal_median"] - 1.0) < 1e-6
+
+
+def test_non_square_image_is_not_distortion():
+    V, F, uvc = square_facing_camera()
+    uvc = uvc.copy()
+    uvc[:, :, 0] *= 0.5  # the square occupies 100 x 200 pixels of a 200 x 200 image
+    assert abs(um.uv_quality(V, F, uvc, (0, 0, 1), (200.0, 200.0))["conformal_median"] - 2.0) < 1e-6
+    # on a 400 x 200 image the same uv is a square patch again
+    assert abs(um.uv_quality(V, F, uvc, (0, 0, 1), (400.0, 200.0))["conformal_median"] - 1.0) < 1e-6
+
+
 def test_stretched_texture_has_distortion():
     V, F, uvc = square_facing_camera()
     uvc = uvc.copy()

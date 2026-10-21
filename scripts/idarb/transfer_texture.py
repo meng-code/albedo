@@ -46,6 +46,7 @@ import register_partial as rp  # noqa: E402
 from correspondence_maps import mesh_features, nearest_in_features  # noqa: E402
 
 BLANK = (217, 217, 217)  # the colour of the faces that are not textured
+BLANK_ROWS = 16  # rows of that colour added below the relief's image
 
 
 def relief_grid(V, tol=0.05):
@@ -72,17 +73,19 @@ def relief_frame(V):
     return float(V[:, 0].min()), float(V[:, 1].max()), step
 
 
-def relief_uv_of_points(P, V, image_shape):
+def relief_uv_of_points(P, V, image_shape, blank_rows=BLANK_ROWS):
     """Texture coordinates of arbitrary source-space points P (n,3) over the relief's image, the
-    same convention as relief_texture's uv for the vertices themselves."""
+    same convention as relief_texture's uv for the vertices themselves. A point beyond the relief's
+    pixel grid (a field can overshoot it) is clamped to the grid, so it never lands in the blank
+    strip below the image."""
     x0, y1, step = relief_frame(V)
     Ht, W = image_shape[:2]
-    col = (P[:, 0] - x0) / step
-    row = (y1 - P[:, 1]) / step
+    col = np.clip((P[:, 0] - x0) / step, 0, W - 1)
+    row = np.clip((y1 - P[:, 1]) / step, 0, Ht - blank_rows - 1)
     return np.stack([(col + 0.5) / W, 1.0 - (row + 0.5) / Ht], axis=1)
 
 
-def relief_texture(V, C, blank_rows=16):
+def relief_texture(V, C, blank_rows=BLANK_ROWS):
     """The albedo image behind a relief mesh (uint8 HxWx3, background filled from the nearest
     foreground pixel, plus `blank_rows` of light grey at the bottom for the untextured faces), the
     texture coordinates (N,2) of its vertices (u right, v up) and the coordinates of the blank
@@ -237,7 +240,14 @@ def visible_faces(V, F, view, size=1024, depth_tol=0.01):
     py = np.clip(np.floor(c[:, 1]).astype(np.int64), 0, size - 1)
     _, nz = face_shade(V, F, view)
     tol = depth_tol * float(z.max() - z.min())
-    vis |= (nz > 0) & (cz >= buf["z"][py, px] - tol)
+    # the centroid test only for the small faces that fell between pixel centres, so that a
+    # hidden sheet just behind the surface is not declared visible wholesale
+    t = xy[F]
+    area = 0.5 * np.abs(
+        (t[:, 1, 0] - t[:, 0, 0]) * (t[:, 2, 1] - t[:, 0, 1])
+        - (t[:, 1, 1] - t[:, 0, 1]) * (t[:, 2, 0] - t[:, 0, 0])
+    )
+    vis |= ~vis & (area < 4.0) & (nz > 0) & (cz >= buf["z"][py, px] - tol)
     return vis
 
 
@@ -254,6 +264,8 @@ def export_textured_obj(path, V, F, uv, image, textured=None, blank_uv=None):
     vt = np.asarray(uv, dtype=np.float64)
     if textured is None:
         textured = np.ones(len(F), dtype=bool)
+    if blank_uv is None and not textured.all():
+        raise ValueError("blank faces need a blank_uv to point at")
     if blank_uv is not None:
         vt = np.concatenate([vt, np.asarray(blank_uv, dtype=np.float64)[None]])
     corner = np.repeat(F + 1, 1, axis=0)  # 1-based vertex indices
