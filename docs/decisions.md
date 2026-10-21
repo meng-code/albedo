@@ -326,3 +326,12 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   space with patch matching plus diffusion refinement; DenseMatcher and TriTex need trained
   networks; RealSkin's code is unreleased. Nothing to pull and run on the laptop; the ideas taken
   are the sub-mesh cut to the visible side and the distortion/flip metrics.
+- **As-rigid-as-possible field** (`--arap 10 --arap_weight 3`, folder `07_texture_arap/`): every
+  vertex's one-ring is asked to move by a rotation and a scale, reflections rejected. The step that
+  makes the texture crisp: same-category median conformal distortion 4.1 → 2.0, triangles stretched
+  more than tenfold 31.6 → 11.0 %, within 5 % 91.1 → 96.8 %, synthetic accuracy kept. Cross pairs
+  9.1 → 2.5 and 45.5 → 12.3 %. Flips stay (23 % of the screen area on same-category pairs): they are
+  mirrored regions of the feature matching, not triangle noise.
+- Not adopted: subdividing the target before matching (no gain per triangle), the rigid
+  registration as the prior (no better than the mutual anchors), re-solving the field with the
+  flipped triangles down-weighted (no gain, accuracy lost).

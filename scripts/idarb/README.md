@@ -847,8 +847,53 @@ pairs (median distortion is the median over the pairs of each pair's median):
 
 Nearest neighbour alone maps half of the triangles mirrored and two thirds stretched more than
 tenfold; the field brings the median distortion of a same-category pair to 4 and the flips to
-under a third. Flips are the next thing to attack: a flipped triangle is a left-right confusion
-of the features at the scale of one triangle, which smoothing only partly removes.
+under a third. A flip map (`outputs/diff3f/99_experiments/arap/cat_lion_flip_map.png`) shows
+most of the remaining flips on silhouette slivers seen edge-on, whose winding on screen is not
+reliable, so `flipped_area` (flips weighted by screen area) is the fairer figure.
+
+### As-rigid-as-possible field (`--arap`)
+
+The smooth field allows any smooth deformation, including local stretching and mirroring.
+`--arap N` refines it so that every vertex's one-ring moves by a rotation and a scale: it
+alternates a Procrustes fit of that similarity per vertex (reflections rejected, the scale kept
+within 0.3 to 3 times the global size ratio) with a sparse solve for the positions, N times
+(`--arap 10 --arap_weight 3` below). On the synthetic ground truth it keeps or improves the
+accuracy (cat 71.5 %, cow 60.1 % within 1 %, against 73.3 % and 55.7 % for the smooth field), and
+on the real pairs it is the step that makes the texture crisp: the rosettes on the lion stay round
+and the stripes on the camel's legs run straight (`outputs/diff3f/07_texture_arap/overview/`,
+`cat_lion_progress.png` shows the four steps on one pair). Means over the pairs:
+
+| 16 same-category pairs | within 2 % / 5 % / relief used | median distortion | over tenfold | collapsed | flipped (area) |
+|---|---|---|---|---|---|
+| nearest neighbour | 58.2 % / 82.8 % / 53 % | 674 | 65.3 % | 15.2 % | 38.4 % |
+| refined matches | 65.4 % / 89.1 % / 62 % | 8.3 | 46.9 % | 7.5 % | 27.6 % |
+| smooth field | 66.5 % / 91.1 % / 70 % | 4.1 | 31.6 % | 1.7 % | 21.4 % |
+| ARAP field | 68.0 % / 96.8 % / 66 % | 2.0 | 11.0 % | 0.0 % | 23.0 % |
+
+| 10 cross-category pairs | within 2 % / 5 % / relief used | median distortion | over tenfold | collapsed | flipped (area) |
+|---|---|---|---|---|---|
+| nearest neighbour | 46.0 % / 67.1 % / 37 % | 11 819 | 72.0 % | 15.3 % | 46.4 % |
+| refined matches | 48.5 % / 72.8 % / 45 % | 21.6 | 59.1 % | 6.4 % | 40.7 % |
+| smooth field | 49.6 % / 77.6 % / 57 % | 9.1 | 45.5 % | 3.5 % | 38.5 % |
+| ARAP field | 52.4 % / 90.2 % / 53 % | 2.5 | 12.3 % | 0.0 % | 38.3 % |
+
+Per pair, ARAP field (within 2 % / 5 % / relief used): cow 48.2 / 97.0 / 66, cat 79.0 / 100 / 76,
+superman_man 97.0 / 99.8 / 62, superman_posed 78.3 / 97.9 / 49, okapi_camel 37.0 / 95.8 / 61,
+okapi1_camel 42.2 / 96.4 / 65, cat5_cat 80.8 / 100 / 72, cat_lion 76.0 / 98.2 / 65, labubu_man
+84.0 / 97.2 / 67, chair1_armchair 49.5 / 90.0 / 76, chair_armchair 60.6 / 93.2 / 66,
+chair10_roundchair 71.2 / 92.5 / 65, chairgen_armchair 42.1 / 92.5 / 78, panda_panda
+84.6 / 99.8 / 73, bird_bird 78.3 / 99.1 / 62, dragon_lizard 78.5 / 99.8 / 56; cross pairs labubu →
+camel 27.0 / 76.4 / 36, labubu → cow 33.1 / 88.0 / 51, labubu → lion 42.9 / 92.4 / 52, superman →
+camel 41.7 / 84.3 / 34, panda → man 95.5 / 99.0 / 86, cat → man 81.7 / 94.4 / 69, cow → camel
+37.4 / 99.4 / 48, fire_dragon → man 90.0 / 98.2 / 57, bird → cat 53.6 / 87.5 / 57, chair1 → cow
+20.9 / 82.3 / 44 (`texture_transfer_arap.json` in every result folder).
+
+The flips do not move with ARAP: they are not triangle-scale noise but regions where the features
+place a patch mirrored, and a rigidity term cannot know which way round a patch should go. Two
+things that did not help, kept under `outputs/diff3f/99_experiments/`: subdividing the target
+twice before matching (finer triangles, same features: distortion and flips per triangle got
+slightly worse), and the rigid registration of `register_partial.py` as the position prior
+instead of the mutual anchors (no better on four pairs).
 
 ### Landmarks on the cross-category pairs
 
