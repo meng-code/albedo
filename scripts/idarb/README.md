@@ -25,6 +25,7 @@ Scripts we added around IDArb (whose code is in `third_party/IDArb/`).
 | `make_partial_mesh.py` | laptop | Cuts the camera-visible part of a full mesh into a synthetic partial mesh with known ground truth (section 5) |
 | `eval_registration.py` | laptop | Runs the registration settings on every pair with feature files → `results/diff3f/ablation.csv` |
 | `render_registration.py` | laptop | Software renders of a registration result folder → `render.png` |
+| `correspondence_maps.py` | laptop | Semantic correspondence maps from the features alone: joint feature PCA colours on both meshes, and the target coloured by its nearest neighbour in feature space → `correspondence_maps.png`, coloured PLYs |
 
 ## 1. Server: image decomposition
 
@@ -548,3 +549,24 @@ low-frequency structure, which functional maps assume, and cropping repairs that
 the real relief meshes (36k to 92k vertices, several components) pyFM's pipeline also breaks down
 numerically. Not adopted; the registration plus the feature- and part-aware painting stays.
 `potpourri3d` and `robust_laplacian` (pip) are needed only for this script.
+
+### Semantic correspondence maps (`correspondence_maps.py`)
+
+After the group meeting the supervisor's priority is the semantic correspondence itself: get it
+accurate first, show it as "same part, same colour" maps, and start from plain nearest-neighbour
+matching. `correspondence_maps.py` draws two such maps from the features alone, with no
+registration:
+
+- **feature PCA**: the two feature sets are projected together on their first three principal
+  components, used as RGB. No matching is involved, so a part has the same colour on both meshes
+  only if its features agree. On every pair the maps agree part by part (cat: head magenta, body
+  orange, hindquarters cyan, tail blue on both meshes; panda: face orange, ears white).
+- **nearest neighbour**: the source is coloured by position and every target vertex takes the colour
+  of its nearest neighbour in feature space. Coherent colours mean a coherent correspondence; the
+  chair targets and the stone bird come out patchy (legs and seat mix, the blob matches everywhere).
+
+With `--gt` (synthetic pairs) a third map shows the nearest-neighbour error per target vertex. The
+nearest neighbour puts 40.1 % (cow) / 52.2 % (cat) of the target vertices within 1 % of the diagonal
+of the true source vertex and 87.2 % / 94.3 % within 5 %; the errors sit inside parts (ear tips, paws,
+belly), not between parts. Every result folder has `correspondence_maps.png`; the coloured meshes
+(`pca_*.ply`, `nn_*.ply`) are written to the output folder for MeshLab.

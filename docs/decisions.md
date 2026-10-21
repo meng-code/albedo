@@ -234,3 +234,17 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   assumes shared low-frequency structure, which a one-sided relief and a full body lack. The eye
   placement therefore needs either a non-rigid deformation driven by the features or a better
   single-image mesh, not a different correspondence solver.
+
+## 2026-10-21 — Supervisor's direction after the group meeting: the correspondence first
+
+- The priority is the semantic correspondence between the partial mesh and the full mesh: make it
+  accurate, show it as "same part, same colour" maps on both meshes, and start from nearest-neighbour
+  matching in feature space. Painting is an application of the correspondence, not the goal.
+- `scripts/idarb/correspondence_maps.py` draws the maps (joint feature PCA, and the target coloured by
+  its nearest neighbour) for every pair; `results/diff3f/<pair>/correspondence_maps.png`. The feature
+  maps agree part by part on all 16 real pairs; nearest neighbour alone places 40 to 52 % of the
+  target vertices within 1 % of the true vertex on the synthetic pairs (87 to 94 % within 5 %), with
+  the errors inside parts. Next: improve the nearest-neighbour correspondence itself (denser feature
+  sampling, more views or other UNet layers on the server; mutual-neighbour and surface-consistency
+  filters on the laptop), measured on the synthetic pairs; the registration (100 % on them) is the
+  upper bound.
