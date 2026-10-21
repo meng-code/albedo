@@ -13,7 +13,10 @@ Two steps, both from the repository root in the mesh environment:
    relief's camera as the third column of its rotation).
 2. The same command with --pick x,y x,y ... (pixel coordinates in that image, same --view and
    --size) writes the 3D points and vertex indices to --points (JSON) and draws them, numbered, on
-   the image for checking.
+   the image for checking. A pick can also be an extreme point inside a box, which is the reliable
+   way to hit a tip: `xmax@700,250,780,320` is the right-most visible vertex in that box (a nose
+   tip on an animal facing right), `ymin@...` the highest (an ear tip), `ymax@...` the lowest
+   (a toe), `xmin@...` the left-most.
 
 Pick the same features in the same order on both meshes. Before using them, verify every pair on
 the contact sheet (one column per landmark, the source crop above the target crop, the picked
@@ -54,6 +57,25 @@ def render_grid(V, F, view, size, grid, colors=None):
         base = w0[:, None] * c[F[k, 0]] + w1[:, None] * c[F[k, 1]] + w2[:, None] * c[F[k, 2]]
     out[hit] = base * shade[k][:, None]
     return out, buf
+
+
+def extreme_vertex(buf, xy, mode, box, depth_tol=0.02):
+    """The visible vertex inside the pixel box (x0, y0, x1, y1) that is left-most (xmin),
+    right-most (xmax), highest (ymin) or lowest (ymax) on screen; -1 when the box is empty."""
+    x0, y0, x1, y1 = box
+    zv = buf["zv"]
+    size = buf["fid"].shape[0]
+    px = np.clip(np.floor(xy[:, 0]).astype(np.int64), 0, size - 1)
+    py = np.clip(np.floor(xy[:, 1]).astype(np.int64), 0, size - 1)
+    tol = depth_tol * float(zv.max() - zv.min())
+    inside = (xy[:, 0] >= x0) & (xy[:, 0] <= x1) & (xy[:, 1] >= y0) & (xy[:, 1] <= y1)
+    visible = zv >= buf["z"][py, px] - tol
+    cand = np.nonzero(inside & visible)[0]
+    if len(cand) == 0:
+        return -1
+    sign = -1.0 if mode in ("xmax", "ymax") else 1.0
+    axis = 0 if mode in ("xmin", "xmax") else 1
+    return int(cand[int((sign * xy[cand, axis]).argmin())])
 
 
 def pick_vertices(buf, F, picks, snap=0, depth_tol=0.02):
@@ -208,10 +230,18 @@ def main():
     ax.set_yticks(np.arange(np.ceil(y0 / args.grid) * args.grid, y1 + 1, args.grid))
     ax.tick_params(labelsize=6)
     ax.grid(color="deepskyblue", linewidth=0.4, alpha=0.8)
-    picks = [tuple(float(v) for v in p.split(",")) for p in args.pick]
+    xy, _ = project(V, args.view, args.size)
+    picks, ids = [], []
+    for p in args.pick:
+        if "@" in p:  # an extreme point inside a box: tip of a nose, an ear, a toe
+            mode, box = p.split("@")
+            vid = extreme_vertex(buf, xy, mode, [float(v) for v in box.split(",")])
+            picks.append(tuple(xy[vid]) if vid >= 0 else (-1.0, -1.0))
+            ids.append(vid)
+        else:
+            picks.append(tuple(float(v) for v in p.split(",")))
+            ids.append(pick_vertices(buf, F, [picks[-1]], args.snap)[0])
     if picks:
-        ids = pick_vertices(buf, F, picks, args.snap)
-        xy, _ = project(V, args.view, args.size)
         for n, ((x, y), vid) in enumerate(zip(picks, ids)):
             if vid < 0:
                 print(f"{n}: ({x}, {y}) is background")
