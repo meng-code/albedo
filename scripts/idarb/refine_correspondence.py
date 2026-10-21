@@ -470,16 +470,24 @@ def main():
             lam = args.arap_weight if args.arap_weight is not None else args.field
             P = arap_field(Vd, Fd, S, w, P, lam, args.arap)
         if args.field_iters and args.target_view is not None:
+            # flipped or over-stretched triangles: take the data weight away from their vertices
+            # (and the ring around them) and let the field, rigid if --arap, fill them in from
+            # their neighbours
             protected = np.zeros(len(Vd), dtype=bool)
             if lm is not None:
                 protected[t_lm] = True
+            A1 = vertex_adjacency(Fd, len(Vd))
             history = []
             for _ in range(args.field_iters):
                 bad, flipped, distorted = bad_triangles(Vd, Fd, P, args.target_view)
                 history.append([int(flipped.sum()), int(distorted.sum())])
-                bad_v = np.unique(Fd[bad])
-                w[bad_v[~protected[bad_v]]] *= 0.3
+                mark = np.zeros(len(Vd))
+                mark[np.unique(Fd[bad])] = 1.0
+                mark = np.maximum(mark, A1 @ mark > 0)  # one ring further
+                w = np.where((mark > 0) & ~protected, 0.02, w)
                 P = smooth_field(Vd, Fd, S, w, args.field, args.field_order)
+                if args.arap:
+                    P = arap_field(Vd, Fd, S, w, P, lam, args.arap)
             bad, flipped, distorted = bad_triangles(Vd, Fd, P, args.target_view)
             history.append([int(flipped.sum()), int(distorted.sum())])
             stats["field_iters_flipped_distorted"] = history
