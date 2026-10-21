@@ -151,7 +151,10 @@ def refine(
     C = src_xyz[cand]  # (n, k, 3)
     cost = 1.0 - sim.astype(np.float64)
     if anchors is not None and len(anchors[0]) >= 3:
-        pred = fit_prior(anchors[0], anchors[1], sigma * diag_d)(Vd)
+        if len(anchors[0]) == len(Vd) and anchors[0] is Vd:  # a dense prior, one per vertex
+            pred = anchors[1]
+        else:
+            pred = fit_prior(anchors[0], anchors[1], sigma * diag_d)(Vd)
         d = np.linalg.norm(C - pred[:, None], axis=2) / (radius * diag_s)
         cost = cost + w_prior * d**2
     rows = np.arange(len(fd))
@@ -182,6 +185,54 @@ def smooth_field(Vd, Fd, S, w, lam=1.0, order=1):
     W = sp.diags(np.asarray(w, dtype=np.float64))
     P = spsolve((W + lam * L).tocsc(), W @ np.asarray(S, dtype=np.float64))
     return np.asarray(P)
+
+
+def arap_field(Vd, Fd, S, w, P0, lam=1.0, iters=5, scale_range=(0.3, 3.0)):
+    """As-rigid-as-possible field: like smooth_field, but the smoothness term asks every vertex's
+    one-ring to move by a similarity transform (rotation and scale, never a reflection) instead of
+    merely varying smoothly. Alternates a per-vertex Procrustes fit of that transform with a sparse
+    solve for the positions. Minimises
+        sum_i w_i |P_i - S_i|^2 + lam * sum_edges |(P_j - P_i) - M_ij (x_j - x_i)|^2,
+    M_ij the mean of the two end vertices' similarity transforms. Starts from P0."""
+    n = len(Vd)
+    i = np.concatenate([Fd[:, 0], Fd[:, 1], Fd[:, 2], Fd[:, 1], Fd[:, 2], Fd[:, 0]])
+    j = np.concatenate([Fd[:, 1], Fd[:, 2], Fd[:, 0], Fd[:, 0], Fd[:, 1], Fd[:, 2]])
+    A = sp.coo_matrix((np.ones(len(i)), (i, j)), shape=(n, n)).tocsr()
+    A.data[:] = 1.0
+    A = A.tocoo()
+    ei, ej = A.row, A.col  # every directed edge once
+    L = sp.diags(np.asarray(A.sum(axis=1)).ravel()) - A.tocsr()
+    W = sp.diags(np.asarray(w, dtype=np.float64))
+    M = (W + lam * L).tocsc()
+    dx = Vd[ej] - Vd[ei]
+    norm2 = np.zeros(n)
+    np.add.at(norm2, ei, (dx**2).sum(axis=1))
+    # the scale range is relative to the global size ratio of the two shapes (a target in
+    # different units must not be forced to keep its own edge lengths)
+    ratio = float(np.linalg.norm(S.max(axis=0) - S.min(axis=0)))
+    ratio /= max(float(np.linalg.norm(Vd.max(axis=0) - Vd.min(axis=0))), 1e-12)
+    scale_range = (scale_range[0] * ratio, scale_range[1] * ratio)
+    P = P0.copy()
+    for _ in range(iters):
+        dp = P[ej] - P[ei]
+        # per-vertex covariance of its one-ring: C_i = sum_j dx dp^T
+        C = np.zeros((n, 3, 3))
+        np.add.at(C, ei, dx[:, :, None] * dp[:, None, :])
+        U, sig, Vt = np.linalg.svd(C)
+        R = np.transpose(Vt, (0, 2, 1)) @ np.transpose(U, (0, 2, 1))
+        flip = np.linalg.det(R) < 0
+        if flip.any():  # a reflection fitted best: take the nearest proper rotation
+            Vt_f = Vt[flip].copy()
+            Vt_f[:, 2, :] *= -1
+            R[flip] = np.transpose(Vt_f, (0, 2, 1)) @ np.transpose(U[flip], (0, 2, 1))
+            sig[flip, 2] *= -1
+        s = np.clip(sig.sum(axis=1) / np.maximum(norm2, 1e-12), *scale_range)
+        T = s[:, None, None] * R  # (n,3,3) similarity of every vertex
+        d = np.einsum("eab,eb->ea", 0.5 * (T[ei] + T[ej]), dx)  # M_ij (x_j - x_i)
+        B = np.zeros((n, 3))
+        np.add.at(B, ei, -d)
+        P = np.asarray(spsolve(M, W @ S + lam * B))
+    return P
 
 
 def bad_triangles(Vd, Fd, P, view, max_distortion=10.0):
@@ -306,6 +357,11 @@ def main():
         action="store_true",
         help="with landmarks: also use the mutual nearest neighbours as anchors",
     )
+    ap.add_argument(
+        "--prior_transform",
+        help="transform.json of register_partial.py: use the rigid registration (inverted) as the "
+        "position prior instead of a map fitted on anchors; keeps left and right apart",
+    )
     ap.add_argument("--max_anchors", type=int, default=400)
     ap.add_argument("--k", type=int, default=64, help="candidates per target vertex")
     ap.add_argument(
@@ -323,6 +379,15 @@ def main():
         "(0: off); the npz then also holds src_pos, which transfer_texture.py prefers",
     )
     ap.add_argument("--field_order", type=int, choices=[1, 2], default=1)
+    ap.add_argument(
+        "--arap",
+        type=int,
+        default=0,
+        help="iterations of the as-rigid-as-possible field after the smooth field (0: off): the "
+        "smoothness term then asks every one-ring to move by a rotation and a scale, never a "
+        "reflection, which is what a flipped triangle is",
+    )
+    ap.add_argument("--arap_weight", type=float, default=None, help="default: --field")
     ap.add_argument(
         "--field_iters",
         type=int,
@@ -351,6 +416,16 @@ def main():
     if lm is None and gt is not None and args.gt_landmarks:
         lm = gt_landmarks(gt, Vd, args.gt_landmarks)
     anchors, kind = None, "no anchors"
+    if args.prior_transform:
+        # the registration maps source to target: y = s R (depth a applied to x) + t; invert it to
+        # predict a source position for every target vertex and hand those over as dense anchors
+        with open(args.prior_transform) as f:
+            tr = json.load(f)
+        R = np.array(tr["rotation"], dtype=np.float64)
+        x = ((Vd - np.array(tr["translation"])) / tr["scale"]) @ R
+        x[:, 2] /= tr.get("depth_factor", 1.0)
+        anchors = (Vd, x)
+        kind = "rigid registration prior"
     if lm is not None:
         s_lm, t_lm = lm
         anchors = (Vd[t_lm], Vs[s_lm])
@@ -391,6 +466,9 @@ def main():
         S = Vs[t2s]
         w = confidence(sim, Vd, anchors, t_lm if lm is not None else None)
         P = smooth_field(Vd, Fd, S, w, args.field, args.field_order)
+        if args.arap:
+            lam = args.arap_weight if args.arap_weight is not None else args.field
+            P = arap_field(Vd, Fd, S, w, P, lam, args.arap)
         if args.field_iters and args.target_view is not None:
             protected = np.zeros(len(Vd), dtype=bool)
             if lm is not None:

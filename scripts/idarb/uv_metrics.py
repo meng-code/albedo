@@ -104,18 +104,24 @@ def uv_quality(V, F, uvc, view, image_wh=(1.0, 1.0)):
     P = V[F[keep]] @ R.T
     s1 = P[:, 1, :2] - P[:, 0, :2]
     s2 = P[:, 2, :2] - P[:, 0, :2]
-    sign_screen = np.sign(s1[:, 0] * s2[:, 1] - s1[:, 1] * s2[:, 0])
+    screen_area2 = s1[:, 0] * s2[:, 1] - s1[:, 1] * s2[:, 0]
+    sign_screen = np.sign(screen_area2)
     # the local 2D frame of triangle_maps is right-handed around the face normal; its sign
     # relative to the screen is the sign of n . view
     sign_local = np.sign(n @ R[2])
     flipped = sign_tex * sign_local != sign_screen
     cd = sv[:, 0] / np.maximum(sv[:, 1], 1e-12)
+    # a triangle seen edge-on has no reliable winding on screen; weighting the flips by screen
+    # area discounts those silhouette slivers
+    area = np.abs(screen_area2)
+    flipped_area = float((area * flipped).sum() / max(area.sum(), 1e-12))
     return dict(
         triangles=int(len(keep)),
         collapsed=round(float(collapsed), 4),
         conformal_median=round(float(np.median(cd)), 3),
         distortion_over_10=round(float((cd > 10).mean()), 4),
         flipped=round(float(flipped.mean()), 4),
+        flipped_area=round(flipped_area, 4),
     )
 
 

@@ -22,7 +22,7 @@ def test_identity_map_has_no_distortion_and_no_flip():
     q = um.uv_quality(V, F, uvc, (0, 0, 1))
     assert q["triangles"] == 2
     assert abs(q["conformal_median"] - 1.0) < 1e-6
-    assert q["flipped"] == 0.0
+    assert q["flipped"] == 0.0 and q["flipped_area"] == 0.0
 
 
 def test_mirrored_texture_is_flipped():
@@ -30,7 +30,7 @@ def test_mirrored_texture_is_flipped():
     uvc = uvc.copy()
     uvc[:, :, 0] = 1.0 - uvc[:, :, 0]  # mirror u
     q = um.uv_quality(V, F, uvc, (0, 0, 1))
-    assert q["flipped"] == 1.0
+    assert q["flipped"] == 1.0 and q["flipped_area"] == 1.0
 
 
 def test_stretched_texture_has_distortion():
