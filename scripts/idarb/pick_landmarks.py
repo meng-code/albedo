@@ -15,8 +15,12 @@ Two steps, both from the repository root in the mesh environment:
    --size) writes the 3D points and vertex indices to --points (JSON) and draws them, numbered, on
    the image for checking.
 
-Pick the same features in the same order on both meshes, then pass the two JSON files to
-refine_correspondence.py as --landmarks after merging them:
+Pick the same features in the same order on both meshes. Before using them, verify every pair on
+the contact sheet (one column per landmark, the source crop above the target crop, the picked
+vertex at the red cross):
+       python scripts/idarb/pick_landmarks.py --check cat_points.json lion_points.json \
+           --out outputs/diff3f/landmarks/cat_lion_check.png
+Then merge the two files into the --landmarks JSON of refine_correspondence.py:
        python scripts/idarb/pick_landmarks.py --merge cat_points.json lion_points.json \
            --out outputs/diff3f/landmarks/cat_lion.json
 MeshLab's PickPoints tool (.pp files) is the alternative; refine_correspondence.py reads those too.
@@ -89,6 +93,48 @@ def pick_vertices(buf, F, picks, snap=0, depth_tol=0.02):
     return out
 
 
+def check_sheet(point_files, size, half, out):
+    """A contact sheet to verify the pairs: one column per landmark, the source crop above the
+    target crop, each centred on the picked vertex (red cross)."""
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    rows = []
+    for path in point_files:
+        with open(path) as f:
+            d = json.load(f)
+        m = trimesh.load(d["mesh"], process=False, force="mesh")
+        V = np.asarray(m.vertices, dtype=np.float64)
+        F = np.asarray(m.faces, dtype=np.int64)
+        colors = None
+        if getattr(m.visual, "kind", None) == "vertex":
+            colors = np.asarray(m.visual.vertex_colors)
+        img, _ = render_grid(V, F, d["view"], size, 0, colors)
+        xy, _ = project(V, d["view"], size)
+        padded = np.pad(img, ((half, half), (half, half), (0, 0)), constant_values=1.0)
+        crops = []
+        for vid in d["vertices"]:
+            cx, cy = int(round(xy[vid, 0])) + half, int(round(xy[vid, 1])) + half
+            crops.append(padded[cy - half : cy + half, cx - half : cx + half])
+        rows.append((os.path.basename(d["mesh"]), crops))
+    n = max(len(r[1]) for r in rows)
+    fig, axes = plt.subplots(len(rows), n, figsize=(1.6 * n, 1.8 * len(rows)), squeeze=False)
+    for r, (name, crops) in enumerate(rows):
+        for c in range(n):
+            ax = axes[r, c]
+            ax.axis("off")
+            if c < len(crops):
+                ax.imshow(crops[c])
+                ax.plot([half - 8, half + 8], [half, half], color="red", linewidth=1)
+                ax.plot([half, half], [half - 8, half + 8], color="red", linewidth=1)
+                ax.set_title(f"{c}: {name}", fontsize=7)
+    fig.tight_layout()
+    fig.savefig(out, dpi=110)
+    print("saved", out)
+
+
 def main():
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -110,10 +156,20 @@ def main():
     )
     ap.add_argument("--points", help="JSON to write the picked points to")
     ap.add_argument("--merge", nargs=2, metavar=("SOURCE_JSON", "TARGET_JSON"))
+    ap.add_argument(
+        "--check",
+        nargs=2,
+        metavar=("SOURCE_JSON", "TARGET_JSON"),
+        help="contact sheet of every landmark pair, to verify the same feature was picked twice",
+    )
+    ap.add_argument("--crop", type=int, default=70, help="half-size of the --check crops, pixels")
     ap.add_argument("--out", required=True, help="image, or the merged landmarks JSON")
     args = ap.parse_args()
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
 
+    if args.check:
+        check_sheet(args.check, args.size, args.crop, args.out)
+        return
     if args.merge:
         with open(args.merge[0]) as f:
             s = json.load(f)
