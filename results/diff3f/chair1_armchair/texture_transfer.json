@@ -1,0 +1,11 @@
+{
+ "faces": 10860,
+ "span_median": 0.0192,
+ "within_2pct": 0.5071,
+ "within_5pct": 0.7107,
+ "covered_faces": 6848,
+ "covered_within_2pct": 0.5172,
+ "covered_within_5pct": 0.7564,
+ "source": "outputs/diff3f/chair1_partial.npz",
+ "target": "outputs/diff3f/armchair_full.npz"
+}

@@ -1,0 +1,11 @@
+{
+ "faces": 40000,
+ "span_median": 0.0223,
+ "within_2pct": 0.4711,
+ "within_5pct": 0.71,
+ "covered_faces": 14970,
+ "covered_within_2pct": 0.4238,
+ "covered_within_5pct": 0.681,
+ "source": "outputs/diff3f/bird_partial.npz",
+ "target": "outputs/diff3f/bird_full.npz"
+}

@@ -248,3 +248,18 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   sampling, more views or other UNet layers on the server; mutual-neighbour and surface-consistency
   filters on the laptop), measured on the synthetic pairs; the registration (100 % on them) is the
   upper bound.
+
+## 2026-10-21 — Texture transfer, not vertex colours
+
+- Shown the albedo carried over by the nearest-neighbour table (one colour per vertex, the lion's
+  5 000 vertices), the supervisor said this is not what is wanted: the texture itself must be
+  transferred, so that the inside of a triangle shows the image and not a blend of three colours.
+- `scripts/idarb/transfer_texture.py` transfers texture coordinates instead of colours. The relief is a
+  height field over the albedo image, so each relief vertex is one pixel and the albedo image is its
+  texture; every target vertex takes the texture coordinates of the relief vertex it is matched to.
+  Output: `target_textured.obj` + MTL + PNG per pair (MeshLab shows the texture), a render
+  (`results/diff3f/<pair>/texture_transfer.png`) and, as the measure of the correspondence's
+  consistency, the fraction of triangles whose corners map within 2 % / 5 % of the image diagonal of
+  each other (`texture_transfer.json`). Cat → lion: 66.9 % / 85.6 % of all triangles.
+- The correspondence table is an input (`--correspondence`), so any improvement of the matching is
+  judged by rerunning this script: more consistent triangles, fewer streaks.

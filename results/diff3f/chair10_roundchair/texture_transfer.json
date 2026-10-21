@@ -1,0 +1,11 @@
+{
+ "faces": 16028,
+ "span_median": 0.0137,
+ "within_2pct": 0.568,
+ "within_5pct": 0.6899,
+ "covered_faces": 4270,
+ "covered_within_2pct": 0.5405,
+ "covered_within_5pct": 0.6321,
+ "source": "outputs/diff3f/chair10_partial.npz",
+ "target": "outputs/diff3f/roundchair_full.npz"
+}

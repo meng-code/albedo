@@ -1,0 +1,11 @@
+{
+ "faces": 10860,
+ "span_median": 0.0203,
+ "within_2pct": 0.4878,
+ "within_5pct": 0.6983,
+ "covered_faces": 2372,
+ "covered_within_2pct": 0.4933,
+ "covered_within_5pct": 0.7698,
+ "source": "outputs/diff3f/ipadapter_result_00_chair_partial.npz",
+ "target": "outputs/diff3f/armchair_full.npz"
+}

@@ -1,0 +1,11 @@
+{
+ "faces": 9996,
+ "span_median": 0.0124,
+ "within_2pct": 0.6688,
+ "within_5pct": 0.8555,
+ "covered_faces": 4714,
+ "covered_within_2pct": 0.6502,
+ "covered_within_5pct": 0.8519,
+ "source": "outputs/diff3f/cat_partial.npz",
+ "target": "outputs/diff3f/lion_full.npz"
+}

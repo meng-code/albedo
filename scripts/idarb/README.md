@@ -25,7 +25,8 @@ Scripts we added around IDArb (whose code is in `third_party/IDArb/`).
 | `make_partial_mesh.py` | laptop | Cuts the camera-visible part of a full mesh into a synthetic partial mesh with known ground truth (section 5) |
 | `eval_registration.py` | laptop | Runs the registration settings on every pair with feature files → `results/diff3f/ablation.csv` |
 | `render_registration.py` | laptop | Software renders of a registration result folder → `render.png` |
-| `correspondence_maps.py` | laptop | Semantic correspondence maps from the features alone: joint feature PCA colours on both meshes, and the target coloured by its nearest neighbour in feature space → `correspondence_maps.png`, coloured PLYs |
+| `correspondence_maps.py` | laptop | Semantic correspondence maps from the features alone: joint feature PCA colours on both meshes, the target coloured by its nearest neighbour in feature space, and the relief's albedo carried over by the same table → `correspondence_maps.png`, coloured PLYs |
+| `transfer_texture.py` | laptop | Texture transfer through the correspondence: the target gets texture coordinates into the relief's albedo image (OBJ + MTL + PNG), with a per-triangle consistency measure → `texture_transfer.png`, `texture_transfer.json` |
 
 ## 1. Server: image decomposition
 
@@ -564,9 +565,63 @@ registration:
 - **nearest neighbour**: the source is coloured by position and every target vertex takes the colour
   of its nearest neighbour in feature space. Coherent colours mean a coherent correspondence; the
   chair targets and the stone bird come out patchy (legs and seat mix, the blob matches everywhere).
+- **albedo transfer**: the same nearest-neighbour table carries the relief's real colours to the
+  target (`nn_target_albedo.ply`). This is what the matching gives on its own, with no registration
+  and no painting rules: on the cat → lion pair the lion gets the cat's fur tone, lighter face,
+  white inner ears and black tail tip, but the rosettes are lost, because the lion has only 5 000
+  vertices (one colour each) and neighbouring vertices jump to different source points.
 
-With `--gt` (synthetic pairs) a third map shows the nearest-neighbour error per target vertex. The
-nearest neighbour puts 40.1 % (cow) / 52.2 % (cat) of the target vertices within 1 % of the diagonal
-of the true source vertex and 87.2 % / 94.3 % within 5 %; the errors sit inside parts (ear tips, paws,
-belly), not between parts. Every result folder has `correspondence_maps.png`; the coloured meshes
-(`pca_*.ply`, `nn_*.ply`) are written to the output folder for MeshLab.
+With `--gt` (synthetic pairs) a further map shows the nearest-neighbour error per target vertex.
+The nearest neighbour puts 40.1 % (cow) / 52.2 % (cat) of the target vertices within 1 % of the
+diagonal of the true source vertex and 87.2 % / 94.3 % within 5 %; the errors sit inside parts (ear
+tips, paws, belly), not between parts. Every result folder has `correspondence_maps.png`; the
+coloured meshes (`pca_*.ply`, `nn_*.ply`) are written to the output folder for MeshLab.
+`--transform results/diff3f/<pair>/transform.json` reuses the stored registration for the target's
+viewing direction instead of registering again.
+
+### Texture transfer (`transfer_texture.py`)
+
+The supervisor's correction on the albedo transfer: one colour per vertex is not a texture. A
+triangle must show the image inside it, so the correspondence has to carry texture coordinates,
+not colours. The relief makes this direct: it is a height field over the albedo image, every relief
+vertex is one pixel, so its texture coordinates are its pixel position and its texture is the
+albedo image (`transfer_texture.py` rebuilds the image from the relief's vertex colours on their
+pixel grid and fills the background from the nearest foreground pixel). Every target vertex takes
+the texture coordinates of the relief vertex it is matched to, by default its nearest neighbour in
+feature space (`--correspondence` plugs in any other table, so a better matching is tested by
+running the same script). The result is an OBJ with MTL and PNG that MeshLab opens with the texture
+(`target_textured.obj` in the output folder), drawn with a small software rasteriser in
+`texture_transfer.png` (matplotlib cannot sample a texture inside a triangle).
+
+A triangle whose three corners are matched to distant image points shows a stretched streak of the
+image, so the span of the corners' texture positions measures the consistency of the
+correspondence triangle by triangle. `texture_transfer.json` records the fraction of triangles
+whose corners lie within 2 % and 5 % of the image diagonal of each other, over all triangles and
+over the ones the registration says the relief covers; `target_uv_span.ply` shows it as face
+colours. On cat → lion the rosettes and stripes now appear on the lion, with streaks on the
+inconsistent triangles. All 16 real pairs, nearest-neighbour correspondence, span of the corners
+as a fraction of the image diagonal (`texture_transfer.json` in each result folder):
+
+| pair | triangles | within 2 % | within 5 % | covered only: within 2 % | within 5 % |
+|---|---|---|---|---|---|
+| cow | 5 500 | 39.8 % | 77.0 % | 39.1 % | 77.3 % |
+| cat | 14 410 | 68.5 % | 87.6 % | 64.8 % | 87.8 % |
+| superman_man | 13 776 | 68.8 % | 86.9 % | 71.2 % | 86.7 % |
+| superman_posed | 10 410 | 67.9 % | 85.6 % | 67.0 % | 85.2 % |
+| okapi_camel | 3 576 | 34.2 % | 67.6 % | 30.3 % | 70.4 % |
+| okapi1_camel | 3 576 | 37.1 % | 74.9 % | 28.5 % | 72.6 % |
+| cat5_cat | 14 410 | 76.3 % | 90.5 % | 78.0 % | 92.6 % |
+| cat_lion | 9 996 | 66.9 % | 85.5 % | 65.0 % | 85.2 % |
+| labubu_man | 13 776 | 64.5 % | 82.7 % | 65.5 % | 79.3 % |
+| chair1_armchair | 10 860 | 50.7 % | 71.1 % | 51.7 % | 75.6 % |
+| chair_armchair | 10 860 | 49.6 % | 76.3 % | 52.1 % | 75.9 % |
+| chair10_roundchair | 16 028 | 56.8 % | 69.0 % | 54.0 % | 63.2 % |
+| chairgen_armchair | 10 860 | 48.8 % | 69.8 % | 49.3 % | 77.0 % |
+| panda_panda | 40 000 | 74.5 % | 92.5 % | 83.3 % | 96.9 % |
+| bird_bird | 40 000 | 47.1 % | 71.0 % | 42.4 % | 68.1 % |
+| dragon_lizard | 40 000 | 66.9 % | 81.2 % | 73.7 % | 88.3 % |
+| mean | | 57.4 % | 79.3 % | 57.3 % | 80.1 % |
+
+The coarse targets (cow, camel: a few thousand triangles, so each triangle covers a large patch of
+the image) and the chairs and the stone bird (weak correspondence) sit lowest. These fractions are
+the number to raise when the correspondence improves.

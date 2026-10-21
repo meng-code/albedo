@@ -1,0 +1,11 @@
+{
+ "faces": 13776,
+ "span_median": 0.0124,
+ "within_2pct": 0.6882,
+ "within_5pct": 0.8688,
+ "covered_faces": 9864,
+ "covered_within_2pct": 0.7118,
+ "covered_within_5pct": 0.8668,
+ "source": "outputs/diff3f/superman_partial.npz",
+ "target": "outputs/diff3f/man_full.npz"
+}
