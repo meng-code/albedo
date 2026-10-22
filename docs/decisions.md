@@ -425,3 +425,25 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   global-then-local idea of HNSR) are fewer and less precise than the plain mutual nearest
   neighbours (cat anchors within 1 %: 62 → 56 / 48 / 36 % for pooling radii 2 / 5 / 10 % of the
   diagonal; refined accuracy drops accordingly). Not adopted.
+
+## 2026-10-22 — Part-level anchors after SemAnCorr: tested on the Diff3F features
+
+- SemAnCorr (Dong et al., RA-L 2026) matches parts before points: k-means parts on lifted 2D
+  features, part similarity after removing each object's mean feature, a joint rigid alignment
+  with a soft part assignment, bilateral-margin confidence with each part used once, anchors only
+  inside confident part pairs. `scripts/idarb/part_anchors.py` implements this on our feature
+  files (the paper uses SigLIP2 features and a functional map afterwards; we feed the anchors to
+  the existing prior / field / ARAP chain).
+- Same-category synthetic pairs: the part pairs are right (clear diagonal in the relative
+  similarity, 0.8–0.9), but anchors taken by nearest neighbour inside the matched regions are
+  imprecise (cat 47 %, cow 67 % within 5 % of the diagonal) against 98–100 % for the mutual
+  nearest neighbours, so as a source of anchors the part step is worse here (refined accuracy
+  cat 19 % vs 73 % within 1 %). As a filter it keeps the mutual anchors' precision (99–100 %) and
+  discards a third to three quarters of them.
+- Cross-category Labubu → camel: after removing the object means the Diff3F part similarities
+  are all below 0.35 and the selected pairs have confidence 0.001: the features do not tell the
+  parts of a toy from the parts of a camel. This is the measurement behind the supervisor's
+  judgement, and it points at the feature itself, not the matching. SemAnCorr's language-aligned
+  SigLIP2 features are the next server variant; `part_anchors.py --out_dir` writes the part
+  similarity matrix and part-coloured point clouds, so the same measurement is repeated on every
+  new feature set.
