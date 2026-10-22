@@ -1033,3 +1033,11 @@ on the man's face.
 with the texture camera (the edge-on faces that mirror most and show the image as a streak).
 It trims the mirrored area a little (posed human 19.7 → 17.7 % at 0.35, stone bird 25.1 →
 22.8 %) at the price of a visible grey rim along the silhouette, so it is off by default.
+
+Our own method, first version (`name_parts.py`, 2026-10-23): the parts of both meshes are given
+names by comparing each part's SigLIP2 image-text vector (pooled on the server through the
+model's attention head over the rendered views) with a vocabulary of part names, pairs of parts
+are scored by their vectors and by name agreement, and only confident one-to-one pairs are kept;
+the result is the `part_match.npz` that `refine_correspondence.py --parts` reads, so a target
+part with no counterpart on the relief (a hump) follows its neighbours. The server's part
+vectors are pending; the script is tested on a made-up joint space.
