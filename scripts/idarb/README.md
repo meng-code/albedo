@@ -998,29 +998,36 @@ faces). Three options of `refine_correspondence.py` act on this (`docs/decisions
   smoothness falling from 16× to the final weight, every level predicting each vertex's source
   position from the current field (the schedule of Jung et al. 2025's non-rigid ICP).
 
-Together (the 09 setting, `outputs/diff3f/09_texture_view_consistent/`,
-`results/diff3f/features_diff3f_view_c2f.csv`):
+Together they are the 09 setting (`outputs/diff3f/09_texture_view_consistent/`,
+`results/diff3f/features_diff3f_c2f3.csv`); the number of coarse-to-fine levels is the knob:
 
     python scripts/idarb/eval_features.py --feature_dir outputs/diff3f/features \
         --out_dir outputs/diff3f/09_texture_view_consistent \
-        --csv results/diff3f/features_diff3f_view_c2f.csv --variants arap \
-        --refine_args "--coarse_to_fine 2 --coarse_factor 4 --w_view 0.3 --anchor_filter rigid:0.1"
+        --csv results/diff3f/features_diff3f_c2f3.csv --variants arap \
+        --refine_args "--coarse_to_fine 3 --coarse_factor 4 --w_view 0.3 --anchor_filter rigid:0.1"
 
-| ARAP field, means | within 2 % | within 5 % | relief used | median distortion | mirrored area |
-|---|---|---|---|---|---|
-| 16 same-category, 07 setting | 64.3 % | 96.6 % | 65 % | 2.18 | 23.7 % |
-| 16 same-category, 09 setting | 73.6 % | 98.7 % | 59 % | 2.32 | 11.6 % |
-| 10 cross-category, 07 setting | 44.3 % | 89.3 % | 49 % | 2.31 | 39.0 % |
-| 10 cross-category, 09 setting | 60.4 % | 96.7 % | 41 % | 2.56 | 20.2 % |
+| ARAP field, means | within 2 % | within 5 % | relief used | median distortion | mirrored area | synthetic within 1 % |
+|---|---|---|---|---|---|---|
+| 16 same-category, 07 setting | 64.3 % | 96.6 % | 65 % | 2.18 | 23.7 % | 65.3 % |
+| same, 2 levels (`features_diff3f_c2f2.csv`) | 73.6 % | 98.7 % | 59 % | 2.32 | 11.6 % | 61.8 % |
+| **same, 3 levels (09)** | **80.1 %** | **99.2 %** | **56 %** | **2.23** | **9.1 %** | **60.4 %** |
+| same, 4 levels (`features_diff3f_c2f4.csv`) | 84.6 % | 99.6 % | 52 % | 2.18 | 6.8 % | 58.1 % |
+| 10 cross-category, 07 setting | 44.3 % | 89.3 % | 49 % | 2.31 | 39.0 % | |
+| cross, 2 levels | 60.4 % | 96.7 % | 41 % | 2.56 | 20.2 % | |
+| **cross, 3 levels (09)** | **72.1 %** | **98.2 %** | **37 %** | **2.45** | **14.1 %** | |
+| cross, 4 levels | 81.5 % | 99.1 % | 31 % | 2.31 | 8.8 % | |
 
-The mirrored area halves and the triangle consistency rises on both groups; the price is a
-smaller share of the relief used (the view pair pulls the map together where the matches
-disagree) and, on the synthetic ground truth, 3 points within 1 % (65.3 → 61.8 %; within 5 %
-unchanged at 99.5 %). `--w_view 1` (`results/diff3f/features_diff3f_view1_c2f.csv`) gains 3
-more points within 2 % but costs distortion (2.62 / 2.98) and relief used (56 / 38 %), so 0.3
-is the recommended weight. `results/diff3f/view_consistent_before_after.png` shows eight pairs
-before and after: the posed human's legs lose the cape bleed, the chair's backrest becomes one
-continuous pattern, the stone bird's pattern stops swirling.
+Every level smooths more: consistency and mirroring improve, the share of the relief used and
+the synthetic accuracy fall, and at four levels the map starts to collapse (31 % of the relief on
+the cross pairs; the Labubu's face vanishes from the camel instead of landing anywhere). Three
+levels is the recommended setting. The confidence gate on top (`--gate`,
+`features_diff3f_c2f3_gate.csv`) adds 0.4 / 4.2 points within 2 % for 0.4 / 2 points of relief
+used; not adopted. `--w_view 1` (`features_diff3f_view1_c2f.csv`, two levels) gains 3 points
+within 2 % but costs distortion (2.62 / 2.98) and relief used (56 / 38 %), so 0.3 is kept.
+`results/diff3f/view_consistent_before_after.png` shows eight pairs before and after: the
+posed human's legs lose the cape bleed, the chair's backrest becomes one continuous pattern,
+the stone bird's pattern stops swirling, and the Labubu's, the cat's and the panda's faces land
+on the man's face.
 
 `transfer_texture.py --min_cos c` leaves the faces blank whose normal makes a cosine below `c`
 with the texture camera (the edge-on faces that mirror most and show the image as a streak).

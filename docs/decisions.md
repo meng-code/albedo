@@ -490,11 +490,16 @@ The repository will be used beyond the original course, so the owner rewrote `AG
     2.53 → 3.36, relief used 59 → 53 %; with `--w_view 0.3` instead: 81.1 % / 98.8 % / 17.8 % /
     3.03 / 55 %. Synthetic ground truth: the view pair costs about 2 points within 1 % (cat 72.1 →
     69.9), coarse-to-fine is neutral, the rigid filter gains (cat 72.1 → 77.6 at 5 % threshold).
-- Decision, after the run over all 28 pairs (`results/diff3f/features_diff3f_view_c2f.csv`,
-  `outputs/diff3f/09_texture_view_consistent/`): `--coarse_to_fine 2 --coarse_factor 4 --w_view
-  0.3 --anchor_filter rigid:0.1` is the recommended setting. ARAP means, 07 → 09: same-category
-  within 2 % 64.3 → 73.6 %, within 5 % 96.6 → 98.7 %, mirrored area 23.7 → 11.6 %, distortion
-  2.18 → 2.32, relief used 65 → 59 %; cross-category 44.3 → 60.4 %, 89.3 → 96.7 %, 39.0 → 20.2 %,
-  2.31 → 2.56, 49 → 41 %; synthetic within 1 % 65.3 → 61.8 % (within 5 % 99.5 both). `--w_view 1`
-  gains 3 more points within 2 % at the cost of distortion 2.62 / 2.98 and relief used 56 / 38 %
-  (`features_diff3f_view1_c2f.csv`), so 0.3 is kept.
+- Decision, after runs over all 28 pairs with 2, 3 and 4 coarse-to-fine levels
+  (`results/diff3f/features_diff3f_c2f{2,3,4}.csv`, with `--w_view 0.3 --anchor_filter
+  rigid:0.1`): three levels is the recommended setting
+  (`outputs/diff3f/09_texture_view_consistent/`). ARAP means, 07 → 09: same-category within 2 %
+  64.3 → 80.1 %, within 5 % 96.6 → 99.2 %, mirrored area 23.7 → 9.1 %, distortion 2.18 → 2.23,
+  relief used 65 → 56 %; cross-category 44.3 → 72.1 %, 89.3 → 98.2 %, 39.0 → 14.1 %, 2.31 → 2.45,
+  49 → 37 %; synthetic within 1 % 65.3 → 60.4 % (within 5 % 99.5 both). Each extra level smooths
+  more; four levels reaches 84.6 / 81.5 % within 2 % and 6.8 / 8.8 % mirrored but uses only 52 /
+  31 % of the relief and drops the synthetic accuracy to 58.1 %, and on Labubu → camel the face
+  vanishes instead of landing anywhere, so the map is collapsing: not adopted. The confidence gate
+  on top adds little (`features_diff3f_c2f3_gate.csv`); `--w_view 1` costs distortion and relief
+  used (`features_diff3f_view1_c2f.csv`). Visible gains beyond the numbers: the Labubu's, the
+  cat's and the panda's faces now land on the man's face, the dragon's on the lizard's head.
