@@ -62,11 +62,11 @@ def test_refine_prefers_candidates_near_the_prior():
     Fd = np.array([[i, i + 1, (i + 2) % n] for i in range(n - 2)])
     fd = unit(np.ones((n, 4)) + 0.01 * rng.normal(size=(n, 4))).astype(np.float32)
     anchors = (Vd[::5], src_xyz[::5])
-    choice, sim = rc.refine(Vd, Fd, fd, src_xyz, fs, anchors, k=n, radius=0.1, iters=0)
+    choice, sim, _ = rc.refine(Vd, Fd, fd, src_xyz, fs, anchors, k=n, radius=0.1, iters=0)
     assert np.abs(choice - np.arange(n)).max() <= 1
     assert sim.shape == (n,) and np.all(sim > 0.9)
     # without a prior the nearly identical features give an arbitrary match
-    plain, _ = rc.refine(Vd, Fd, fd, src_xyz, fs, None, k=n, radius=0.1, iters=0)
+    plain, _, _ = rc.refine(Vd, Fd, fd, src_xyz, fs, None, k=n, radius=0.1, iters=0)
     assert np.abs(plain - np.arange(n)).max() > 1
 
 

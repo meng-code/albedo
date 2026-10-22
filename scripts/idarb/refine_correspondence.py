@@ -165,7 +165,30 @@ def refine(
             M = A @ C[rows, choice]
             d = np.linalg.norm(C - M[:, None], axis=2) / (radius_s * diag_s)
             choice = (cost + w_smooth * d**2).argmin(axis=1)
-    return cand[rows, choice], sim[rows, choice]
+    chosen = C[rows, choice]
+    # how far the chosen point sits from where the prior expected it, in units of the window
+    off_prior = None
+    if pred is not None:
+        off_prior = np.linalg.norm(chosen - pred, axis=1) / (radius * diag_s)
+    return cand[rows, choice], sim[rows, choice], off_prior
+
+
+def gate(w, sim, off_prior, Vd, anchors, sim_quantile=0.2, prior_mult=2.0, anchor_frac=0.35):
+    """Take the data weight away from vertices whose match is not to be trusted: similarity in
+    the lowest `sim_quantile` of the mesh, or the chosen point more than `prior_mult` windows
+    from where the prior expected it, or no anchor within `anchor_frac` of the target's diagonal.
+    The field (rigid with --arap) then continues the neighbours' map across them, so a part the
+    source does not have (the camel's hump) follows the body around it instead of borrowing the
+    most similar patch from elsewhere. Returns the new weights and the mask of gated vertices."""
+    bad = sim < np.quantile(sim, sim_quantile)
+    if off_prior is not None:
+        bad |= off_prior > prior_mult
+    if anchors is not None and len(anchors[0]):
+        diag_d = float(np.linalg.norm(Vd.max(axis=0) - Vd.min(axis=0)))
+        bad |= cKDTree(anchors[0]).query(Vd)[0] > anchor_frac * diag_d
+    w = w.copy()
+    w[bad & (w < 3.0)] = 1e-3  # anchors and landmarks keep their weight
+    return w, bad
 
 
 def smooth_field(Vd, Fd, S, w, lam=1.0, order=1):
@@ -391,6 +414,15 @@ def main():
     )
     ap.add_argument("--arap_weight", type=float, default=None, help="default: --field")
     ap.add_argument(
+        "--gate",
+        action="store_true",
+        help="drop the data weight of vertices whose match is not trustworthy and let the field "
+        "continue the neighbours' map across them (parts the source does not have)",
+    )
+    ap.add_argument("--gate_sim", type=float, default=0.2, help="similarity quantile gated")
+    ap.add_argument("--gate_prior", type=float, default=2.0, help="windows away from the prior")
+    ap.add_argument("--gate_anchor", type=float, default=0.35, help="no anchor within this diag")
+    ap.add_argument(
         "--field_iters",
         type=int,
         default=0,
@@ -444,7 +476,7 @@ def main():
             )
         kind += f" + {len(keep)} mutual anchors (of {len(t)} mutual pairs)"
 
-    t2s_sample, sim = refine(
+    t2s_sample, sim, off_prior = refine(
         Vd,
         Fd,
         fd,
@@ -469,6 +501,12 @@ def main():
         if mutual is not None:  # an anchor's vertex follows the anchor, not its refined match
             S[cKDTree(Vd).query(mutual[0])[1]] = mutual[1]
         w = confidence(sim, Vd, anchors, t_lm if lm is not None else None)
+        if args.gate:
+            w, gated = gate(
+                w, sim, off_prior, Vd, anchors, args.gate_sim, args.gate_prior, args.gate_anchor
+            )
+            stats["gated_fraction"] = round(float(gated.mean()), 4)
+            extra["gated"] = gated
         P = smooth_field(Vd, Fd, S, w, args.field, args.field_order)
         if args.arap:
             lam = args.arap_weight if args.arap_weight is not None else args.field
