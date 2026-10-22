@@ -1021,3 +1021,8 @@ more points within 2 % but costs distortion (2.62 / 2.98) and relief used (56 / 
 is the recommended weight. `results/diff3f/view_consistent_before_after.png` shows eight pairs
 before and after: the posed human's legs lose the cape bleed, the chair's backrest becomes one
 continuous pattern, the stone bird's pattern stops swirling.
+
+`transfer_texture.py --min_cos c` leaves the faces blank whose normal makes a cosine below `c`
+with the texture camera (the edge-on faces that mirror most and show the image as a streak).
+It trims the mirrored area a little (posed human 19.7 → 17.7 % at 0.35, stone bird 25.1 →
+22.8 %) at the price of a visible grey rim along the silhouette, so it is off by default.
