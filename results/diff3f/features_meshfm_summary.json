@@ -1,0 +1,81 @@
+{
+ "feature_dir": "outputs/diff3f/features_meshfm",
+ "refine_args": [
+  "--field",
+  "0.1",
+  "--field_order",
+  "2",
+  "--arap",
+  "10",
+  "--arap_weight",
+  "3"
+ ],
+ "groups": {
+  "same/nn": {
+   "pairs": 16,
+   "textured_faces": 6410.25,
+   "within_2pct": 0.6795,
+   "within_5pct": 0.8446,
+   "source_used": 0.2033,
+   "conformal_median": 9.4384,
+   "distortion_over_10": 0.4689,
+   "flipped": 0.426,
+   "flipped_area": 0.3919,
+   "mutual_anchors": 37.875,
+   "seconds": 13.8375
+  },
+  "same/arap": {
+   "pairs": 16,
+   "textured_faces": 6410.25,
+   "within_2pct": 0.6947,
+   "within_5pct": 0.9736,
+   "source_used": 0.5305,
+   "conformal_median": 2.2562,
+   "distortion_over_10": 0.1025,
+   "flipped": 0.3871,
+   "flipped_area": 0.3358,
+   "mutual_anchors": 37.875,
+   "seconds": 15.175
+  },
+  "cross/nn": {
+   "pairs": 10,
+   "textured_faces": 3729.1,
+   "within_2pct": 0.6587,
+   "within_5pct": 0.7882,
+   "source_used": 0.13,
+   "conformal_median": 10.4899,
+   "distortion_over_10": 0.5055,
+   "flipped": 0.4848,
+   "flipped_area": 0.4708,
+   "mutual_anchors": 8.3,
+   "seconds": 10.32
+  },
+  "cross/arap": {
+   "pairs": 10,
+   "textured_faces": 3729.1,
+   "within_2pct": 0.6175,
+   "within_5pct": 0.9291,
+   "source_used": 0.4165,
+   "conformal_median": 2.3697,
+   "distortion_over_10": 0.1059,
+   "flipped": 0.4572,
+   "flipped_area": 0.4514,
+   "mutual_anchors": 8.3,
+   "seconds": 12.0
+  },
+  "synthetic/nn": {
+   "pairs": 2,
+   "mutual_anchors": 121.0,
+   "gt_acc_1pct": 0.082,
+   "gt_acc_5pct": 0.6623,
+   "seconds": 1.5
+  },
+  "synthetic/arap": {
+   "pairs": 2,
+   "mutual_anchors": 121.0,
+   "gt_acc_1pct": 0.0927,
+   "gt_acc_5pct": 0.7632,
+   "seconds": 1.5
+  }
+ }
+}

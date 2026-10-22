@@ -408,6 +408,11 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   neighbours 0.5 % vs 1 % on the real cat and cow pairs. Through the whole pipeline (ARAP field,
   `eval_features.py`): cat 10.8 % / cow 7.8 % within 1 % against 72.1 / 58.2 for Diff3F. Fusing
   the two sets (`fuse_features.py`, w 0.75 on Diff3F) gives 63.0 / 55.7, below Diff3F alone.
+- Over the 26 real pairs (`results/diff3f/features_meshfm.csv`) the span numbers look no worse
+  (same-category ARAP 97.4 % within 5 % vs 96.6 %), but they are the span of a collapsed matching:
+  relief used 20 % (nearest neighbour) against 53 % for Diff3F, mutual anchors 38 per pair against
+  127, mirrored screen area 34 % against 24 %; cross-category 8 mutual anchors per pair against 47.
+  The caveat recorded on 2026-10-21 applies: span without source-used is not a quality measure.
 - Cause, by elimination on the server: not the orientation, the normalisation or the number of
   encoder points (50k–200k; moving the partial into the full mesh's frame with the true transform
   changes nothing). The encoder sees the whole shape, so a front-only relief is a different shape to
