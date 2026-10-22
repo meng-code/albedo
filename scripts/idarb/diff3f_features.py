@@ -256,12 +256,15 @@ def siglip2_features(model, image, grid):
 
 def features_per_vertex(device, pipe, dino_model, mesh, prompt, mesh_vertices, num_views, H, W,
                         tolerance, appearance="painted", timestep=100, sam_generator=None,
-                        sam_tau=0.0, siglip_model=None, seed=0):
+                        sam_tau=0.0, siglip_model=None, seed=0, save_views=None, part_labels=None):
     """Diff3F's get_features_per_vertex (third_party/Diff3F/diff3f.py), copied step by step with
     hooks: the image and UNet features per view (--appearance), SAM cleaning of the fused per-pixel
     features (--sam_tau) and SigLIP2 features of the same views (--siglip2). Only used when one of
     those options is set. Returns a dict of per-vertex features: "diff3f" always, "diff3f_sam" with
-    --sam_tau, "siglip2" with --siglip2, and the mean share of pixels SAM cleaning replaced."""
+    --sam_tau, "siglip2" with --siglip2, and the mean share of pixels SAM cleaning replaced.
+    save_views: a folder to store every view's image (view_XX.png, the painted image or the real
+    render) and, with part_labels = (xyz, labels), a part-id mask (mask_XX.npy, int16, -1 for the
+    background): each foreground pixel takes the label of the nearest labelled point."""
     import diff3f as d3f
     from diffusion import add_texture_to_render
     from dino import get_dino_features
@@ -305,6 +308,15 @@ def features_per_vertex(device, pipe, dino_model, mesh, prompt, mesh_vertices, n
         else:  # vertex_colors: the rendered real appearance itself
             view_img = Image.fromarray(render_img)
             unet_ft = real_image_unet_features(pipe, render_img, prompt, timestep, gen)
+        if save_views is not None:
+            view_img.convert("RGB").save(os.path.join(save_views, f"view_{idx:02d}.png"))
+            if part_labels is not None:
+                pxyz, plab = part_labels
+                lab = torch.full((H * W,), -1, dtype=torch.int16)
+                near = torch.cat([torch.cdist(world_coords[i:i + 4096].float(), pxyz).argmin(1)
+                                  for i in range(0, len(world_coords), 4096)])
+                lab[indices] = plab[near.cpu()]
+                np.save(os.path.join(save_views, f"mask_{idx:02d}.npy"), lab.reshape(H, W).numpy())
         dino_ft = get_dino_features(device, dino_model, view_img, grid)
         up = torch.nn.Upsample(size=(H, W), mode="bilinear")(unet_ft.unsqueeze(0)).to(device)
         aligned = torch.nn.functional.grid_sample(up, grid, align_corners=False)
@@ -399,6 +411,16 @@ def main():
         default=os.path.expanduser("~/semtex/weights/sam/sam_vit_b_01ec64.pth"),
     )
     ap.add_argument(
+        "--save_views",
+        default=None,
+        help="folder for every view's image (and part-id mask with --part_labels)",
+    )
+    ap.add_argument(
+        "--part_labels",
+        default=None,
+        help="an .npz with xyz and labels (int part id per point) for the masks of --save_views",
+    )
+    ap.add_argument(
         "--siglip2",
         action="store_true",
         help="also SigLIP2 features of the same views (timm " + SIGLIP2 + ")",
@@ -447,7 +469,8 @@ def main():
     mesh_vertices = mesh.verts_list()[0][torch.as_tensor(idx, device=device)]
     sam_share = None
     extra = {}
-    if args.appearance == "painted" and args.sam_tau <= 0 and not args.siglip2:  # upstream path
+    upstream = args.appearance == "painted" and args.sam_tau <= 0 and not args.siglip2
+    if upstream and args.save_views is None:  # unchanged upstream path
         feat = d3f.get_features_per_vertex(
             device=device,
             pipe=pipe,
@@ -470,10 +493,18 @@ def main():
             sam = sam_model_registry["vit_b"](checkpoint=args.sam_checkpoint).to(device)
             sam_gen = SamAutomaticMaskGenerator(sam)
         siglip = init_siglip2(device) if args.siglip2 else None
+        part_labels = None
+        if args.save_views is not None:
+            os.makedirs(args.save_views, exist_ok=True)
+            if args.part_labels is not None:
+                pl = np.load(args.part_labels)
+                part_labels = (torch.as_tensor(pl["xyz"], dtype=torch.float32, device=device),
+                               torch.as_tensor(pl["labels"].astype(np.int16)))
         acc = features_per_vertex(
             device, pipe, dino, mesh, args.prompt, mesh_vertices, num_views, 512, 512,
             args.tolerance, appearance=args.appearance, timestep=args.timestep,
             sam_generator=sam_gen, sam_tau=args.sam_tau, siglip_model=siglip, seed=args.seed,
+            save_views=args.save_views, part_labels=part_labels,
         )
         feat, sam_share = acc["diff3f"], acc["sam_replaced_share"]
         extra = {k: v for k, v in acc.items() if k in ("diff3f_sam", "siglip2")}

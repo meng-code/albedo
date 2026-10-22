@@ -100,6 +100,9 @@ Add each future dependency with its source URL, version or commit, license, inte
 - **Paper:** Tschannen et al., "SigLIP 2: Multilingual Vision-Language Encoders with Improved Semantic
   Understanding, Localization, and Dense Features", arXiv:2502.14786.
 - **Use:** Optional per-pixel features in `scripts/idarb/diff3f_features.py --siglip2`.
+- **Also:** the full model with its text tower, https://huggingface.co/timm/ViT-B-16-SigLIP2-512
+  (1.5 GB, loaded with open_clip as `ViT-B-16-SigLIP2-512` / `webli`; the vision weights are the same),
+  downloaded 2026-10-23, for the part-naming test `scripts/idarb/siglip2_part_naming.py`.
 
 ## Segment Anything ViT-B (not included)
 
@@ -112,6 +115,13 @@ Add each future dependency with its source URL, version or commit, license, inte
 - **Use:** Optional MeshFM-style cleaning of the per-view features in
   `scripts/idarb/diff3f_features.py --sam_tau`. Tried on 2026-10-22 and found slightly worse; the
   option stays in the script.
+
+## open_clip (Python package)
+
+- **Source:** https://github.com/mlfoundations/open_clip, `open_clip_torch` 3.3.0 from PyPI
+- **License:** MIT
+- **Use:** Loads SigLIP2's image and text towers in `scripts/idarb/siglip2_part_naming.py`. Installed
+  in the siglip2oc environment on the GPU server (`scripts/idarb/requirements-meshfm.txt`).
 
 ## rembg (Python package)
 

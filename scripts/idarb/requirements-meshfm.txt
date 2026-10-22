@@ -21,3 +21,10 @@ gdown
 #   mkdir -p ~/semtex/weights/sam && curl -L -o ~/semtex/weights/sam/sam_vit_b_01ec64.pth \
 #       https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth          # 375 MB
 # SigLIP2 (timm vit_base_patch16_siglip_512.v2_webli, 374 MB) downloads at first use.
+
+# The part-naming test (siglip2_part_naming.py) needs SigLIP2's text tower too, through open_clip;
+# its tokenizer is a Gemma tokenizer, which needs transformers >= 4.38, so it runs in one more clone
+# (diff3f_features.py keeps transformers 4.34 in diff3fvar):
+#   conda create -n siglip2oc --clone diff3fvar -y && conda activate siglip2oc
+#   pip install open_clip_torch==3.3.0 ftfy transformers==4.49.0
+# The model (timm/ViT-B-16-SigLIP2-512, vision and text, 1.5 GB) downloads at first use.
