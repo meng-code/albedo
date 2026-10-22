@@ -455,3 +455,41 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   SigLIP2 features are the next server variant; `part_anchors.py --out_dir` writes the part
   similarity matrix and part-coloured point clouds, so the same measurement is repeated on every
   new feature set.
+
+## 2026-10-23 — Where the mirrored texture comes from, and three steps against it (night run)
+
+- Measurement first. On the synthetic pairs (the partial cut from the target itself) the mirrored
+  screen area after refinement is about 1 %, so the 20–35 % on the real pairs is not a property
+  of the pipeline but of real pairs: different individuals, different poses, and features that
+  cannot tell the left edge of a limb from its right edge. By facing angle (ARAP, 16 same-category
+  pairs): faces almost edge-on to the texture camera mirror 47 % of their area, faces turned
+  towards it 6.5 %; the worst pairs (posed human, the chairs, the stone bird, dragon → lizard)
+  keep 25–40 % even on front faces. Anchor consistency: on real pairs 14–44 % of the mutual
+  anchors disagree with one similarity transform (synthetic: 0–1 %).
+- Tried, no effect: a penalty in the candidate choice for mirroring the vertex's camera-facing fan
+  (`--w_flip`; the neighbours are mirrored together, so no single change helps).
+- Three steps that do help, each a refinement option, measured on the five most mirrored pairs
+  (superman_posed, chair10_roundchair, bird_bird, cat_lion, dragon_lizard; ARAP; triangles
+  within 2 % / 5 %, relief used, median distortion, mirrored area):
+  - `--anchor_filter rigid:0.1`: anchors farther than 10 % of the diagonal from a RANSAC
+    similarity transform of all anchors are dropped. All 26 pairs: same-category 64.3 → 66.2 %
+    within 2 %, mirrored 23.7 → 21.3 %, distortion 2.18 → 2.12; cross 44.3 → 47.9 %. Small, consistent.
+  - `--w_view w`: every vertex's ARAP rotation also has to carry the texture camera's direction
+    onto the relief's viewing axis (a virtual edge pair weighted by w times the one-ring), so a
+    limb cannot be turned about its own axis to put its hidden side on the relief's visible side.
+    w = 1: mirrored area 32.4 → 21.9 %, within 2 % 76.2 → 79.5 %, but distortion 2.53 → 3.75 and
+    relief used 59 → 55 %. (A first version let the pair inflate the ARAP scale; the scale is now
+    fitted from the edges alone.) Visibly: the posed human's legs lose the cape bleed, the chair's
+    backrest becomes one continuous pattern.
+  - `--coarse_to_fine 2 --coarse_factor 4`: the field and the choice of matches alternate, the
+    smoothness falling from 16× to the final weight, every level predicting each vertex's source
+    position from the current field (the non-rigid ICP schedule of Jung et al. 2025). Within 2 %
+    76.2 → 79.9 %, distortion 2.53 → 2.21, mirrored area about unchanged (chair 37 → 24 %).
+  - Combined (`--coarse_to_fine 2 --coarse_factor 4 --w_view 1 --anchor_filter rigid:0.1`):
+    within 2 % 76.2 → 85.5 %, within 5 % 97.4 → 99.3 %, mirrored 32.4 → 17.9 %, distortion
+    2.53 → 3.36, relief used 59 → 53 %; with `--w_view 0.3` instead: 81.1 % / 98.8 % / 17.8 % /
+    3.03 / 55 %. Synthetic ground truth: the view pair costs about 2 points within 1 % (cat 72.1 →
+    69.9), coarse-to-fine is neutral, the rigid filter gains (cat 72.1 → 77.6 at 5 % threshold).
+- Decision pending the run over all 28 pairs (`results/diff3f/features_diff3f_view_c2f.csv`,
+  `outputs/diff3f/09_texture_view_consistent/`): the combined setting becomes the recommended
+  one if the same-category and cross-category means confirm the five pairs.
