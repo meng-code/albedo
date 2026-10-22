@@ -490,6 +490,11 @@ The repository will be used beyond the original course, so the owner rewrote `AG
     2.53 → 3.36, relief used 59 → 53 %; with `--w_view 0.3` instead: 81.1 % / 98.8 % / 17.8 % /
     3.03 / 55 %. Synthetic ground truth: the view pair costs about 2 points within 1 % (cat 72.1 →
     69.9), coarse-to-fine is neutral, the rigid filter gains (cat 72.1 → 77.6 at 5 % threshold).
-- Decision pending the run over all 28 pairs (`results/diff3f/features_diff3f_view_c2f.csv`,
-  `outputs/diff3f/09_texture_view_consistent/`): the combined setting becomes the recommended
-  one if the same-category and cross-category means confirm the five pairs.
+- Decision, after the run over all 28 pairs (`results/diff3f/features_diff3f_view_c2f.csv`,
+  `outputs/diff3f/09_texture_view_consistent/`): `--coarse_to_fine 2 --coarse_factor 4 --w_view
+  0.3 --anchor_filter rigid:0.1` is the recommended setting. ARAP means, 07 → 09: same-category
+  within 2 % 64.3 → 73.6 %, within 5 % 96.6 → 98.7 %, mirrored area 23.7 → 11.6 %, distortion
+  2.18 → 2.32, relief used 65 → 59 %; cross-category 44.3 → 60.4 %, 89.3 → 96.7 %, 39.0 → 20.2 %,
+  2.31 → 2.56, 49 → 41 %; synthetic within 1 % 65.3 → 61.8 % (within 5 % 99.5 both). `--w_view 1`
+  gains 3 more points within 2 % at the cost of distortion 2.62 / 2.98 and relief used 56 / 38 %
+  (`features_diff3f_view1_c2f.csv`), so 0.3 is kept.

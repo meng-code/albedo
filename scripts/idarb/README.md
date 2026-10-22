@@ -977,3 +977,47 @@ have). On the Diff3F features the step is neutral to slightly negative on the sy
 (all confident pairs, `--w_part 0.5`: cat 72.1 → 68.9 %, cow 58.5 → 59.2 % within 1 %), and on
 Labubu → camel the part similarities are all below 0.35 with confidences near zero, so the
 features cannot drive it yet; it is kept for the feature sets that can (see `docs/decisions.md`).
+
+### Against the mirrored texture: anchor filter, view-consistent ARAP, coarse-to-fine (2026-10-23)
+
+Where the mirrored patches come from was measured before anything was changed. On the synthetic
+pairs the mirrored screen area after refinement is about 1 %, so the 20–35 % on real pairs is
+made by real pairs: different individuals and poses, and features that cannot tell the left edge
+of a limb from its right edge (edge-on faces mirror 47 % of their area, camera-facing faces
+6.5 %, the posed human, the chairs, the stone bird and dragon → lizard 25–40 % even on front
+faces). Three options of `refine_correspondence.py` act on this (`docs/decisions.md`,
+2026-10-23, has the single-step numbers):
+
+- `--anchor_filter rigid:0.1` drops mutual anchors farther than 10 % of the diagonal from a
+  RANSAC similarity transform of all anchors (on real pairs 14–44 % of the anchors disagree with
+  such a transform, on synthetic pairs 0–1 %).
+- `--w_view 0.3` adds to every vertex's ARAP rotation fit a pair that carries the texture
+  camera's direction onto the relief's viewing axis: the side of the target the camera sees must
+  land on the side of the relief its camera saw, which is exactly what a mirrored patch violates.
+- `--coarse_to_fine 2 --coarse_factor 4` alternates the field with the choice of matches, the
+  smoothness falling from 16× to the final weight, every level predicting each vertex's source
+  position from the current field (the schedule of Jung et al. 2025's non-rigid ICP).
+
+Together (the 09 setting, `outputs/diff3f/09_texture_view_consistent/`,
+`results/diff3f/features_diff3f_view_c2f.csv`):
+
+    python scripts/idarb/eval_features.py --feature_dir outputs/diff3f/features \
+        --out_dir outputs/diff3f/09_texture_view_consistent \
+        --csv results/diff3f/features_diff3f_view_c2f.csv --variants arap \
+        --refine_args "--coarse_to_fine 2 --coarse_factor 4 --w_view 0.3 --anchor_filter rigid:0.1"
+
+| ARAP field, means | within 2 % | within 5 % | relief used | median distortion | mirrored area |
+|---|---|---|---|---|---|
+| 16 same-category, 07 setting | 64.3 % | 96.6 % | 65 % | 2.18 | 23.7 % |
+| 16 same-category, 09 setting | 73.6 % | 98.7 % | 59 % | 2.32 | 11.6 % |
+| 10 cross-category, 07 setting | 44.3 % | 89.3 % | 49 % | 2.31 | 39.0 % |
+| 10 cross-category, 09 setting | 60.4 % | 96.7 % | 41 % | 2.56 | 20.2 % |
+
+The mirrored area halves and the triangle consistency rises on both groups; the price is a
+smaller share of the relief used (the view pair pulls the map together where the matches
+disagree) and, on the synthetic ground truth, 3 points within 1 % (65.3 → 61.8 %; within 5 %
+unchanged at 99.5 %). `--w_view 1` (`results/diff3f/features_diff3f_view1_c2f.csv`) gains 3
+more points within 2 % but costs distortion (2.62 / 2.98) and relief used (56 / 38 %), so 0.3
+is the recommended weight. `results/diff3f/view_consistent_before_after.png` shows eight pairs
+before and after: the posed human's legs lose the cape bleed, the chair's backrest becomes one
+continuous pattern, the stone bird's pattern stops swirling.
