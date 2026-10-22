@@ -397,3 +397,31 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   feature folder and writes a CSV, so feature sets are compared with one command each. Risk noted
   before running: both models were trained on closed, whole objects normalised to the unit cube;
   our source is an open, front-only relief.
+
+## 2026-10-22 — MeshFM as a feature replacement: fails on partial shapes
+
+- The server ran MeshFM (checkpoint 502 MB, env cloned from diff3f, 0.1–0.7 s per mesh, 1.4 GB
+  GPU) at the Diff3F sample points of all 29 meshes (`scripts/idarb/meshfm_features.py`,
+  `results/diff3f/check_meshfm/`). The features are smooth and part-like on the open reliefs, but
+  the partial mesh's features are shifted against the full mesh's: synthetic ground truth within
+  5 % of the diagonal, nearest neighbour, cow 36 % (Diff3F 86 %), cat 58 % (97 %); mutual nearest
+  neighbours 0.5 % vs 1 % on the real cat and cow pairs. Through the whole pipeline (ARAP field,
+  `eval_features.py`): cat 10.8 % / cow 7.8 % within 1 % against 72.1 / 58.2 for Diff3F. Fusing
+  the two sets (`fuse_features.py`, w 0.75 on Diff3F) gives 63.0 / 55.7, below Diff3F alone.
+- Cause, by elimination on the server: not the orientation, the normalisation or the number of
+  encoder points (50k–200k; moving the partial into the full mesh's frame with the true transform
+  changes nothing). The encoder sees the whole shape, so a front-only relief is a different shape to
+  it. Closing the relief with a mirrored back copy (thin shell) gains 2–10 points and is still 30–50
+  points behind Diff3F; a thick closure hurts. Diff3F works view by view, so what it sees of the
+  front is the same on both meshes: this is what makes it robust to partial input.
+- Decision: no feed-forward 3D encoder on the partial relief (PartField uses the same PVCNN +
+  triplane encoder and is expected to fail the same way, so its 4–5 GB download is not started).
+  Better features have to come from the 2D side: variants of the Diff3F extraction (real albedo
+  render of the relief instead of a ControlNet painting, DINOv3 in the DINO branch, MeshFM's
+  SAM-based anti-aliasing of the 2D feature maps) are the next server runs. A 3D-native model
+  would only become usable with a completed shape (an image-to-3D model such as TRELLIS, whose
+  back is a guess); that widens the project's scope and is for the owner to decide.
+- Negative side result on the laptop: anchors from neighbourhood-pooled Diff3F features (the
+  global-then-local idea of HNSR) are fewer and less precise than the plain mutual nearest
+  neighbours (cat anchors within 1 %: 62 → 56 / 48 / 36 % for pooling radii 2 / 5 / 10 % of the
+  diagonal; refined accuracy drops accordingly). Not adopted.
