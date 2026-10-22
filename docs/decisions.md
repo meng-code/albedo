@@ -566,3 +566,9 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   apart there, the own method's first version (parts named by image-text similarity, matched by
   name, unmatched parts follow the body through `--parts`) is viable; if not, the language route
   is dropped.
+- Full pipeline (09 setting, `eval_features.py`) on the SigLIP2 files and on the Diff3F+SigLIP2
+  concatenation (`fuse_features.py --w 0.5`, built locally; `results/diff3f/features_siglip2.csv`,
+  `features_diff3f_siglip2.csv`): SigLIP2 alone synthetic 34.7 % within 1 % (Diff3F 60.4 %),
+  mutual anchors 30 / 5 per same / cross pair (99 / 27), same-category within 2 % 77.0 % (80.1 %);
+  the concatenation 62.4 % synthetic, 79.9 / 70.7 % within 2 %, 79 / 16 anchors: equal to Diff3F
+  within noise. Neither is adopted; the 1.5 GB of concatenated files are not stored.
