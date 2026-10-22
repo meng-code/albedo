@@ -7,10 +7,11 @@ server, every part was pooled through SigLIP2's attention head over the rendered
 part has one vector in SigLIP2's joint image-text space, next to the text vectors of a part
 vocabulary ("a photo of the hump of a camel", ...). This script
 
-  1. names every part: the vocabulary entries closest to its vector (object-free prompts);
-  2. scores every target-source part pair by the cosine of the two part vectors, averaged with
-     the cosine after each object's mean part vector is removed (what is common to the whole
-     object drops out), plus a bonus when the two parts' best names agree;
+  1. reads every part's names: the vocabulary entries closest to its vector (object-free
+     prompts, as the server's siglip2_part_naming.py wrote them);
+  2. scores every target-source part pair mainly by name agreement (same word, or words of
+     the same group such as face and head, over the best three names of both) and partly by
+     the cosine of the two part vectors after each object's mean part vector is removed;
   3. keeps the confident one-to-one pairs (bilateral margin, as in part_anchors.py). A target part
      whose name has no counterpart on the source (the hump) stays unmatched, so with
      refine_correspondence.py --parts its vertices follow their neighbours instead of borrowing the
@@ -25,7 +26,7 @@ Usage (repository root, mesh environment):
         --target_labels results/diff3f/part_labels_tmp/camel_full_parts.npz \
         --source results/diff3f/part_naming/labubu_partial.json \
         --source_labels results/diff3f/part_labels_tmp/labubu_partial_parts.npz \
-        --vocabulary results/diff3f/part_naming/vocabulary.npz --out <dir>/part_match.npz
+        --out <dir>/part_match.npz
 """
 
 import argparse
@@ -42,21 +43,38 @@ def unit(x):
     return x / np.maximum(np.linalg.norm(x, axis=-1, keepdims=True), 1e-12)
 
 
+GROUPS = {
+    "head": ["head", "face", "eye", "ear", "nose", "mouth", "snout", "hair", "mane", "hood"],
+    "leg": ["leg", "front leg", "hind leg", "foot", "paw", "hoof", "shoe", "boot", "trousers"],
+    "arm": ["arm", "hand", "shoulder"],
+    "body": ["body", "torso", "chest", "belly", "back", "shirt", "cape", "belt"],
+    "neck": ["neck"],
+    "hump": ["hump"],
+    "tail": ["tail"],
+}
+GROUP_OF = {w: g for g, ws in GROUPS.items() for w in ws}
+
+
+def word_of(prompt):
+    """The part word of a prompt: the text between "the " and " of" (or the end)."""
+    w = prompt
+    if "the " in w:
+        w = w.split("the ", 1)[1]
+    if " of " in w:
+        w = w.split(" of ", 1)[0]
+    return w.strip()
+
+
 def load_part_file(path):
-    """Part vectors (K, D) and sizes (K,) of one mesh, from the server's JSON (a list of parts with
-    an "embedding", under "parts" or at the top level) or an npz with "embedding" and "size"."""
-    if path.endswith(".npz"):
-        z = np.load(path)
-        emb = z["embedding"]
-        size = z["size"] if "size" in z.files else np.ones(len(emb))
-        return unit(emb), np.asarray(size, dtype=np.float64)
+    """One mesh's parts from the server's JSON (siglip2_part_naming.py): unit part vectors
+    (K, D), sizes (K,) and, per part, the object-free names best to worst as (word, score)."""
     with open(path) as f:
         d = json.load(f)
-    parts = d["parts"] if isinstance(d, dict) else d
-    parts = sorted(parts, key=lambda p: int(p.get("id", 0)))
-    emb = np.stack([np.asarray(p["embedding"], dtype=np.float64) for p in parts])
-    size = np.array([float(p.get("size", 1.0)) for p in parts])
-    return unit(emb), size
+    parts = sorted(d["parts"], key=lambda q: int(q.get("part", q.get("id", 0))))
+    emb = unit(np.stack([np.asarray(q["embedding"], dtype=np.float64) for q in parts]))
+    size = np.array([float(q.get("size", 1.0)) for q in parts])
+    names = [[(word_of(t), float(sc)) for t, sc in q.get("top_free", [])] for q in parts]
+    return emb, size, names
 
 
 def load_vocabulary(path):
@@ -92,20 +110,31 @@ def name_parts(emb, vocab_emb, vocab_words, top=5):
     return out
 
 
-def part_scores(emb_t, emb_s, names_t, names_s, name_bonus=0.2):
-    """Score of every target-source part pair: the mean of the plain cosine of the two part
-    vectors and of their cosine after each object's mean part vector is removed (the plain one
-    keeps a pair honest when few parts make the relative one spurious; the relative one lets
-    parts differ when the object-level signal dominates), plus a bonus when the best names agree."""
-    raw = unit(emb_t) @ unit(emb_s).T
+def name_similarity(names_a, names_b, weights=(0.5, 0.3, 0.2)):
+    """How much two parts' names agree, from their best three names: 1 for the same word, 0.7
+    for words of the same group (face and head, leg and hoof), 0 otherwise, averaged with the
+    rank weights of both lists. Small margins between a part's best names make the top-1 word
+    unreliable, so all three count."""
+    total = 0.0
+    for wa, (na, _) in zip(weights, names_a[:3]):
+        for wb, (nb, _) in zip(weights, names_b[:3]):
+            if na == nb:
+                total += wa * wb
+            elif GROUP_OF.get(na) is not None and GROUP_OF.get(na) == GROUP_OF.get(nb):
+                total += 0.7 * wa * wb
+    return total
+
+
+def part_scores(emb_t, emb_s, names_t, names_s, w_name=0.6):
+    """Score of every target-source part pair: w_name times the name agreement plus
+    (1 - w_name) times the cosine of the two part vectors after each object's mean part vector is
+    removed (the plain cosine is nearly the same for every pair, 0.6 to 0.8, so it carries
+    nothing)."""
     A = unit(emb_t - emb_t.mean(axis=0))
     B = unit(emb_s - emb_s.mean(axis=0))
-    S = 0.5 * (raw + A @ B.T)
-    for a, na in enumerate(names_t):
-        for b, nb in enumerate(names_s):
-            if na and nb and na[0][0] == nb[0][0]:
-                S[a, b] += name_bonus
-    return S
+    rel = A @ B.T
+    N = np.array([[name_similarity(na, nb) for nb in names_s] for na in names_t])
+    return w_name * N + (1.0 - w_name) * rel
 
 
 def match_parts(S, alpha=20, min_conf=0.02, min_score=0.3):
@@ -120,24 +149,20 @@ def main():
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    ap.add_argument("--target", required=True, help="part vectors of the full mesh (json/npz)")
+    ap.add_argument("--target", required=True, help="part naming JSON of the full mesh")
     ap.add_argument("--target_labels", required=True, help="<name>_parts.npz of the full mesh")
-    ap.add_argument("--source", required=True, help="part vectors of the relief (json/npz)")
+    ap.add_argument("--source", required=True, help="part naming JSON of the relief")
     ap.add_argument("--source_labels", required=True)
-    ap.add_argument("--vocabulary", required=True, help="npz with text and emb")
     ap.add_argument("--alpha", type=int, default=20, help="at most this many part pairs")
     ap.add_argument("--min_conf", type=float, default=0.02)
     ap.add_argument("--min_score", type=float, default=0.3, help="pairs below never match")
-    ap.add_argument("--name_bonus", type=float, default=0.2)
+    ap.add_argument("--w_name", type=float, default=0.6, help="weight of the names")
     ap.add_argument("--out", required=True, help="part_match.npz (for refine --parts)")
     args = ap.parse_args()
 
-    emb_t, size_t = load_part_file(args.target)
-    emb_s, size_s = load_part_file(args.source)
-    _, words, vemb = load_vocabulary(args.vocabulary)
-    names_t = name_parts(emb_t, vemb, words)
-    names_s = name_parts(emb_s, vemb, words)
-    S = part_scores(emb_t, emb_s, names_t, names_s, args.name_bonus)
+    emb_t, size_t, names_t = load_part_file(args.target)
+    emb_s, size_s, names_s = load_part_file(args.source)
+    S = part_scores(emb_t, emb_s, names_t, names_s, args.w_name)
     pairs = match_parts(S, args.alpha, args.min_conf, args.min_score)
     lt = np.load(args.target_labels)["labels"].astype(np.int64)
     ls = np.load(args.source_labels)["labels"].astype(np.int64)
@@ -148,13 +173,14 @@ def main():
         args.out, labels_t=lt, labels_s=ls,
         pairs=np.array([[a, b, c] for a, b, c in pairs], dtype=np.float64).reshape(-1, 3),
     )
+    first = lambda nm: nm[0][0] if nm else "?"  # noqa: E731
     report = dict(
         target_names=[[n for n, _ in nm[:3]] for nm in names_t],
         source_names=[[n for n, _ in nm[:3]] for nm in names_s],
-        pairs=[dict(target=a, source=b, confidence=round(c, 4),
-                    target_name=names_t[a][0][0], source_name=names_s[b][0][0])
+        pairs=[dict(target=a, source=b, confidence=round(c, 4), score=round(float(S[a, b]), 3),
+                    target_name=first(names_t[a]), source_name=first(names_s[b]))
                for a, b, c in pairs],
-        unmatched_target=[dict(part=j, name=names_t[j][0][0], size=float(size_t[j]))
+        unmatched_target=[dict(part=j, name=first(names_t[j]), size=float(size_t[j]))
                           for j in range(len(emb_t)) if j not in {a for a, _, _ in pairs}],
         scores=np.round(S, 3).tolist(),
     )

@@ -572,3 +572,27 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   mutual anchors 30 / 5 per same / cross pair (99 / 27), same-category within 2 % 77.0 % (80.1 %);
   the concatenation 62.4 % synthetic, 79.9 / 70.7 % within 2 %, 79 / 16 anchors: equal to Diff3F
   within noise. Neither is adopted; the 1.5 GB of concatenated files are not stored.
+
+## 2026-10-23 — Part naming with SigLIP2 (server) and name-based part matching: partial
+
+- Server (`scripts/idarb/siglip2_part_naming.py`, `results/diff3f/part_naming/`): every part of
+  eight meshes pooled through SigLIP2's attention head over Diff3F's painted views, compared with
+  a part vocabulary. Whole objects are all named right (8 of 8). Parts: the camel's parts come out
+  as hump, front leg, leg, paw, foot, hind leg; the cow's as head, snout, tail, hoof; the Labubu's
+  as ear, hood, face, face, shirt, shirt. But the scores are small (0.02–0.11) with margins
+  between the best names often below 0.01, and the raw part-vector cosines across objects are
+  nearly flat (0.61–0.79); after mean removal the Labubu's face still goes to the camel's
+  hump-and-head part.
+- Two limits come from the parts themselves: they are k-means clusters of the Diff3F features,
+  so the camel's hump and head sit in one part (the feature confusion the whole line is about),
+  and six parts on the Labubu leave its legs and shoes inside "shirt". And the names of a dressed
+  toy (hood, shirt) and of an animal (leg, paw) do not overlap, so name agreement alone
+  (`name_parts.py`, same word or same group over the best three names, plus a little of the
+  vector cosine) yields no confident pair on Labubu → camel or Labubu → lion, one on cat → man
+  (face ← snout), three on cat → lion and cow → cow (head, snout, tail). With no pair, `--parts`
+  would gate every target part, so the step cannot drive the correspondence as it stands.
+- Decision: keep the machinery (naming works at the object level and for animal parts) and
+  change the two inputs before judging the method: parts from a part model rather than from the
+  Diff3F clusters (PartField on the full mesh, SAM masks lifted to the relief), and name
+  similarity from text embeddings rather than a hand-written group table. Not pursued tonight;
+  the owner reviews the dataset phase A first.
