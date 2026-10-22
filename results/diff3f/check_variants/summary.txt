@@ -1,0 +1,9 @@
+combined_cow_synth_partial exit 0, wall 623 s, peak MiB 21970, Number of missing features:  0
+combined_cat_synth_partial exit 0, wall 646 s, peak MiB 22000, Number of missing features:  0
+combined_cow_full exit 0, wall 636 s, peak MiB 21521, Number of missing features:  8
+combined_cat_full exit 0, wall 680 s, peak MiB 22390, Number of missing features:  140
+combined_cat_partial exit 0, wall 942 s, peak MiB 21068, Number of missing features:  39
+combined_cow_partial exit 0, wall 1097 s, peak MiB 22348, Number of missing features:  21
+albedo_cat_partial exit 0, wall 286 s, peak MiB 16936, Number of missing features:  39
+albedo_cow_partial exit 0, wall 459 s, peak MiB 16730, Number of missing features:  21
+VARIANTS DONE

@@ -1,0 +1,110 @@
+{
+ "cow_synth_partial:cow_full": {
+  "diff3f_orig": {
+   "mutual_nn": 0.1811,
+   "gt_points": 1248,
+   "median_err": 0.0163,
+   "within_5pct": 0.8598,
+   "within_10pct": 0.9343
+  },
+  "diff3f_rerun": {
+   "mutual_nn": 0.1803,
+   "gt_points": 1248,
+   "median_err": 0.0163,
+   "within_5pct": 0.8598,
+   "within_10pct": 0.9343
+  },
+  "diff3f_sam": {
+   "mutual_nn": 0.1603,
+   "gt_points": 1248,
+   "median_err": 0.019,
+   "within_5pct": 0.8526,
+   "within_10pct": 0.9383
+  },
+  "siglip2": {
+   "mutual_nn": 0.1282,
+   "gt_points": 1248,
+   "median_err": 0.0327,
+   "within_5pct": 0.645,
+   "within_10pct": 0.762
+  },
+  "concat": {
+   "mutual_nn": 0.1627,
+   "gt_points": 1248,
+   "median_err": 0.0164,
+   "within_5pct": 0.8462,
+   "within_10pct": 0.9255
+  }
+ },
+ "cat_synth_partial:cat_full": {
+  "diff3f_orig": {
+   "mutual_nn": 0.0907,
+   "gt_points": 2821,
+   "median_err": 0.0122,
+   "within_5pct": 0.9741,
+   "within_10pct": 0.9872
+  },
+  "diff3f_rerun": {
+   "mutual_nn": 0.0904,
+   "gt_points": 2821,
+   "median_err": 0.0122,
+   "within_5pct": 0.9738,
+   "within_10pct": 0.9872
+  },
+  "diff3f_sam": {
+   "mutual_nn": 0.0755,
+   "gt_points": 2821,
+   "median_err": 0.014,
+   "within_5pct": 0.9564,
+   "within_10pct": 0.9908
+  },
+  "siglip2": {
+   "mutual_nn": 0.0571,
+   "gt_points": 2821,
+   "median_err": 0.0204,
+   "within_5pct": 0.7359,
+   "within_10pct": 0.9185
+  },
+  "concat": {
+   "mutual_nn": 0.0883,
+   "gt_points": 2821,
+   "median_err": 0.0125,
+   "within_5pct": 0.9642,
+   "within_10pct": 0.983
+  }
+ },
+ "cat_partial:cat_full": {
+  "diff3f_orig": {
+   "mutual_nn": 0.0089
+  },
+  "diff3f_rerun": {
+   "mutual_nn": 0.0089
+  },
+  "diff3f_sam": {
+   "mutual_nn": 0.0071
+  },
+  "siglip2": {
+   "mutual_nn": 0.006
+  },
+  "concat": {
+   "mutual_nn": 0.0064
+  }
+ },
+ "cow_partial:cow_full": {
+  "diff3f_orig": {
+   "mutual_nn": 0.0096
+  },
+  "diff3f_rerun": {
+   "mutual_nn": 0.0096
+  },
+  "diff3f_sam": {
+   "mutual_nn": 0.0101
+  },
+  "siglip2": {
+   "mutual_nn": 0.0069
+  },
+  "concat": {
+   "mutual_nn": 0.009
+  }
+ }
+}

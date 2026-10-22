@@ -1,0 +1,29 @@
+armchair_full exit 0, wall 280 s, peak MiB 16010, Number of missing features:  685
+bird_full exit 0, wall 343 s, peak MiB 16440, Number of missing features:  318
+bird_partial exit 0, wall 509 s, peak MiB 17520, Number of missing features:  6
+camel_full exit 0, wall 242 s, peak MiB 15818, Number of missing features:  2
+cat5_partial exit 0, wall 495 s, peak MiB 17236, Number of missing features:  5
+chair10_partial exit 0, wall 474 s, peak MiB 17190, Number of missing features:  20
+chair1_partial exit 0, wall 538 s, peak MiB 17766, Number of missing features:  19
+chair_partial exit 0, wall 551 s, peak MiB 15988, Number of missing features:  17
+cow_synth_d0.5_partial exit 0, wall 241 s, peak MiB 15784, Number of missing features:  0
+cow_synth_d2_partial exit 0, wall 236 s, peak MiB 15816, Number of missing features:  0
+fire_dragon_partial exit 2, wall 2 s, peak MiB 0, 
+ipadapter_result_00_chair_partial exit 0, wall 470 s, peak MiB 16746, Number of missing features:  44
+labubu_partial exit 2, wall 2 s, peak MiB 0, 
+lion_full exit 0, wall 261 s, peak MiB 15994, Number of missing features:  17
+lizard_full exit 2, wall 2 s, peak MiB 0, 
+man_full exit 0, wall 303 s, peak MiB 15994, Number of missing features:  515
+okapi1_partial exit 0, wall 472 s, peak MiB 16836, Number of missing features:  43
+okapi_partial exit 0, wall 641 s, peak MiB 16650, Number of missing features:  11
+panda_full exit 0, wall 325 s, peak MiB 16440, Number of missing features:  4950
+panda_partial exit 0, wall 626 s, peak MiB 16778, Number of missing features:  4
+posed_human_full exit 2, wall 1 s, peak MiB 0, 
+roundchair_full exit 0, wall 299 s, peak MiB 16038, Number of missing features:  966
+superman_partial exit 0, wall 609 s, peak MiB 16852, Number of missing features:  31
+SIGLIP ALL DONE
+fire_dragon_partial exit 0, wall 591 s, peak MiB 16654, Number of missing features:  49
+labubu_partial exit 0, wall 562 s, peak MiB 17726, Number of missing features:  0
+lizard_full exit 0, wall 335 s, peak MiB 16440, Number of missing features:  1993
+posed_human_full exit 0, wall 262 s, peak MiB 16004, Number of missing features:  3
+FIX4 DONE

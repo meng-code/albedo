@@ -13,3 +13,11 @@ libigl
 einops
 PyYAML
 gdown
+
+# The Diff3F variants of diff3f_features.py (--siglip2, --sam_tau) ran in a further clone with timm
+# and segment-anything added; torch, diffusers and transformers stay as in diff3f:
+#   conda create -n diff3fvar --clone meshfm -y && conda activate diff3fvar
+#   pip install "timm>=1.0.15" segment-anything==1.0        # tested with timm 1.0.30
+#   mkdir -p ~/semtex/weights/sam && curl -L -o ~/semtex/weights/sam/sam_vit_b_01ec64.pth \
+#       https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth          # 375 MB
+# SigLIP2 (timm vit_base_patch16_siglip_512.v2_webli, 374 MB) downloads at first use.

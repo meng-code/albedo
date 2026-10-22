@@ -19,6 +19,17 @@ Output: an .npz with idx (vertex indices), xyz (their positions in mesh units), 
 N x 2048, unit length), colors (uint8 vertex colours if the mesh has them, else empty) and meta
 (a JSON string with the command, git commit, prompt and view set).
 
+Variants tried on 2026-10-22 (docs/decisions.md; none beat the default). They need the diff3fvar
+environment (scripts/idarb/requirements-meshfm.txt). Without them the script calls Diff3F's own
+get_features_per_vertex unchanged; with any of them a step-by-step copy of it runs:
+  --appearance vertex_colors  render the mesh with its own vertex colours (for a relief, the IDArb
+                              albedo) instead of letting ControlNet paint a grey render, and take
+                              the UNet features from one pass at --timestep (SD-DINO style).
+  --sam_tau T                 clean each view's per-pixel features with SAM masks (MeshFM style)
+                              and write them to <out>_sam.npz.
+  --siglip2                   also SigLIP2 features of the same views, written to <out>_siglip2.npz
+                              (768-d; pre-head block outputs, not in the image-text joint space).
+
 Usage (repository root, diff3f environment):
     python scripts/idarb/diff3f_features.py --mesh outputs/mesh_depth/cow/relief.ply --prompt cow \
         --front_only --out outputs/diff3f/features/cow_partial.npz
@@ -71,14 +82,18 @@ def load_mesh(path):
     return verts, faces, colors
 
 
-def to_pytorch3d(verts, faces, device):
+def to_pytorch3d(verts, faces, device, colors=None):
     from pytorch3d.renderer import TexturesVertex
     from pytorch3d.structures import Meshes
 
     v = torch.as_tensor(verts)
     f = torch.as_tensor(faces)
-    # a flat light grey, as in Diff3F's convert_trimesh_to_torch_mesh
-    tex = TexturesVertex(verts_features=torch.ones_like(v)[None] * 0.8)
+    if colors is None:
+        # a flat light grey, as in Diff3F's convert_trimesh_to_torch_mesh
+        tex = TexturesVertex(verts_features=torch.ones_like(v)[None] * 0.8)
+    else:  # --appearance vertex_colors
+        rgb = torch.as_tensor(colors, dtype=torch.float32)[None] / 255
+        tex = TexturesVertex(verts_features=rgb)
     return Meshes(verts=[v], faces=[f], textures=tex).to(device)
 
 
@@ -168,6 +183,162 @@ def render_views(device, mesh, elevation, azimuth, H, W):
     return images, normals, camera, depth
 
 
+@torch.no_grad()
+def real_image_unet_features(pipe, image, prompt, timestep, generator):
+    """--appearance vertex_colors: the decoder features of one UNet pass over a real rendered image,
+    as in SD-DINO (Zhang et al. 2023): VAE-encode the image, add noise at a small timestep, run the
+    UNet once with the prompt and no ControlNet, and keep the same decoder output Diff3F keeps
+    (up_blocks[1], 1280 channels at 1/16 resolution), L2-normalised per pixel."""
+    from PIL import Image
+
+    device = pipe.unet.device
+    pos_prompt = f"{prompt},best quality,highly detailed,photorealistic,photo"  # as run_diffusion
+    emb, _ = pipe.encode_prompt(pos_prompt, device, 1, False)
+    img = pipe.image_processor.preprocess(Image.fromarray(image)).to(device, torch.float16)
+    lat = pipe.vae.encode(img).latent_dist.mean * pipe.vae.config.scaling_factor
+    noise = torch.randn(lat.shape, generator=generator, device=device, dtype=lat.dtype)
+    t = torch.tensor([timestep], device=device)
+    noisy = pipe.scheduler.add_noise(lat, noise, t)
+    _, f_map = pipe.unet(noisy, t, encoder_hidden_states=emb, return_dict=False, extract_layer=True)
+    return torch.nn.functional.normalize(f_map, dim=1)[0]
+
+
+@torch.no_grad()
+def sam_clean(features, image, sam_generator, tau):
+    """--sam_tau: MeshFM-style cleaning of one view's per-pixel features before they are projected
+    onto the vertices. SAM's automatic masks split the image into regions; every pixel belongs to
+    the smallest mask that covers it. Per mask, the channel-wise median feature is computed, and
+    pixels whose unit-normalised feature lies farther than tau from the unit-normalised median are
+    replaced by the median. features: [1, C, H*W]; returns the cleaned copy and the share of
+    pixels that were replaced."""
+    masks = sorted(sam_generator.generate(image), key=lambda m: -m["area"])
+    label = np.full(image.shape[:2], -1, np.int64)
+    for k, m in enumerate(masks):  # smaller masks are written later and win
+        label[m["segmentation"]] = k
+    label = torch.as_tensor(label.reshape(-1), device=features.device)
+    f = features[0].T.clone()  # [H*W, C]
+    replaced = 0
+    for k in range(len(masks)):
+        sel = torch.nonzero(label == k)[:, 0]
+        if len(sel) < 10:
+            continue
+        fk = f[sel].float()
+        med = fk.median(dim=0).values
+        dist = (torch.nn.functional.normalize(fk, dim=1)
+                - torch.nn.functional.normalize(med, dim=0)).norm(dim=1)
+        bad = sel[dist > tau]
+        f[bad] = med.to(f.dtype)
+        replaced += len(bad)
+    return f.T[None], replaced / max(1, int((label >= 0).sum()))
+
+
+SIGLIP2 = "vit_base_patch16_siglip_512.v2_webli"  # timm name of google/siglip2-base-patch16-512
+
+
+def init_siglip2(device):
+    import timm
+
+    return timm.create_model(SIGLIP2, pretrained=True, num_classes=0).eval().to(device).half()
+
+
+@torch.no_grad()
+def siglip2_features(model, image, grid):
+    """--siglip2 (as in SemAnCorr): SigLIP2 patch embeddings of one view, the mean of the vision
+    tower's last four blocks, sampled at every pixel like Diff3F's DINO branch and L2-normalised.
+    image: PIL RGB; returns [1, 768, H*W]."""
+    x = torch.as_tensor(np.asarray(image.convert("RGB").resize((512, 512)), np.float32) / 255)
+    x = ((x.permute(2, 0, 1)[None] - 0.5) / 0.5).to(grid.device, torch.float16)
+    maps = model.forward_intermediates(x, indices=4, output_fmt="NCHW", intermediates_only=True)
+    f = torch.stack(maps).mean(0)
+    f = torch.nn.functional.grid_sample(f, grid, align_corners=False).reshape(1, f.shape[1], -1)
+    return torch.nn.functional.normalize(f, dim=1)
+
+
+def features_per_vertex(device, pipe, dino_model, mesh, prompt, mesh_vertices, num_views, H, W,
+                        tolerance, appearance="painted", timestep=100, sam_generator=None,
+                        sam_tau=0.0, siglip_model=None, seed=0):
+    """Diff3F's get_features_per_vertex (third_party/Diff3F/diff3f.py), copied step by step with
+    hooks: the image and UNet features per view (--appearance), SAM cleaning of the fused per-pixel
+    features (--sam_tau) and SigLIP2 features of the same views (--siglip2). Only used when one of
+    those options is set. Returns a dict of per-vertex features: "diff3f" always, "diff3f_sam" with
+    --sam_tau, "siglip2" with --siglip2, and the mean share of pixels SAM cleaning replaced."""
+    import diff3f as d3f
+    from diffusion import add_texture_to_render
+    from dino import get_dino_features
+    from PIL import Image
+    from pytorch3d.ops import ball_query
+
+    maximal_distance = torch.cdist(mesh_vertices, mesh_vertices).max()
+    ball_drop_radius = maximal_distance * tolerance
+    images, normals, camera, depth = d3f.batch_render(
+        device, mesh, mesh.verts_list()[0], num_views, H, W, True
+    )
+    normals, images, camera, depth = normals.cpu(), images.cpu(), camera.cpu(), depth.cpu()
+    pixel_coords = d3f.arange_pixels((H, W), invert_y_axis=True)[0]
+    pixel_coords[:, 0] = torch.flip(pixel_coords[:, 0], dims=[0])
+    grid = d3f.arange_pixels((H, W), invert_y_axis=False)[0].to(device).reshape(1, H, W, 2).half()
+    dims = {"diff3f": d3f.FEATURE_DIMS}
+    if sam_generator is not None and sam_tau > 0:
+        dims["diff3f_sam"] = d3f.FEATURE_DIMS
+    if siglip_model is not None:
+        dims["siglip2"] = siglip_model.num_features
+    acc = {k: torch.zeros((len(mesh_vertices), d)).half() for k, d in dims.items()}
+    count = torch.zeros((len(mesh_vertices), 1)).half()
+    gen = torch.Generator(device=device).manual_seed(seed)
+    replaced = []
+    for idx in range(len(images)):
+        dp = depth[idx].flatten().unsqueeze(1)
+        xy_depth = torch.cat((pixel_coords, dp), dim=1)
+        indices = xy_depth[:, 2] != -1
+        xy_depth = xy_depth[indices]
+        world_coords = camera[idx].unproject_points(
+            xy_depth, world_coordinates=True, from_ndc=True
+        ).to(device)
+        render_img = (images[idx, :, :, :3].numpy() * 255).astype(np.uint8)
+        if appearance == "painted":
+            out = add_texture_to_render(
+                pipe, render_img, depth[idx, :, :, 0].unsqueeze(0).to(device), prompt,
+                normal_map_input=normals[idx], use_latent=False, num_images_per_prompt=1,
+                return_image=True,
+            )
+            unet_ft, view_img = out[0], out[1][0]
+        else:  # vertex_colors: the rendered real appearance itself
+            view_img = Image.fromarray(render_img)
+            unet_ft = real_image_unet_features(pipe, render_img, prompt, timestep, gen)
+        dino_ft = get_dino_features(device, dino_model, view_img, grid)
+        up = torch.nn.Upsample(size=(H, W), mode="bilinear")(unet_ft.unsqueeze(0)).to(device)
+        aligned = torch.nn.functional.grid_sample(up, grid, align_corners=False)
+        aligned = torch.nn.functional.normalize(aligned.reshape(1, up.size(1), -1), dim=1)
+        aligned = torch.hstack([aligned * 0.5, dino_ft * 0.5])
+        per_view = {"diff3f": aligned}
+        if "diff3f_sam" in acc:
+            per_view["diff3f_sam"], share = sam_clean(
+                aligned, np.asarray(view_img.convert("RGB")), sam_generator, sam_tau
+            )
+            replaced.append(share)
+        if "siglip2" in acc:
+            per_view["siglip2"] = siglip2_features(siglip_model, view_img, grid)
+        q = ball_query(world_coords.unsqueeze(0), mesh_vertices.unsqueeze(0), K=100,
+                       radius=ball_drop_radius, return_nn=False).idx[0].cpu()
+        mask = q != -1
+        count[q[mask]] += 1
+        for k, f in per_view.items():
+            per_pixel = f[0, :, indices].cpu()
+            acc[k][q[mask]] += per_pixel.repeat_interleave(mask.sum(dim=1), dim=1).T
+    filled = (count != 0)[:, 0]
+    missing = ~filled
+    print("Number of missing features: ", int(missing.sum()))
+    nearest = None
+    if missing.any():
+        nearest = torch.cdist(mesh_vertices[missing], mesh_vertices[filled]).argmin(dim=1).cpu()
+    for ft in acc.values():
+        ft[filled] = ft[filled] / count[filled]
+        if nearest is not None:
+            ft[missing] = ft[filled][nearest]
+    acc["sam_replaced_share"] = float(np.mean(replaced)) if replaced else None
+    return acc
+
+
 def front_hemisphere_angles(num_views, max_elev=45.0, max_azim=75.0):
     """A steps x steps grid of (elevation, azimuth) in front of the mesh. azim=0, elev=0 is the
     camera on the +z axis, which is where normal_to_mesh.py's camera is."""
@@ -209,6 +380,29 @@ def main():
         action="store_true",
         help="keep all models on the GPU (faster, needs about 10 GB more memory)",
     )
+    ap.add_argument(
+        "--appearance",
+        default="painted",
+        choices=["painted", "vertex_colors"],
+        help="painted: Diff3F (ControlNet paints each grey render); vertex_colors: render the "
+        "mesh's own vertex colours and take one-pass UNet features at --timestep (SD-DINO style)",
+    )
+    ap.add_argument("--timestep", type=int, default=100, help="noise step for vertex_colors")
+    ap.add_argument(
+        "--sam_tau",
+        type=float,
+        default=0.0,
+        help="> 0: MeshFM-style cleaning of each view's features with SAM masks (MeshFM: 1)",
+    )
+    ap.add_argument(
+        "--sam_checkpoint",
+        default=os.path.expanduser("~/semtex/weights/sam/sam_vit_b_01ec64.pth"),
+    )
+    ap.add_argument(
+        "--siglip2",
+        action="store_true",
+        help="also SigLIP2 features of the same views (timm " + SIGLIP2 + ")",
+    )
     args = ap.parse_args()
 
     import diff3f as d3f
@@ -226,7 +420,10 @@ def main():
         idx = np.arange(len(verts))
     print(f"{args.mesh}: {len(verts)} vertices, {len(faces)} faces, features for {len(idx)}")
 
-    mesh = to_pytorch3d(verts, faces, device)
+    if args.appearance == "vertex_colors" and colors is None:
+        raise SystemExit(f"{args.mesh} has no vertex colours, needed by --appearance vertex_colors")
+    render_colors = colors if args.appearance == "vertex_colors" else None
+    mesh = to_pytorch3d(verts, faces, device, render_colors)
     if args.front_only:
         elev, azim = front_hemisphere_angles(args.num_views)
 
@@ -248,22 +445,44 @@ def main():
     print(f"models ready after {time.time() - t0:.0f} s")
 
     mesh_vertices = mesh.verts_list()[0][torch.as_tensor(idx, device=device)]
-    feat = d3f.get_features_per_vertex(
-        device=device,
-        pipe=pipe,
-        dino_model=dino,
-        mesh=mesh,
-        prompt=args.prompt,
-        mesh_vertices=mesh_vertices,
-        num_views=num_views,
-        H=512,
-        W=512,
-        tolerance=args.tolerance,
-        num_images_per_prompt=1,
-        use_normal_map=True,
-    )
-    feat = feat.float().cpu().numpy()
-    feat /= np.maximum(np.linalg.norm(feat, axis=1, keepdims=True), 1e-8)
+    sam_share = None
+    extra = {}
+    if args.appearance == "painted" and args.sam_tau <= 0 and not args.siglip2:  # upstream path
+        feat = d3f.get_features_per_vertex(
+            device=device,
+            pipe=pipe,
+            dino_model=dino,
+            mesh=mesh,
+            prompt=args.prompt,
+            mesh_vertices=mesh_vertices,
+            num_views=num_views,
+            H=512,
+            W=512,
+            tolerance=args.tolerance,
+            num_images_per_prompt=1,
+            use_normal_map=True,
+        )
+    else:
+        sam_gen = None
+        if args.sam_tau > 0:
+            from segment_anything import SamAutomaticMaskGenerator, sam_model_registry
+
+            sam = sam_model_registry["vit_b"](checkpoint=args.sam_checkpoint).to(device)
+            sam_gen = SamAutomaticMaskGenerator(sam)
+        siglip = init_siglip2(device) if args.siglip2 else None
+        acc = features_per_vertex(
+            device, pipe, dino, mesh, args.prompt, mesh_vertices, num_views, 512, 512,
+            args.tolerance, appearance=args.appearance, timestep=args.timestep,
+            sam_generator=sam_gen, sam_tau=args.sam_tau, siglip_model=siglip, seed=args.seed,
+        )
+        feat, sam_share = acc["diff3f"], acc["sam_replaced_share"]
+        extra = {k: v for k, v in acc.items() if k in ("diff3f_sam", "siglip2")}
+
+    def unit(f):
+        f = f.float().cpu().numpy()
+        return f / np.maximum(np.linalg.norm(f, axis=1, keepdims=True), 1e-8)
+
+    feat = unit(feat)
 
     meta = dict(
         command=" ".join(sys.argv),
@@ -275,20 +494,32 @@ def main():
         tolerance=args.tolerance,
         seed=args.seed,
         sd_repo=args.sd_repo,
+        appearance=args.appearance,
+        timestep=args.timestep if args.appearance == "vertex_colors" else None,
+        sam_tau=args.sam_tau,
+        sam_replaced_share=sam_share,
+        siglip2=SIGLIP2 if args.siglip2 else None,
         n_vertices=int(len(verts)),
         n_features=int(len(idx)),
         seconds=round(time.time() - t0, 1),
     )
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
-    np.savez_compressed(
-        args.out,
-        idx=idx.astype(np.int64),
-        xyz=verts[idx],
-        feat=feat.astype(np.float16),
-        colors=colors[idx] if colors is not None else np.zeros((0, 3), np.uint8),
-        meta=json.dumps(meta),
-    )
-    print("saved", args.out, json.dumps(meta))
+    # --out holds the Diff3F features (with --sam_tau or --siglip2 they are still the uncleaned
+    # Diff3F features of the same views); extra sets go next to it as <out>_<set>.npz
+    outputs = {args.out: (feat, "diff3f")}
+    for k, f in extra.items():
+        outputs[args.out[: -len(".npz")] + "_" + k.replace("diff3f_", "") + ".npz"] = (unit(f), k)
+    for path, (f, kind) in outputs.items():
+        np.savez_compressed(
+            path,
+            idx=idx.astype(np.int64),
+            xyz=verts[idx],
+            feat=f.astype(np.float16),
+            colors=colors[idx] if colors is not None else np.zeros((0, 3), np.uint8),
+            meta=json.dumps(dict(meta, feature_set=kind, feature_dim=int(f.shape[1]))),
+        )
+        print("saved", path, kind, f.shape)
+    print(json.dumps(meta))
 
 
 if __name__ == "__main__":

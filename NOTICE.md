@@ -91,6 +91,28 @@ Add each future dependency with its source URL, version or commit, license, inte
   Understanding", ECCV 2026, arXiv:2607.27592.
 - **Use:** Per-point semantic features as an alternative to Diff3F (`scripts/idarb/meshfm_features.py`).
 
+## SigLIP2 base patch16-512 (not included)
+
+- **Source:** https://huggingface.co/timm/vit_base_patch16_siglip_512.v2_webli (the vision tower of
+  google/siglip2-base-patch16-512, loaded with timm 1.0.30), 374 MB, downloaded at first use
+  2026-10-22.
+- **License:** Apache-2.0
+- **Paper:** Tschannen et al., "SigLIP 2: Multilingual Vision-Language Encoders with Improved Semantic
+  Understanding, Localization, and Dense Features", arXiv:2502.14786.
+- **Use:** Optional per-pixel features in `scripts/idarb/diff3f_features.py --siglip2`.
+
+## Segment Anything ViT-B (not included)
+
+- **Source:** https://github.com/facebookresearch/segment-anything, Python package
+  `segment-anything` 1.0, weights `sam_vit_b_01ec64.pth` (375 MB) from
+  https://dl.fbaipublicfiles.com/segment_anything/, kept on the GPU server
+  (`~/semtex/weights/sam/`), downloaded 2026-10-22.
+- **License:** Apache-2.0
+- **Paper:** Kirillov et al., "Segment Anything", ICCV 2023.
+- **Use:** Optional MeshFM-style cleaning of the per-view features in
+  `scripts/idarb/diff3f_features.py --sam_tau`. Tried on 2026-10-22 and found slightly worse; the
+  option stays in the script.
+
 ## rembg (Python package)
 
 - **Source:** https://github.com/danielgatis/rembg, version 2.0.61 (from PyPI)
