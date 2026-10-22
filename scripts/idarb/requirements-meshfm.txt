@@ -1,0 +1,15 @@
+# GPU server environment for scripts/idarb/meshfm_features.py. MeshFM (threedle/MeshFM) needs only
+# torch >= 2.0 and implements its own scatter op, so the env is a clone of the diff3f env
+# (torch 2.1.0+cu118; requirements-diff3f.txt) plus the packages below. No new torch download.
+#
+#   conda create -n meshfm --clone diff3f -y && conda activate meshfm
+#   pip install -r scripts/idarb/requirements-meshfm.txt
+#   git clone https://github.com/threedle/MeshFM.git ~/semtex/MeshFM     # tested at e6577b1
+#   mkdir -p ~/semtex/MeshFM/checkpoints
+#   gdown 1ONUMs3Ji_VlmyflO74No5rk5bAHM6qgc -O ~/semtex/MeshFM/checkpoints/meshfm.pth   # 502 MB
+#
+# MeshFM has no license file; see NOTICE.md.
+libigl
+einops
+PyYAML
+gdown

@@ -78,6 +78,19 @@ Add each future dependency with its source URL, version or commit, license, inte
 - **Paper:** Oquab et al., "DINOv2: Learning Robust Visual Features without Supervision", arXiv:2304.07193.
 - **Use:** Image features fused with the diffusion features inside Diff3F. Downloaded at run time.
 
+## MeshFM (source code and weights, not included)
+
+- **Source:** https://github.com/threedle/MeshFM, commit `e6577b1`, cloned outside this repository
+  (`~/semtex/MeshFM` on the GPU server). Weights `meshfm.pth` (502 MB, 125.5 M parameters) from the
+  Google Drive link in its README (file id `1ONUMs3Ji_VlmyflO74No5rk5bAHM6qgc`), downloaded 2026-10-22.
+- **License:** none stated. The repository has no license file and GitHub reports no license, so by
+  default all rights are reserved by the authors. We only run it locally for research; neither its code
+  nor its weights are copied into this repository. Ask the authors before redistributing anything,
+  including features, in a publication or release.
+- **Paper:** Zhou, Liu, Lang and Hanocka, "MeshFM: 2D Features Are All You Need for 3D Shape
+  Understanding", ECCV 2026, arXiv:2607.27592.
+- **Use:** Per-point semantic features as an alternative to Diff3F (`scripts/idarb/meshfm_features.py`).
+
 ## rembg (Python package)
 
 - **Source:** https://github.com/danielgatis/rembg, version 2.0.61 (from PyPI)
