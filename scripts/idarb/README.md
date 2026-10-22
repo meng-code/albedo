@@ -951,3 +951,14 @@ group means go to `<out_dir>/summary.json`. On the Diff3F features the script re
 stored `07_texture_arap` numbers to within half a percent (the ARAP solve is not bit-for-bit
 deterministic across thread counts). `--pairs` and `--groups` select a subset; about 17 s per pair
 on the laptop.
+
+Two helpers for the feature comparison: `fuse_features.py --a <dir> --b <dir> --w 0.5 --out
+<dir>` joins two feature sets of the same points so that the cosine similarity of the joined
+vectors is the weighted mean of the two (for testing whether Diff3F and a 3D-native model
+complement each other), and `refine_correspondence.py --k_prior N` adds the N source samples
+nearest to the prior's predicted position to every vertex's candidates, so a target region whose
+feature matches all lie far away can settle on a less similar point where the map around it says it
+belongs. On the synthetic pairs `--k_prior 16` lifts the cat from 72.1 to 74.6 % within 1 % (5 %:
+99.4 → 100 %) and leaves the cow unchanged (58.5 → 58.2 %); on Labubu → camel it moves the face
+from the hump to the shoulder, because the prior fitted on the 33 mutual anchors is itself wrong
+there, so it is not a default.

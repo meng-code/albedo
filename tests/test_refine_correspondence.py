@@ -84,3 +84,33 @@ def test_smooth_field_follows_confident_matches_and_smooths_the_rest():
     P = rc.smooth_field(Vd, Fd, S, w, lam=1.0)
     assert np.linalg.norm(P - Vd, axis=1).max() < 0.1
     assert np.linalg.norm(S - Vd, axis=1).max() > 0.3
+
+
+def test_similarities_match_the_dot_products():
+    rng = np.random.default_rng(5)
+    fs = unit(rng.normal(size=(40, 8))).astype(np.float32)
+    fd = unit(rng.normal(size=(7, 8))).astype(np.float32)
+    cand = rng.integers(0, 40, size=(7, 5))
+    sim = rc.similarities(fd, fs, cand, chunk=3)
+    expect = np.take_along_axis(fd @ fs.T, cand, axis=1)
+    assert np.allclose(sim, expect, atol=1e-6)
+
+
+def test_k_prior_offers_the_point_the_prior_predicts():
+    # the features of every source point are identical except one impostor far from the prior's
+    # prediction that is slightly more similar: with k=1 the impostor is the only candidate, with
+    # k_prior the point at the predicted position is offered too and wins through the prior term
+    n = 30
+    src_xyz = np.stack([np.linspace(0, 1, n), np.zeros(n), np.zeros(n)], axis=1)
+    fs = unit(np.ones((n, 4))).astype(np.float32)
+    fd = unit(np.ones((10, 4)) + np.array([0, 0, 0, 0.05])).astype(np.float32)
+    fs[n - 1] = fd[0]  # the impostor: exactly the target's feature
+    Vd = src_xyz[:10] + [0, 2.0, 0]
+    Fd = np.array([[i, i + 1, (i + 2) % 10] for i in range(8)])
+    anchors = (Vd[::3], src_xyz[:10:3])
+    only_feat, _, _ = rc.refine(Vd, Fd, fd, src_xyz, fs, anchors, k=1, radius=0.1, iters=0)
+    assert np.all(only_feat == n - 1)
+    with_prior, _, _ = rc.refine(
+        Vd, Fd, fd, src_xyz, fs, anchors, k=1, radius=0.1, iters=0, k_prior=4
+    )
+    assert np.abs(with_prior - np.arange(10)).max() <= 1
