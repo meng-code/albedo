@@ -350,3 +350,20 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   triangles with no texture patch 65 / 38 / 0 / 1 %; median conformal distortion of the rest
   4.1 / 3.2 / 3.6 / 2.0; mirrored screen area 23 / 19 / 21 / 23 %, i.e. unchanged by any step.
   The numbers in the two entries above that disagree with these are superseded.
+
+## 2026-10-22 — IDArb above 512 px: the normals collapse
+
+- To raise the texture resolution the owner suggested running IDArb at 1024 and 2048 (its
+  `max_length` is a constant in the dataset loader). The server ran both on cat, okapi, superman and
+  panda with the released weights: no out-of-memory on the 24 GB card (1024: fp32 + xformers,
+  17.8 GB peak, 30 s per image; 2048: fp16 + xformers + VAE slicing, 15 GB peak, 230 s per image).
+- The outputs are unusable for geometry: the normal map collapses to an almost flat, camera-facing
+  field (spread of the unit normals inside the object 0.34 / 0.37 / 0.19 at 512, 0.09 / 0.08 / 0.06
+  at 1024, 0.06 / 0.05 / 0.04 at 2048; mean n_z 0.84 → 0.98 → 0.99). Metallic becomes erratic
+  (cat 0.59 → 0.99). Inputs that are native 1024 fail the same way, so it is the model outside its
+  training size, not upscaling. The albedo stays close to the input (1024 removes less lighting;
+  2048 adds a fine generated hatching on fur). Comparison images are kept in
+  `outputs/diff3f/99_experiments/idarb_hires/`; the temporary branch was deleted.
+- Decision: geometry stays at 512. For a sharper texture, use the 1024 albedo on the 512 relief
+  (`transfer_texture.py --albedo_image`), which doubles the texture detail at the cost of slightly
+  weaker lighting removal; tiled 512 inference would be the way to raise the normals as well.

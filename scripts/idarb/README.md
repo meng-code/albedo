@@ -628,6 +628,21 @@ The coarse targets (cow, camel: a few thousand triangles, so each triangle cover
 the image) and the chairs sit lowest. These are the numbers to raise when the correspondence
 improves.
 
+### Texture resolution
+
+The relief and its albedo come from IDArb at 512 px. Running IDArb at 1024 or 2048 (its
+`max_length` constant) fits on the 24 GB card but the normal map collapses to an almost flat,
+camera-facing field (unit-normal spread 0.34 / 0.37 / 0.19 at 512, 0.09 / 0.08 / 0.06 at 1024),
+so no relief can be built from it; the albedo stays close to the photo, with less lighting removed
+(details in `docs/decisions.md`, 2026-10-22). Geometry therefore stays at 512. For a sharper
+texture `transfer_texture.py --albedo_image <1024 albedo> --albedo_panel <512 decomposition>`
+lays the 1024 albedo over the 512 relief: the relief's pixel grid is located in the 512 panel by
+matching its vertex colours (exact, difference 0.00 on the four inputs tried), the texture is cut
+from the 1024 image at twice the offsets, and the texture coordinates stay the same. The
+correspondence and every number are unchanged; only the image inside each triangle is twice as
+fine. On the lion and the camel the rosettes and stripes are visibly sharper; on the panda the
+1024 albedo is greyer than the 512 one (lighting removed less well), so the gain is not free.
+
 ### Cross-category pairs
 
 The supervisor asked for very different source and target, for example the Labubu toy on the

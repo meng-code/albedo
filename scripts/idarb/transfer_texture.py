@@ -73,16 +73,65 @@ def relief_frame(V):
     return float(V[:, 0].min()), float(V[:, 1].max()), step
 
 
-def relief_uv_of_points(P, V, image_shape, blank_rows=BLANK_ROWS):
+def relief_uv_of_points(P, V, image_shape, blank_rows=BLANK_ROWS, scale=1):
     """Texture coordinates of arbitrary source-space points P (n,3) over the relief's image, the
     same convention as relief_texture's uv for the vertices themselves. A point beyond the relief's
     pixel grid (a field can overshoot it) is clamped to the grid, so it never lands in the blank
-    strip below the image."""
+    strip below the image. `scale` is the texture's pixels per relief pixel (a higher-resolution
+    albedo laid over the same grid)."""
     x0, y1, step = relief_frame(V)
-    Ht, W = image_shape[:2]
+    Ht, Wt = image_shape[:2]
+    W, H = Wt // scale, (Ht - blank_rows) // scale
     col = np.clip((P[:, 0] - x0) / step, 0, W - 1)
-    row = np.clip((y1 - P[:, 1]) / step, 0, Ht - blank_rows - 1)
-    return np.stack([(col + 0.5) / W, 1.0 - (row + 0.5) / Ht], axis=1)
+    row = np.clip((y1 - P[:, 1]) / step, 0, H - 1)
+    return np.stack([(col + 0.5) / W, 1.0 - (row + 0.5) * scale / Ht], axis=1)
+
+
+def find_grid_offset(V, C, albedo, search=14, white=245):
+    """Where the relief's pixel grid sits inside the decomposition image it was built from: the
+    (row, column) of the grid's first pixel, found by matching the relief's vertex colours against
+    the image around the object's bounding box. Returns (row, col, mean colour difference)."""
+    col, row = relief_grid(V)
+    W, H = int(col.max()) + 1, int(row.max()) + 1
+    G = np.zeros((H, W, 3))
+    M = np.zeros((H, W), dtype=bool)
+    G[row, col] = C[:, :3]
+    M[row, col] = True
+    ys, xs = np.nonzero((albedo[:, :, :3] < white).any(axis=2))
+    dy0, dx0 = int(ys.min()), int(xs.min())
+    best = (None, None, np.inf)
+    A = albedo[:, :, :3].astype(np.float64)
+    for dy in range(max(dy0 - search, 0), dy0 + search + 1):
+        for dx in range(max(dx0 - search, 0), dx0 + search + 1):
+            if dy + H > A.shape[0] or dx + W > A.shape[1]:
+                continue
+            d = float(np.abs(A[dy : dy + H, dx : dx + W] - G)[M].mean())
+            if d < best[2]:
+                best = (dy, dx, d)
+    return best
+
+
+def hires_texture(V, C, albedo_hr, offset, scale, blank_rows=BLANK_ROWS):
+    """relief_texture with a higher-resolution albedo image laid over the relief's pixel grid:
+    `albedo_hr` is `scale` times the decomposition image the relief came from and `offset` is
+    the grid's (row, col) in that image. Returns image, uv, blank_uv as relief_texture does."""
+    col, row = relief_grid(V)
+    W, H = int(col.max()) + 1, int(row.max()) + 1
+    dy, dx = offset
+    crop = albedo_hr[scale * dy : scale * (dy + H), scale * dx : scale * (dx + W), :3].copy()
+    M = np.zeros((H, W), dtype=bool)
+    M[row, col] = True
+    Mhr = np.kron(M, np.ones((scale, scale), dtype=bool))
+    fg = np.stack(np.nonzero(Mhr), axis=1)
+    bg = np.stack(np.nonzero(~Mhr), axis=1)
+    if len(bg):
+        _, nn = cKDTree(fg).query(bg)
+        crop[bg[:, 0], bg[:, 1]] = crop[fg[nn, 0], fg[nn, 1]]
+    image = np.concatenate([crop, np.full((blank_rows, scale * W, 3), BLANK, dtype=np.uint8)])
+    Ht = image.shape[0]
+    uv = np.stack([(col + 0.5) / W, 1.0 - (row + 0.5) * scale / Ht], axis=1)
+    blank_uv = np.array([0.5, (blank_rows / 2.0) / Ht])
+    return image, uv, blank_uv
 
 
 def relief_texture(V, C, blank_rows=BLANK_ROWS):
@@ -302,6 +351,16 @@ def main():
         "--both_sides", action="store_true", help="texture every face, not only the seen side"
     )
     ap.add_argument("--size", type=int, default=640, help="render size in pixels")
+    ap.add_argument(
+        "--albedo_image",
+        help="a higher-resolution albedo of the same photo (same framing as the decomposition "
+        "the relief came from) to use as the texture instead of the relief's own colours",
+    )
+    ap.add_argument(
+        "--albedo_panel",
+        help="the decomposition image the relief was built from (four panels or the albedo "
+        "alone), to locate the relief's pixel grid in it; needed with --albedo_image",
+    )
     ap.add_argument("--out_dir", required=True)
     args = ap.parse_args()
     os.makedirs(args.out_dir, exist_ok=True)
@@ -310,7 +369,24 @@ def main():
     Vd, Fd, fd, _ = mesh_features(args.target, args.target_mesh, args.feature)
     if cs is None:
         sys.exit("the source mesh has no colours; texture transfer needs the relief with albedo")
-    image, uv_s, blank_uv = relief_texture(Vs, cs)
+    scale = 1
+    if args.albedo_image:
+        panel = np.asarray(Image.open(args.albedo_panel).convert("RGB"))
+        if panel.shape[1] == 4 * panel.shape[0]:  # four panels: albedo is the first
+            panel = panel[:, : panel.shape[0]]
+        hr = np.asarray(Image.open(args.albedo_image).convert("RGB"))
+        if hr.shape[1] == 4 * hr.shape[0]:
+            hr = hr[:, : hr.shape[0]]
+        scale = hr.shape[1] // panel.shape[1]
+        if scale * panel.shape[1] != hr.shape[1] or scale * panel.shape[0] != hr.shape[0]:
+            sys.exit("--albedo_image must be an integer multiple of --albedo_panel in size")
+        dy, dx, diff = find_grid_offset(Vs, cs, panel)
+        print(f"relief grid at row {dy}, column {dx} of the panel (colour difference {diff:.2f})")
+        if diff > 8:
+            sys.exit("the relief does not match the panel: wrong --albedo_panel?")
+        image, uv_s, blank_uv = hires_texture(Vs, cs, hr, (dy, dx), scale)
+    else:
+        image, uv_s, blank_uv = relief_texture(Vs, cs)
     Image.fromarray(image).save(os.path.join(args.out_dir, "source_texture.png"))
     print(
         f"source {len(Vs)} vertices on a {image.shape[1]}x{image.shape[0]} image, "
@@ -325,7 +401,10 @@ def main():
             src_pos = z["src_pos"].astype(np.float64)
     else:
         t2s = nearest_in_features(fd, fs)
-    uv_d = uv_s[t2s] if src_pos is None else relief_uv_of_points(src_pos, Vs, image.shape)
+    if src_pos is None:
+        uv_d = uv_s[t2s]
+    else:
+        uv_d = relief_uv_of_points(src_pos, Vs, image.shape, scale=scale)
     uv_d = np.clip(uv_d, 0.0, 1.0)
 
     # the target's viewing direction: given, from the registration, or the source's
