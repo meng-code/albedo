@@ -8,9 +8,9 @@ part has one vector in SigLIP2's joint image-text space, next to the text vector
 vocabulary ("a photo of the hump of a camel", ...). This script
 
   1. names every part: the vocabulary entries closest to its vector (object-free prompts);
-  2. scores every target-source part pair by the cosine of the two part vectors after each
-     object's mean part vector is removed (what is common to the whole object drops out), plus a
-     bonus when the two parts' best names agree;
+  2. scores every target-source part pair by the cosine of the two part vectors, averaged with
+     the cosine after each object's mean part vector is removed (what is common to the whole
+     object drops out), plus a bonus when the two parts' best names agree;
   3. keeps the confident one-to-one pairs (bilateral margin, as in part_anchors.py). A target part
      whose name has no counterpart on the source (the hump) stays unmatched, so with
      refine_correspondence.py --parts its vertices follow their neighbours instead of borrowing the
@@ -93,10 +93,14 @@ def name_parts(emb, vocab_emb, vocab_words, top=5):
 
 
 def part_scores(emb_t, emb_s, names_t, names_s, name_bonus=0.2):
-    """Relative cosine between target and source parts plus a bonus when the best names agree."""
+    """Score of every target-source part pair: the mean of the plain cosine of the two part
+    vectors and of their cosine after each object's mean part vector is removed (the plain one
+    keeps a pair honest when few parts make the relative one spurious; the relative one lets
+    parts differ when the object-level signal dominates), plus a bonus when the best names agree."""
+    raw = unit(emb_t) @ unit(emb_s).T
     A = unit(emb_t - emb_t.mean(axis=0))
     B = unit(emb_s - emb_s.mean(axis=0))
-    S = A @ B.T
+    S = 0.5 * (raw + A @ B.T)
     for a, na in enumerate(names_t):
         for b, nb in enumerate(names_s):
             if na and nb and na[0][0] == nb[0][0]:
