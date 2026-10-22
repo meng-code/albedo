@@ -125,6 +125,43 @@ def fit_prior(X, Y, sigma, ridge=1e-3):
     return predict
 
 
+def filter_anchors(T, S, mode, thr, seed=0):
+    """Keep the anchors that agree with the others. mode "rigid": a similarity transform fitted
+    by RANSAC on 4-anchor samples, anchors farther than thr (fraction of the source diagonal)
+    from it are dropped; mode "loo": every anchor is predicted from the others by the smooth
+    prior (fit_prior), and anchors predicted farther than thr away are dropped. Returns the
+    mask of kept anchors. Left-right swapped mutual pairs (the features cannot tell a left ear
+    from a right one) are the anchors this removes."""
+    n = len(T)
+    if n < 6:
+        return np.ones(n, dtype=bool)
+    diag_s = float(np.linalg.norm(S.max(axis=0) - S.min(axis=0)))
+    if mode == "rigid":
+        rng = np.random.default_rng(seed)
+        best = None
+        for _ in range(1500):
+            i = rng.choice(n, 4, replace=False)
+            s, R, t = rp.umeyama(T[i], S[i])
+            res = np.linalg.norm(rp.transform(T, s, R, t) - S, axis=1)
+            inl = res < thr * diag_s
+            if best is None or inl.sum() > best.sum():
+                best = inl
+        if best.sum() >= 4:
+            s, R, t = rp.umeyama(T[best], S[best])
+            best = np.linalg.norm(rp.transform(T, s, R, t) - S, axis=1) < thr * diag_s
+        return best
+    if mode == "loo":
+        diag_t = float(np.linalg.norm(T.max(axis=0) - T.min(axis=0)))
+        keep = np.ones(n, dtype=bool)
+        res = np.empty(n)
+        for i in range(n):
+            m = np.arange(n) != i
+            res[i] = np.linalg.norm(fit_prior(T[m], S[m], 0.25 * diag_t)(T[i : i + 1])[0] - S[i])
+        keep = res < thr * diag_s
+        return keep
+    raise ValueError(mode)
+
+
 def vertex_adjacency(F, n):
     """Row-normalised vertex adjacency (mean over the one-ring) as a sparse matrix."""
     i = np.concatenate([F[:, 0], F[:, 1], F[:, 2], F[:, 1], F[:, 2], F[:, 0]])
@@ -133,6 +170,63 @@ def vertex_adjacency(F, n):
     A.data[:] = 1.0
     deg = np.asarray(A.sum(axis=1)).ravel()
     return sp.diags(1.0 / np.maximum(deg, 1)) @ A
+
+
+def face_fans(Vd, Fd, tview, min_cos=0.3, max_faces=10):
+    """For every target vertex, the faces around it that face the texture camera (normal from
+    the face winding, cosine to the view above min_cos): the other two corners in the face's
+    cyclic order (J, K, shape (n, m), -1 padded) and the sign of the face's winding on screen
+    (SGN, (n, m), 0 padded). The texture of such a face must wind the same way on the relief
+    image, so a candidate source point that reverses the winding of a vertex's fan mirrors the
+    texture there."""
+    from transfer_texture import view_frame
+
+    tview = np.asarray(tview, dtype=np.float64)
+    tview = tview / np.linalg.norm(tview)
+    R = view_frame(tview)
+    S = Vd @ R.T
+    nrm = np.cross(Vd[Fd[:, 1]] - Vd[Fd[:, 0]], Vd[Fd[:, 2]] - Vd[Fd[:, 0]])
+    nrm = nrm / np.maximum(np.linalg.norm(nrm, axis=1, keepdims=True), 1e-12)
+    front = np.nonzero(nrm @ tview > min_cos)[0]
+    s1 = S[Fd[front, 1], :2] - S[Fd[front, 0], :2]
+    s2 = S[Fd[front, 2], :2] - S[Fd[front, 0], :2]
+    sign = np.sign(s1[:, 0] * s2[:, 1] - s1[:, 1] * s2[:, 0]).astype(np.int8)
+    n = len(Vd)
+    J = -np.ones((n, max_faces), dtype=np.int64)
+    K = -np.ones((n, max_faces), dtype=np.int64)
+    SGN = np.zeros((n, max_faces), dtype=np.int8)
+    count = np.zeros(n, dtype=np.int64)
+    for r in range(3):
+        i = Fd[front, r]
+        j = Fd[front, (r + 1) % 3]
+        k = Fd[front, (r + 2) % 3]
+        for f in range(len(front)):
+            c = count[i[f]]
+            if c < max_faces:
+                J[i[f], c], K[i[f], c], SGN[i[f], c] = j[f], k[f], sign[f]
+                count[i[f]] = c + 1
+    return J, K, SGN
+
+
+def mirrored_fraction(C, P, J, K, SGN, chunk=1024):
+    """For every vertex i and candidate c, the fraction of i's fan faces whose winding on the
+    relief image (x, y of the source positions: the two other corners at their current
+    positions P, the vertex at the candidate C[i, c]) disagrees with their winding on screen."""
+    n, k = C.shape[:2]
+    out = np.zeros((n, k), dtype=np.float32)
+    valid = J >= 0
+    cnt = np.maximum(valid.sum(axis=1), 1)
+    for a in range(0, n, chunk):
+        b = min(a + chunk, n)
+        Pj = P[np.maximum(J[a:b], 0)][:, :, :2]  # (c, m, 2)
+        Pk = P[np.maximum(K[a:b], 0)][:, :, :2]
+        Cc = C[a:b, :, None, :2]  # (c, k, 1, 2)
+        u = Pj[:, None] - Cc  # (c, k, m, 2)
+        v = Pk[:, None] - Cc
+        tex = u[..., 0] * v[..., 1] - u[..., 1] * v[..., 0]
+        bad = (np.sign(tex).astype(np.int8) != SGN[a:b, None, :]) & valid[a:b, None, :]
+        out[a:b] = bad.sum(axis=2) / cnt[a:b, None]
+    return out
 
 
 def refine(
@@ -153,6 +247,8 @@ def refine(
     k_prior=0,
     parts=None,
     w_part=0.5,
+    tview=None,
+    w_flip=0.0,
 ):
     """Target vertex -> source sample. fd: a feature per target vertex; fs, src_xyz: the source
     samples. anchors: (target positions, source positions) or None; pred: a predicted source
@@ -162,7 +258,10 @@ def refine(
     whose feature matches all sit far away (the camel's hump, which looks like a face to the
     features) can settle on a less similar point where the map around it says it belongs.
     parts: (source part per source sample, matched source part per target vertex or -1) adds
-    w_part to candidates outside the part the vertex's own part is matched with."""
+    w_part to candidates outside the part the vertex's own part is matched with. tview and
+    w_flip > 0 add, in the smoothing passes, w_flip times the fraction of the vertex's camera-
+    facing fan that a candidate would mirror on the relief image (the two other corners at their
+    current matches), so a left-right symmetric choice that reverses the texture is avoided."""
     diag_s = float(np.linalg.norm(src_xyz.max(axis=0) - src_xyz.min(axis=0)))
     diag_d = float(np.linalg.norm(Vd.max(axis=0) - Vd.min(axis=0)))
     cand, sim = topk_candidates(fd, fs, k)
@@ -182,12 +281,17 @@ def refine(
         cost = cost + w_prior * d**2
     rows = np.arange(len(fd))
     choice = cost.argmin(axis=1)
+    fans = face_fans(Vd, Fd, tview) if (w_flip > 0 and tview is not None) else None
     if iters:
         A = vertex_adjacency(Fd, len(Vd))
         for _ in range(iters):
-            M = A @ C[rows, choice]
+            P = C[rows, choice]
+            M = A @ P
             d = np.linalg.norm(C - M[:, None], axis=2) / (radius_s * diag_s)
-            choice = (cost + w_smooth * d**2).argmin(axis=1)
+            total = cost + w_smooth * d**2
+            if fans is not None:
+                total = total + w_flip * mirrored_fraction(C, P, *fans)
+            choice = total.argmin(axis=1)
     chosen = C[rows, choice]
     # how far the chosen point sits from where the prior expected it, in units of the window
     off_prior = None
@@ -234,13 +338,21 @@ def smooth_field(Vd, Fd, S, w, lam=1.0, order=1):
     return np.asarray(P)
 
 
-def arap_field(Vd, Fd, S, w, P0, lam=1.0, iters=5, scale_range=(0.3, 3.0)):
+def arap_field(
+    Vd, Fd, S, w, P0, lam=1.0, iters=5, scale_range=(0.3, 3.0), view=None, w_view=0.0
+):
     """As-rigid-as-possible field: like smooth_field, but the smoothness term asks every vertex's
     one-ring to move by a similarity transform (rotation and scale, never a reflection) instead of
     merely varying smoothly. Alternates a per-vertex Procrustes fit of that transform with a sparse
     solve for the positions. Minimises
         sum_i w_i |P_i - S_i|^2 + lam * sum_edges |(P_j - P_i) - M_ij (x_j - x_i)|^2,
-    M_ij the mean of the two end vertices' similarity transforms. Starts from P0."""
+    M_ij the mean of the two end vertices' similarity transforms. Starts from P0.
+    view (the relief camera's direction in target space) with w_view > 0 adds to every vertex's
+    Procrustes fit a virtual edge pair that asks its rotation to carry that direction onto the
+    relief's own viewing axis (+z): the side of the target the texture camera sees must land on
+    the side of the relief its camera saw, which rules out the rotations that mirror the
+    texture (a limb turned about its own axis). The pair is weighted by w_view times the
+    one-ring's squared edge length, so it is comparable to the edges."""
     n = len(Vd)
     i = np.concatenate([Fd[:, 0], Fd[:, 1], Fd[:, 2], Fd[:, 1], Fd[:, 2], Fd[:, 0]])
     j = np.concatenate([Fd[:, 1], Fd[:, 2], Fd[:, 0], Fd[:, 0], Fd[:, 1], Fd[:, 2]])
@@ -259,21 +371,27 @@ def arap_field(Vd, Fd, S, w, P0, lam=1.0, iters=5, scale_range=(0.3, 3.0)):
     ratio = float(np.linalg.norm(S.max(axis=0) - S.min(axis=0)))
     ratio /= max(float(np.linalg.norm(Vd.max(axis=0) - Vd.min(axis=0))), 1e-12)
     scale_range = (scale_range[0] * ratio, scale_range[1] * ratio)
+    view_term = None
+    if view is not None and w_view > 0:
+        v = np.asarray(view, dtype=np.float64)
+        v = v / np.linalg.norm(v)
+        view_term = (w_view * ratio * norm2)[:, None, None] * np.outer(v, [0.0, 0.0, 1.0])[None]
     P = P0.copy()
     for _ in range(iters):
         dp = P[ej] - P[ei]
         # per-vertex covariance of its one-ring: C_i = sum_j dx dp^T
         C = np.zeros((n, 3, 3))
         np.add.at(C, ei, dx[:, :, None] * dp[:, None, :])
-        U, sig, Vt = np.linalg.svd(C)
+        U, sig, Vt = np.linalg.svd(C if view_term is None else C + view_term)
         R = np.transpose(Vt, (0, 2, 1)) @ np.transpose(U, (0, 2, 1))
         flip = np.linalg.det(R) < 0
         if flip.any():  # a reflection fitted best: take the nearest proper rotation
             Vt_f = Vt[flip].copy()
             Vt_f[:, 2, :] *= -1
             R[flip] = np.transpose(Vt_f, (0, 2, 1)) @ np.transpose(U[flip], (0, 2, 1))
-            sig[flip, 2] *= -1
-        s = np.clip(sig.sum(axis=1) / np.maximum(norm2, 1e-12), *scale_range)
+        # the scale from the edges alone, given the rotation: sum_j dp_j . R dx_j / sum |dx_j|^2
+        s = np.einsum("nab,nba->n", R, C) / np.maximum(norm2, 1e-12)
+        s = np.clip(s, *scale_range)
         T = s[:, None, None] * R  # (n,3,3) similarity of every vertex
         d = np.einsum("eab,eb->ea", 0.5 * (T[ei] + T[ej]), dx)  # M_ij (x_j - x_i)
         B = np.zeros((n, 3))
@@ -411,6 +529,13 @@ def main():
         "position prior instead of a map fitted on anchors; keeps left and right apart",
     )
     ap.add_argument("--max_anchors", type=int, default=400)
+    ap.add_argument(
+        "--anchor_filter",
+        default=None,
+        help="drop automatic anchors that disagree with the others: rigid:<thr> (RANSAC "
+        "similarity transform) or loo:<thr> (leave-one-out smooth prior); thr is a fraction of "
+        "the source diagonal, for example rigid:0.1",
+    )
     ap.add_argument("--k", type=int, default=64, help="candidates per target vertex")
     ap.add_argument(
         "--radius", type=float, default=0.05, help="prior window, of the source diagonal"
@@ -423,6 +548,33 @@ def main():
         "weight in the field, so they follow their neighbours (the hump follows the body)",
     )
     ap.add_argument("--w_part", type=float, default=0.5, help="penalty outside the matched part")
+    ap.add_argument(
+        "--w_flip",
+        type=float,
+        default=0.0,
+        help="penalty for mirroring the texture around a vertex (needs --target_view)",
+    )
+    ap.add_argument(
+        "--coarse_to_fine",
+        type=int,
+        default=0,
+        help="levels of field-then-rematch iterations before the final field, the smoothness "
+        "weight falling by --coarse_factor per level (non-rigid ICP style); 0: off",
+    )
+    ap.add_argument("--coarse_factor", type=float, default=4.0)
+    ap.add_argument(
+        "--coarse_k_prior",
+        type=int,
+        default=16,
+        help="source samples nearest to the field's prediction offered as candidates per level",
+    )
+    ap.add_argument(
+        "--w_view",
+        type=float,
+        default=0.0,
+        help="ARAP: weight of the view-consistency pair in every vertex's rotation fit "
+        "(needs --target_view)",
+    )
     ap.add_argument("--parts_min_conf", type=float, default=0.0, help="part pairs below: ignored")
     ap.add_argument(
         "--k_prior",
@@ -504,6 +656,12 @@ def main():
         t, s, w = mutual_pairs(dst["feat"], src["feat"])
         keep = farthest_points(dst["xyz"][t], args.max_anchors)
         mutual = (dst["xyz"][t[keep]], src["xyz"][s[keep]])
+        dropped = ""
+        if args.anchor_filter:
+            mode, thr = args.anchor_filter.split(":")
+            ok = filter_anchors(mutual[0], mutual[1], mode, float(thr))
+            dropped = f", {int((~ok).sum())} dropped by {args.anchor_filter}"
+            mutual = (mutual[0][ok], mutual[1][ok])
         if anchors is None:
             anchors = mutual
         else:
@@ -511,7 +669,7 @@ def main():
                 np.concatenate([anchors[0], mutual[0]]),
                 np.concatenate([anchors[1], mutual[1]]),
             )
-        kind += f" + {len(keep)} mutual anchors (of {len(t)} mutual pairs)"
+        kind += f" + {len(mutual[0])} mutual anchors (of {len(t)} mutual pairs{dropped})"
 
     parts, unmatched = None, None
     if args.parts:
@@ -540,12 +698,43 @@ def main():
         k_prior=args.k_prior,
         parts=parts,
         w_part=args.w_part,
+        tview=args.target_view,
+        w_flip=args.w_flip,
     )
     t2s = src["idx"][t2s_sample].astype(np.int64)
     if lm is not None:
         t2s[t_lm] = s_lm
     stats = dict(anchors=kind, k=args.k, iters=args.iters, field=args.field)
     extra = {}
+    if args.coarse_to_fine and args.field > 0:
+        # non-rigid ICP in the manner of Jung et al. 2025: alternate the field (the deformation)
+        # with the choice of matches, the smoothness falling from coarse_factor^levels times the
+        # final weight to the final weight; every level predicts each vertex's source position
+        # from the current field instead of from the anchor prior, so the whole map converges
+        # together instead of each vertex trusting its own best feature match
+        for level in range(args.coarse_to_fine, 0, -1):
+            lam = args.field * args.coarse_factor**level
+            S = Vs[t2s]
+            if mutual is not None:
+                S[cKDTree(Vd).query(mutual[0])[1]] = mutual[1]
+            w = confidence(sim, Vd, anchors, t_lm if lm is not None else None)
+            P = smooth_field(Vd, Fd, S, w, lam, args.field_order)
+            if args.arap:
+                P = arap_field(
+                    Vd, Fd, S, w, P, lam, max(args.arap // 2, 1),
+                    view=args.target_view, w_view=args.w_view,
+                )
+            t2s_sample, sim, off_prior = refine(
+                Vd, Fd, fd, src["xyz"], src["feat"], anchors,
+                k=args.k, radius=args.radius, w_prior=args.w_prior, iters=args.iters,
+                radius_s=args.radius_s, w_smooth=args.w_smooth, pred=P,
+                k_prior=max(args.k_prior, args.coarse_k_prior), parts=parts, w_part=args.w_part,
+                tview=args.target_view, w_flip=args.w_flip,
+            )
+            t2s = src["idx"][t2s_sample].astype(np.int64)
+            if lm is not None:
+                t2s[t_lm] = s_lm
+        stats["coarse_to_fine"] = [args.coarse_to_fine, args.coarse_factor]
     if args.field > 0:
         S = Vs[t2s]
         if mutual is not None:  # an anchor's vertex follows the anchor, not its refined match
@@ -563,7 +752,9 @@ def main():
         P = smooth_field(Vd, Fd, S, w, args.field, args.field_order)
         if args.arap:
             lam = args.arap_weight if args.arap_weight is not None else args.field
-            P = arap_field(Vd, Fd, S, w, P, lam, args.arap)
+            P = arap_field(
+                Vd, Fd, S, w, P, lam, args.arap, view=args.target_view, w_view=args.w_view
+            )
         if args.field_iters and args.target_view is not None:
             # flipped or over-stretched triangles: take the data weight away from their vertices
             # (and the ring around them) and let the field, rigid if --arap, fill them in from

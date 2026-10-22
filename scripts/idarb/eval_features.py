@@ -161,7 +161,7 @@ def evaluate_pair(args, env, group, name, src, src_mesh, target, transform, extr
     t0 = time.time()
     refined = os.path.join(pair_dir, "refined.npz")
     cmd = [py, os.path.join(SCRIPTS, "refine_correspondence.py")] + common + REFINE_ARGS
-    cmd += ["--out", refined] + (["--gt", gt] if gt else [])
+    cmd += ["--target_view"] + view_str + ["--out", refined] + (["--gt", gt] if gt else [])
     stats = last_json(run(cmd, env))
     anchors = stats.get("anchors", "")
     mutual = int(anchors.split("+")[-1].split()[0]) if "mutual" in anchors else 0
@@ -235,7 +235,15 @@ def main():
     ap.add_argument("--pairs", nargs="*", help="only these pair names")
     ap.add_argument("--variants", nargs="+", default=["nn", "arap"], choices=["nn", "arap"])
     ap.add_argument("--threads", type=int, default=3, help="BLAS / OpenMP threads per step")
+    ap.add_argument(
+        "--refine_args",
+        default="",
+        help="extra arguments for refine_correspondence.py, one string, for example "
+        "'--anchor_filter rigid:0.1' (the ARAP settings stay)",
+    )
     args = ap.parse_args()
+    if args.refine_args:
+        REFINE_ARGS.extend(args.refine_args.split())
 
     env = dict(os.environ)
     for var in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS"):
