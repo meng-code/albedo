@@ -19,9 +19,9 @@ same normalised frame. --close_mirror closes a one-sided relief before encoding 
 mirrored through the plane z = (z_min + z_max) / 2 ("mid": front and copy interpenetrate, a thin
 closed shell) or z = z_min ("zmin": the copy sits behind the front, twice the depth); only the
 original points are queried. On the synthetic partials "mid" gained a little and "zmin" lost (see
-the commit message), so the default is "none". The output .npz has the same idx, xyz and colors; only feat changes
-(float16, N x 1536, unit length), and meta is a JSON string with model, checkpoint, repo commit,
-command, source mesh, number of input points and git commit.
+the commit message), so the default is "none". The output .npz has the same idx, xyz and colors;
+only feat changes (float16, N x 1536, unit length), and meta is a JSON string with model,
+checkpoint, repo commit, command, source mesh, number of input points and git commit.
 
 Usage (repository root, meshfm environment):
     python scripts/idarb/meshfm_features.py --src outputs/diff3f/cat_full.npz \
