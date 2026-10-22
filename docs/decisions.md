@@ -413,6 +413,9 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   relief used 20 % (nearest neighbour) against 53 % for Diff3F, mutual anchors 38 per pair against
   127, mirrored screen area 34 % against 24 %; cross-category 8 mutual anchors per pair against 47.
   The caveat recorded on 2026-10-21 applies: span without source-used is not a quality measure.
+  The fused set (w 0.75) over the same 26 pairs is indistinguishable from Diff3F alone
+  (`results/diff3f/features_fused_w0.75.csv`: same-category ARAP 96.5 % within 5 %, relief used
+  64 %, 118 anchors; synthetic 59.4 % within 1 % against 65.3 %): MeshFM adds nothing there either.
 - Cause, by elimination on the server: not the orientation, the normalisation or the number of
   encoder points (50k–200k; moving the partial into the full mesh's frame with the true transform
   changes nothing). The encoder sees the whole shape, so a front-only relief is a different shape to
