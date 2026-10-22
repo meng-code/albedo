@@ -503,3 +503,46 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   on top adds little (`features_diff3f_c2f3_gate.csv`); `--w_view 1` costs distortion and relief
   used (`features_diff3f_view1_c2f.csv`). Visible gains beyond the numbers: the Labubu's, the
   cat's and the panda's faces now land on the man's face, the dragon's on the lizard's head.
+
+## 2026-10-22 — Better semantic features: MeshFM and Diff3F variants (server results)
+
+- **MeshFM** (threedle/MeshFM `e6577b1`, 502 MB checkpoint, no license file): queried at the idx /
+  xyz of all 29 Diff3F files (`scripts/idarb/meshfm_features.py`), 0.1 to 0.7 s per mesh, 1.4 GB
+  GPU. On the synthetic partials (share matched within 5 % of the full mesh's diagonal) it reaches
+  cow 0.360 and cat 0.584 against Diff3F's 0.860 and 0.974. Not caused by orientation,
+  normalisation or point count (50k / 200k points, partial moved into the full mesh's frame, the
+  full mesh's normalisation: cow 0.34 to 0.37, cat 0.43 to 0.60). The encoder sees the whole shape,
+  so a front-only partial gets shifted features. Closing the relief with a mirrored copy
+  (`--close_mirror`) gives mid-depth 0.380 / 0.688 and z_min 0.183 / 0.558: not enough. PartField
+  (same encoder family, about 4 to 5 GB of downloads) was not run.
+- **Diff3F variants** (`scripts/idarb/diff3f_features.py`, new options; without them the script
+  still calls the unchanged upstream function), on cow_synth / cat_synth / cow / cat. Same seed:
+  a rerun reproduces Diff3F exactly (cow 0.8598 both, cat 0.9741 vs 0.9738), so run-to-run noise
+  is negligible. Within 5 % (cow, cat) and mutual nearest neighbours on the real pairs (cat, cow):
+  - Diff3F: 0.860, 0.974; 0.0089, 0.0096.
+  - C, SAM cleaning (`--sam_tau 1`, MeshFM-style: per SAM ViT-B mask, pixels farther than 1 from
+    the mask's median feature take the median): 0.853, 0.956; 0.0071, 0.0101.
+  - E, SigLIP2 (`--siglip2`, timm `vit_base_patch16_siglip_512.v2_webli`, mean of the last four
+    blocks on the same painted views, 768-d): 0.645, 0.736; 0.0060, 0.0069.
+  - Diff3F + SigLIP2 concatenated (each unit length, divided by √2): 0.846, 0.964; 0.0064, 0.0090.
+  - A, the relief rendered with its own IDArb albedo, one UNet pass at t = 100 with the positive
+    prompt and no ControlNet, plus DINOv2 on the same image (`--appearance vertex_colors`); the
+    full meshes keep the painted features: no synthetic number (the synthetic partials have no
+    colours); real pairs 0.0052, 0.0089. With SigLIP2 on that image: 0.0031, 0.0032.
+  - B (DINOv3) was skipped: gated model, no Hugging Face token on the server. D (other SD layers or
+    steps) was skipped: the layer (`up_blocks[1]`) and the step averaging are local variables
+    inside `third_party/Diff3F`.
+- Runtime and peak GPU (nvidia-smi): Diff3F alone 247 to 632 s, 10 to 13 GB; the combined pass with
+  SAM and SigLIP2 resident 623 to 1097 s, 21.1 to 22.4 GB (SAM's automatic masks roughly double the
+  time); A 286 to 459 s, 16.7 to 16.9 GB.
+- Upstream detail: Diff3F's diffusion feature is the first half of the classifier-free-guidance
+  batch, i.e. the negative-prompt branch.
+- The per-pixel SigLIP2 features are the outputs of the vision tower's last blocks, before the
+  final norm and the attention-pool head. They are not in SigLIP's joint image-text space, so a dot
+  product with a text embedding is not meaningful without pooling them through that head.
+- Decision: keep Diff3F. No variant beats it at point level. SigLIP2 is computed for all 29 point
+  sets (`results/diff3f/features_siglip2/`, on the temporary branch only) so that the cross-category
+  part-level similarity can be measured on the laptop. The Diff3F part of those runs equals the
+  original Diff3F files exactly (mean cosine 1.0000 on all 29), so the concatenation is simply the
+  existing Diff3F features plus SigLIP2 and is formed on the laptop instead of stored. SAM and A
+  are not pursued. The text-embedding route waits for that measurement.
