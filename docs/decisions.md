@@ -546,3 +546,23 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   original Diff3F files exactly (mean cosine 1.0000 on all 29), so the concatenation is simply the
   existing Diff3F features plus SigLIP2 and is formed on the laptop instead of stored. SAM and A
   are not pursued. The text-embedding route waits for that measurement.
+
+## 2026-10-23 — SigLIP2 at the part level, and the part-naming test
+
+- The 29 SigLIP2 feature files (server, `results/diff3f/features_siglip2/` on the temporary branch,
+  `outputs/diff3f/features_siglip2/` locally) were put through `part_anchors.py` next to the
+  Diff3F files. Relative part similarity (object mean removed), best value and best pair
+  confidence: Labubu → camel 0.43 / 0.03 (Diff3F 0.33 / 0.05), Labubu → lion 0.31 / 0.01
+  (0.35 / 0.02), cat → man 0.35 / 0.03 (0.32 / 0.04), superman → camel 0.54 / 0.04 (0.39 / 0.03);
+  same-category cat → lion 0.55 / 0.06 (0.61 / 0.07), synthetic cat 0.91 / 0.55 (0.92 / 0.32). So
+  the lifted per-pixel SigLIP2 features separate parts of the same object about as well as Diff3F
+  and cross-category parts no better. The server's note explains why: the per-pixel features are
+  the transformer's token outputs before the attention-pool head, which is where SigLIP2's
+  image-text alignment is formed, so they are not in the joint space.
+- Test in progress on the server: each part's patch tokens pooled through the attention-pool head
+  per rendered view (masked pooling), averaged over views, compared with text embeddings of a part
+  vocabulary ("a photo of the hump of a camel", ...). Part labels of eight meshes are on the
+  temporary branch `part-labels-tmp` (`results/diff3f/part_labels_tmp/`). If "face" and "hump" come
+  apart there, the own method's first version (parts named by image-text similarity, matched by
+  name, unmatched parts follow the body through `--parts`) is viable; if not, the language route
+  is dropped.
