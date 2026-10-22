@@ -962,3 +962,18 @@ belongs. On the synthetic pairs `--k_prior 16` lifts the cat from 72.1 to 74.6 %
 99.4 → 100 %) and leaves the cow unchanged (58.5 → 58.2 %); on Labubu → camel it moves the face
 from the hump to the shoulder, because the prior fitted on the 33 mutual anchors is itself wrong
 there, so it is not a default.
+
+### Part-level matching (`part_anchors.py`, `refine_correspondence.py --parts`)
+
+SemAnCorr (Dong et al., RA-L 2026) matches parts before points. `part_anchors.py` clusters each
+mesh into parts (k-means on PCA-reduced features plus position), scores part pairs by the cosine
+of their mean features after each object's mean is removed, fits a rigid alignment jointly with
+a soft part assignment, keeps the confident one-to-one pairs and writes `part_anchors.npz`, the
+part similarity matrix (`parts.json`) and part-coloured point clouds. `refine_correspondence.py
+--parts <that npz>` then penalises candidates outside the matched source part (`--w_part`) and
+takes the data weight away from the vertices of a target part with no matched source part, so
+such a part follows its neighbours through the field (the rule for a hump the source does not
+have). On the Diff3F features the step is neutral to slightly negative on the synthetic pairs
+(all confident pairs, `--w_part 0.5`: cat 72.1 → 68.9 %, cow 58.5 → 59.2 % within 1 %), and on
+Labubu → camel the part similarities are all below 0.35 with confidences near zero, so the
+features cannot drive it yet; it is kept for the feature sets that can (see `docs/decisions.md`).

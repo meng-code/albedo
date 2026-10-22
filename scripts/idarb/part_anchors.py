@@ -348,6 +348,7 @@ def main():
     np.savez_compressed(
         os.path.join(args.out_dir, "part_anchors.npz"), target=a_t, source=a_s,
         labels_t=info["labels_t"], labels_s=info["labels_s"],
+        pairs=np.array([[a, b, c] for a, b, c in info["pairs"]], dtype=np.float64).reshape(-1, 3),
     )
     print(json.dumps(dict(pairs=summary["pairs"], anchors=summary["anchors"],
                           max_similarity=summary["max_similarity"])))

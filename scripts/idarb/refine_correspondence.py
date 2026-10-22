@@ -151,6 +151,8 @@ def refine(
     sigma=0.25,
     pred=None,
     k_prior=0,
+    parts=None,
+    w_part=0.5,
 ):
     """Target vertex -> source sample. fd: a feature per target vertex; fs, src_xyz: the source
     samples. anchors: (target positions, source positions) or None; pred: a predicted source
@@ -158,7 +160,9 @@ def refine(
     sigma are fractions of the source / target bounding-box diagonals. k_prior > 0 adds the
     k_prior source samples nearest to the predicted position to the candidates, so a target part
     whose feature matches all sit far away (the camel's hump, which looks like a face to the
-    features) can settle on a less similar point where the map around it says it belongs."""
+    features) can settle on a less similar point where the map around it says it belongs.
+    parts: (source part per source sample, matched source part per target vertex or -1) adds
+    w_part to candidates outside the part the vertex's own part is matched with."""
     diag_s = float(np.linalg.norm(src_xyz.max(axis=0) - src_xyz.min(axis=0)))
     diag_d = float(np.linalg.norm(Vd.max(axis=0) - Vd.min(axis=0)))
     cand, sim = topk_candidates(fd, fs, k)
@@ -170,6 +174,9 @@ def refine(
         sim = np.concatenate([sim, similarities(fd, fs, near)], axis=1)
     C = src_xyz[cand]  # (n, k, 3)
     cost = 1.0 - sim.astype(np.float64)
+    if parts is not None:
+        part_s, want = parts
+        cost = cost + w_part * ((part_s[cand] != want[:, None]) & (want[:, None] >= 0))
     if pred is not None:
         d = np.linalg.norm(C - pred[:, None], axis=2) / (radius * diag_s)
         cost = cost + w_prior * d**2
@@ -410,6 +417,14 @@ def main():
     )
     ap.add_argument("--w_prior", type=float, default=1.0)
     ap.add_argument(
+        "--parts",
+        help="part_anchors.npz of part_anchors.py: candidates outside the matched part are "
+        "penalised, and vertices of a target part with no matched source part lose their data "
+        "weight in the field, so they follow their neighbours (the hump follows the body)",
+    )
+    ap.add_argument("--w_part", type=float, default=0.5, help="penalty outside the matched part")
+    ap.add_argument("--parts_min_conf", type=float, default=0.0, help="part pairs below: ignored")
+    ap.add_argument(
         "--k_prior",
         type=int,
         default=0,
@@ -498,6 +513,16 @@ def main():
             )
         kind += f" + {len(keep)} mutual anchors (of {len(t)} mutual pairs)"
 
+    parts, unmatched = None, None
+    if args.parts:
+        z = np.load(args.parts)
+        pairs = [(int(a), int(b)) for a, b, c in z["pairs"] if c >= args.parts_min_conf]
+        matched = dict(pairs)
+        lab_t = z["labels_t"][cKDTree(dst["xyz"]).query(Vd)[1]]
+        want = np.array([matched.get(int(j), -1) for j in lab_t], dtype=np.int64)
+        unmatched = want < 0
+        parts = (z["labels_s"].astype(np.int64), want)
+        kind += f" + parts {pairs}"
     t2s_sample, sim, off_prior = refine(
         Vd,
         Fd,
@@ -513,6 +538,8 @@ def main():
         w_smooth=args.w_smooth,
         pred=dense_pred,
         k_prior=args.k_prior,
+        parts=parts,
+        w_part=args.w_part,
     )
     t2s = src["idx"][t2s_sample].astype(np.int64)
     if lm is not None:
@@ -524,6 +551,9 @@ def main():
         if mutual is not None:  # an anchor's vertex follows the anchor, not its refined match
             S[cKDTree(Vd).query(mutual[0])[1]] = mutual[1]
         w = confidence(sim, Vd, anchors, t_lm if lm is not None else None)
+        if unmatched is not None and unmatched.any():
+            w[unmatched & (w < 3.0)] = 1e-3  # a part the source does not have: follow the rest
+            stats["unmatched_part_fraction"] = round(float(unmatched.mean()), 4)
         if args.gate:
             w, gated = gate(
                 w, sim, off_prior, Vd, anchors, args.gate_sim, args.gate_prior, args.gate_anchor
