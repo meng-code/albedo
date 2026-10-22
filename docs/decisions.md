@@ -367,3 +367,33 @@ The repository will be used beyond the original course, so the owner rewrote `AG
 - Decision: geometry stays at 512. For a sharper texture, use the 1024 albedo on the 512 relief
   (`transfer_texture.py --albedo_image`), which doubles the texture detail at the cost of slightly
   weaker lighting removal; tiled 512 inference would be the way to raise the normals as well.
+
+## 2026-10-22 — Better semantic features: 3D-native feature models (started)
+
+- The supervisor's reading of the ARAP results: the texture is crisp but the Labubu's face still
+  lands on the camel's body, so the semantic features themselves are not good enough; improve the
+  features. Diff3F lifts 2D features (Stable Diffusion + DINOv2) from 100 renders; the alternative
+  is a model that reads the 3D shape directly.
+- Read (PDFs in the owner's Zotero): PartField (Liu et al., CVPR 2025; feed-forward point cloud →
+  triplane feature field, 448-d, trained with a part-contrastive loss on Objaverse; code and the
+  Objaverse checkpoint released; the paper itself says the features are orientation-sensitive),
+  MeshFM (Zhou et al., arXiv 2607.27592; feed-forward, 1536-d, distilled from DINOv2 fields with
+  SAM-based anti-aliasing, trained with SO(3) rotation augmentation; code and checkpoint released;
+  dense-correspondence AUC on DenseCorr3D 0.52 vs Diff3F 0.46 and PartField 0.35, on TOSCA 0.34 vs
+  0.48 / 0.25), HNSR (Du et al., arXiv 2509.17431; features from the TRELLIS 3D generator, global
+  → local matching, SHREC'19 accuracy 37.4 vs Diff3F 26.4; no code), TokenMatch (Islam et al., arXiv
+  2609.04202; mesh transformer with functional maps trained on BeCoS humans/animals, partial
+  matching; code promised), UniMatch (Xiao et al., arXiv 2602.19112; PartField parts + GPT-5 part
+  names + a trained functional-map refiner; needs training and an LLM).
+- Decision: try the two released feed-forward models as drop-in replacements for the Diff3F
+  features, MeshFM first (rotation-robust, built for general use, best correspondence numbers of
+  the released ones), PartField second (part-aware; also the natural basis for a part-level step
+  in which a target part with no counterpart in the source follows its neighbours, the owner's
+  "hump follows the body" idea). The server queries each model's feature field at the same sampled
+  points as the Diff3F files, so the feature files keep the same idx / xyz and the whole pipeline
+  (anchors, prior, field, ARAP, texture, metrics) runs unchanged. HNSR has no code and TRELLIS is
+  heavy; TokenMatch and UniMatch need training data or an LLM: not first.
+- `eval_features.py` runs every pair (16 same-category, 10 cross-category, 2 synthetic) for one
+  feature folder and writes a CSV, so feature sets are compared with one command each. Risk noted
+  before running: both models were trained on closed, whole objects normalised to the unit cube;
+  our source is an open, front-only relief.

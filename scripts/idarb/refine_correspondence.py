@@ -62,6 +62,14 @@ def topk_candidates(fd, fs, k, chunk=2048):
     return idx, sim
 
 
+def similarities(fd, fs, cand, chunk=2048):
+    """Similarity of every row of fd to its own candidate rows of fs (cand: (n, m) indices)."""
+    out = np.empty(cand.shape, dtype=np.float32)
+    for i in range(0, len(fd), chunk):
+        out[i : i + chunk] = np.einsum("nd,nmd->nm", fd[i : i + chunk], fs[cand[i : i + chunk]])
+    return out
+
+
 def mutual_pairs(fd, fs):
     """Pairs (target row, source row) that are each other's nearest neighbour, with similarity."""
     t2s, s_t = topk_candidates(fd, fs, 1)
@@ -142,18 +150,26 @@ def refine(
     w_smooth=0.3,
     sigma=0.25,
     pred=None,
+    k_prior=0,
 ):
     """Target vertex -> source sample. fd: a feature per target vertex; fs, src_xyz: the source
     samples. anchors: (target positions, source positions) or None; pred: a predicted source
     position per target vertex that replaces the map fitted on the anchors. radius, radius_s and
-    sigma are fractions of the source / target bounding-box diagonals."""
+    sigma are fractions of the source / target bounding-box diagonals. k_prior > 0 adds the
+    k_prior source samples nearest to the predicted position to the candidates, so a target part
+    whose feature matches all sit far away (the camel's hump, which looks like a face to the
+    features) can settle on a less similar point where the map around it says it belongs."""
     diag_s = float(np.linalg.norm(src_xyz.max(axis=0) - src_xyz.min(axis=0)))
     diag_d = float(np.linalg.norm(Vd.max(axis=0) - Vd.min(axis=0)))
     cand, sim = topk_candidates(fd, fs, k)
-    C = src_xyz[cand]  # (n, k, 3)
-    cost = 1.0 - sim.astype(np.float64)
     if pred is None and anchors is not None and len(anchors[0]) >= 3:
         pred = fit_prior(anchors[0], anchors[1], sigma * diag_d)(Vd)
+    if pred is not None and k_prior > 0:
+        near = cKDTree(src_xyz).query(pred, min(k_prior, len(src_xyz)))[1].reshape(len(fd), -1)
+        cand = np.concatenate([cand, near], axis=1)
+        sim = np.concatenate([sim, similarities(fd, fs, near)], axis=1)
+    C = src_xyz[cand]  # (n, k, 3)
+    cost = 1.0 - sim.astype(np.float64)
     if pred is not None:
         d = np.linalg.norm(C - pred[:, None], axis=2) / (radius * diag_s)
         cost = cost + w_prior * d**2
@@ -393,6 +409,12 @@ def main():
         "--radius", type=float, default=0.05, help="prior window, of the source diagonal"
     )
     ap.add_argument("--w_prior", type=float, default=1.0)
+    ap.add_argument(
+        "--k_prior",
+        type=int,
+        default=0,
+        help="also offer the k source samples nearest to the prior's prediction as candidates",
+    )
     ap.add_argument("--iters", type=int, default=2, help="smoothing passes (0: none)")
     ap.add_argument("--radius_s", type=float, default=0.05, help="smoothing scale, of the diagonal")
     ap.add_argument("--w_smooth", type=float, default=0.3)
@@ -490,6 +512,7 @@ def main():
         radius_s=args.radius_s,
         w_smooth=args.w_smooth,
         pred=dense_pred,
+        k_prior=args.k_prior,
     )
     t2s = src["idx"][t2s_sample].astype(np.int64)
     if lm is not None:
