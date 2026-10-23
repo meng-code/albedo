@@ -161,8 +161,16 @@ def evaluate_pair(args, env, group, name, src, src_mesh, target, transform, extr
     t0 = time.time()
     refined = os.path.join(pair_dir, "refined.npz")
     cmd = [py, os.path.join(SCRIPTS, "refine_correspondence.py")] + common + REFINE_ARGS
-    cmd += ["--target_view"] + view_str + ["--out", refined] + (["--gt", gt] if gt else [])
+    if args.view == "anchors":
+        cmd += ["--view_from_anchors"]
+    else:
+        cmd += ["--target_view"] + view_str
+    cmd += ["--out", refined] + (["--gt", gt] if gt else [])
     stats = last_json(run(cmd, env))
+    if args.view == "anchors" and not gt:
+        view = np.load(refined)["view"]
+        view_str = [f"{v:.6f}" for v in view]
+        view_args = ["--target_view"] + view_str
     anchors = stats.get("anchors", "")
     mutual = int(anchors.split("+")[-1].split()[0]) if "mutual" in anchors else 0
     t_refine = time.time() - t0
@@ -234,6 +242,13 @@ def main():
                     choices=["same", "cross", "synthetic"])
     ap.add_argument("--pairs", nargs="*", help="only these pair names")
     ap.add_argument("--variants", nargs="+", default=["nn", "arap"], choices=["nn", "arap"])
+    ap.add_argument(
+        "--view",
+        choices=["stored", "anchors"],
+        default="stored",
+        help="texture camera: the stored registration (cross pairs borrow one) or each pair's "
+        "own, from its anchors' similarity transform",
+    )
     ap.add_argument("--threads", type=int, default=3, help="BLAS / OpenMP threads per step")
     ap.add_argument(
         "--refine_args",

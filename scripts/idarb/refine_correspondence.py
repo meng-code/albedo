@@ -162,6 +162,31 @@ def filter_anchors(T, S, mode, thr, seed=0):
     raise ValueError(mode)
 
 
+def anchor_view(T, S, thr=0.1, seed=0):
+    """The relief camera's direction in target space, from the anchors: a RANSAC similarity
+    transform y = s R x + t from target to source positions, then the source axis +z (the relief
+    camera) pulled back by R. Replaces a texture camera borrowed from a registration (which, for
+    a cross-category pair, came from another pair, and for one same-category pair looked at the
+    target from behind)."""
+    n = len(T)
+    diag_s = float(np.linalg.norm(S.max(axis=0) - S.min(axis=0)))
+    rng = np.random.default_rng(seed)
+    best = None
+    for _ in range(3000 if n >= 6 else 1):
+        i = rng.choice(n, min(4, n), replace=False)
+        s, R, t = rp.umeyama(T[i], S[i])
+        res = np.linalg.norm(rp.transform(T, s, R, t) - S, axis=1)
+        inl = res < thr * diag_s
+        if best is None or inl.sum() > best.sum():
+            best = inl
+    if best.sum() >= 4:
+        s, R, t = rp.umeyama(T[best], S[best])
+    else:
+        s, R, t = rp.umeyama(T, S)
+    v = R.T @ np.array([0.0, 0.0, 1.0])
+    return v / np.linalg.norm(v), int(best.sum())
+
+
 def vertex_adjacency(F, n):
     """Row-normalised vertex adjacency (mean over the one-ring) as a sparse matrix."""
     i = np.concatenate([F[:, 0], F[:, 1], F[:, 2], F[:, 1], F[:, 2], F[:, 0]])
@@ -549,6 +574,12 @@ def main():
     )
     ap.add_argument("--w_part", type=float, default=0.5, help="penalty outside the matched part")
     ap.add_argument(
+        "--view_from_anchors",
+        action="store_true",
+        help="take the texture camera (--target_view) from the mutual anchors' similarity "
+        "transform instead of a stored registration; written to the npz as view",
+    )
+    ap.add_argument(
         "--w_flip",
         type=float,
         default=0.0,
@@ -662,6 +693,10 @@ def main():
             ok = filter_anchors(mutual[0], mutual[1], mode, float(thr))
             dropped = f", {int((~ok).sum())} dropped by {args.anchor_filter}"
             mutual = (mutual[0][ok], mutual[1][ok])
+        if args.view_from_anchors:
+            view, n_in = anchor_view(mutual[0], mutual[1])
+            args.target_view = [float(x) for x in view]
+            kind += f", view from {n_in} anchors {np.round(view, 3).tolist()}"
         if anchors is None:
             anchors = mutual
         else:
@@ -788,6 +823,8 @@ def main():
             stats["field_snapped"] = evaluate(t2s_field, Vd, gt)
     print(json.dumps(stats))
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
+    if args.target_view is not None:
+        extra["view"] = np.asarray(args.target_view, dtype=np.float64)
     np.savez_compressed(
         args.out, t2s=t2s, options=json.dumps(vars(args)), stats=json.dumps(stats), **extra
     )

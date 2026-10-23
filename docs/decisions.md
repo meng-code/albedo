@@ -617,3 +617,33 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   synthetic 1 % accuracy as the fine-scale measure.
 - The landmark set is being extended to the other pairs (eyes, nose, mouth, ear tips, paws) so
   that keypoint accuracy becomes the primary number next to the synthetic ground truth.
+
+## 2026-10-23 — Keypoint benchmark on 15 pairs: the refinement loses fine accuracy; texture cameras were wrong on 6 pairs
+
+- Keypoints: two annotation agents picked 5–7 named keypoints per pair (eye, nose, chin or
+  mouth, ear tip, front and hind paw or hoof tip, tail; hands, feet and head top on the humans;
+  seat corners and leg bottoms on the chair pair) on 12 more pairs with `pick_landmarks.py`,
+  each verified on its contact sheet (`results/diff3f/keypoints/<pair>.json`, sheets in
+  `results/diff3f/keypoints/check/`); with the three older landmark sets that is 15 pairs and
+  93 keypoints. `keypoint_table.py` evaluates every result folder on all of them.
+- Result (`results/diff3f/keypoints/keypoint_accuracy.csv`), 13 same-category pairs, mean error
+  as a fraction of the relief diagonal and PCK within 2 / 5 / 10 %: nearest neighbour 5.3 %,
+  54 / 76 / 89 %; ARAP (07) 6.0 %, 39 / 68 / 82 %; the 09 setting 5.6 %, 40 / 63 / 82 %. So the
+  whole smoothing chain (prior, field, ARAP, coarse-to-fine) makes the map smoother and
+  mirror-free but moves the keypoints away from their right place: at 2 % of the diagonal it is
+  14 points worse than the plain nearest neighbour. The night's improvements were measured on
+  smoothness proxies; on the supervisor's criterion (eye to eye, nose to nose) they are a loss.
+- Texture cameras: comparing each pair's stored camera with the camera implied by its own
+  mutual anchors (RANSAC similarity transform, relief axis +z pulled back to the target) shows
+  the stored one looking at the target from behind on labubu_man (179°, a failed registration:
+  the Labubu's face had been painted on the back of the man's head and reported as "on his
+  face"), and on the cross pairs that borrowed another pair's camera: superman_camel 174°,
+  bird_cat 160°, labubu_lion 102°, labubu_camel 96°; cat_man 62°, labubu_cow 75° and
+  chairgen_armchair 47° off. `refine_correspondence.py --view_from_anchors` now derives the
+  camera from the anchors and stores it in the npz; `eval_features.py --view anchors` uses it
+  for texturing and the metrics. All 28 pairs are being rerun with it
+  (`outputs/diff3f/11_anchor_view/`).
+- Decision: keypoint accuracy (with the synthetic ground truth) is the primary measure from now
+  on; the span, distortion and mirror numbers are diagnostics. The next steps aim at the
+  keypoints: finer features (zoomed views, running on the server) and a refinement that keeps
+  the nearest-neighbour accuracy where it is right instead of smoothing it away.
