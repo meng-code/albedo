@@ -162,6 +162,22 @@ def filter_anchors(T, S, mode, thr, seed=0):
     raise ValueError(mode)
 
 
+def confident_matches(fd, fs, Vd, src_xyz, quantile=0.7, mutual_dist=0.05):
+    """Target vertices whose nearest neighbour can be trusted as it is: similarity in the top
+    (1 - quantile) of the mesh and the source sample's own best target vertex within mutual_dist
+    of the target's diagonal (a soft mutual test). On the keypoint benchmark these matches put
+    65 % of the keypoints within 2 % of the diagonal (all matches 54 %, the refined map 40 %),
+    so they are kept fixed and only the rest is refined and smoothed. Returns the mask and the
+    nearest-neighbour sample index per vertex."""
+    cand, sim = topk_candidates(fd, fs, 1)
+    nn = cand[:, 0]
+    back = topk_candidates(fs, fd, 1)[0][:, 0]  # every source sample's best target vertex
+    diag_d = float(np.linalg.norm(Vd.max(axis=0) - Vd.min(axis=0)))
+    d_back = np.linalg.norm(Vd[back[nn]] - Vd, axis=1) / diag_d
+    keep = (sim[:, 0] >= np.quantile(sim[:, 0], quantile)) & (d_back < mutual_dist)
+    return keep, nn
+
+
 def anchor_view(T, S, thr=0.1, seed=0):
     """The relief camera's direction in target space, from the anchors: a RANSAC similarity
     transform y = s R x + t from target to source positions, then the source axis +z (the relief
@@ -274,6 +290,7 @@ def refine(
     w_part=0.5,
     tview=None,
     w_flip=0.0,
+    fixed=None,
 ):
     """Target vertex -> source sample. fd: a feature per target vertex; fs, src_xyz: the source
     samples. anchors: (target positions, source positions) or None; pred: a predicted source
@@ -286,7 +303,9 @@ def refine(
     w_part to candidates outside the part the vertex's own part is matched with. tview and
     w_flip > 0 add, in the smoothing passes, w_flip times the fraction of the vertex's camera-
     facing fan that a candidate would mirror on the relief image (the two other corners at their
-    current matches), so a left-right symmetric choice that reverses the texture is avoided."""
+    current matches), so a left-right symmetric choice that reverses the texture is avoided.
+    fixed: (mask, source sample per vertex) of matches kept as they are, outside the window and
+    the smoothing."""
     diag_s = float(np.linalg.norm(src_xyz.max(axis=0) - src_xyz.min(axis=0)))
     diag_d = float(np.linalg.norm(Vd.max(axis=0) - Vd.min(axis=0)))
     cand, sim = topk_candidates(fd, fs, k)
@@ -305,6 +324,20 @@ def refine(
         d = np.linalg.norm(C - pred[:, None], axis=2) / (radius * diag_s)
         cost = cost + w_prior * d**2
     rows = np.arange(len(fd))
+    if fixed is not None:
+        # the fixed vertices' own match replaces their first candidate and costs nothing
+        mask, nn = fixed
+        cand[mask, 0] = nn[mask]
+        sim[mask, 0] = 1.0
+        C = src_xyz[cand]
+        cost = 1.0 - sim.astype(np.float64)
+        if parts is not None:
+            cost = cost + w_part * ((part_s[cand] != want[:, None]) & (want[:, None] >= 0))
+        if pred is not None:
+            d = np.linalg.norm(C - pred[:, None], axis=2) / (radius * diag_s)
+            cost = cost + w_prior * d**2
+        cost[mask] = 1e9
+        cost[mask, 0] = 0.0
     choice = cost.argmin(axis=1)
     fans = face_fans(Vd, Fd, tview) if (w_flip > 0 and tview is not None) else None
     if iters:
@@ -317,6 +350,8 @@ def refine(
             if fans is not None:
                 total = total + w_flip * mirrored_fraction(C, P, *fans)
             choice = total.argmin(axis=1)
+            if fixed is not None:
+                choice[fixed[0]] = 0
     chosen = C[rows, choice]
     # how far the chosen point sits from where the prior expected it, in units of the window
     off_prior = None
@@ -574,6 +609,15 @@ def main():
     )
     ap.add_argument("--w_part", type=float, default=0.5, help="penalty outside the matched part")
     ap.add_argument(
+        "--keep_confident",
+        type=float,
+        default=0.0,
+        help="keep the nearest-neighbour match of vertices whose similarity is above this "
+        "quantile and that pass the soft mutual test (0: off; 0.7 keeps the top 30 %%)",
+    )
+    ap.add_argument("--keep_mutual_dist", type=float, default=0.05, help="soft mutual test")
+    ap.add_argument("--keep_weight", type=float, default=3.0, help="field weight of kept matches")
+    ap.add_argument(
         "--view_from_anchors",
         action="store_true",
         help="take the texture camera (--target_view) from the mutual anchors' similarity "
@@ -706,6 +750,12 @@ def main():
             )
         kind += f" + {len(mutual[0])} mutual anchors (of {len(t)} mutual pairs{dropped})"
 
+    fixed = None
+    if args.keep_confident > 0:
+        keep_mask, nn_all = confident_matches(
+            fd, src["feat"], Vd, src["xyz"], args.keep_confident, args.keep_mutual_dist
+        )
+        fixed = (keep_mask, nn_all)
     parts, unmatched = None, None
     if args.parts:
         z = np.load(args.parts)
@@ -735,11 +785,14 @@ def main():
         w_part=args.w_part,
         tview=args.target_view,
         w_flip=args.w_flip,
+        fixed=fixed,
     )
     t2s = src["idx"][t2s_sample].astype(np.int64)
     if lm is not None:
         t2s[t_lm] = s_lm
     stats = dict(anchors=kind, k=args.k, iters=args.iters, field=args.field)
+    if fixed is not None:
+        stats["confident_fraction"] = round(float(fixed[0].mean()), 4)
     extra = {}
     if args.coarse_to_fine and args.field > 0:
         # non-rigid ICP in the manner of Jung et al. 2025: alternate the field (the deformation)
@@ -753,6 +806,8 @@ def main():
             if mutual is not None:
                 S[cKDTree(Vd).query(mutual[0])[1]] = mutual[1]
             w = confidence(sim, Vd, anchors, t_lm if lm is not None else None)
+            if fixed is not None:
+                w[fixed[0]] = np.maximum(w[fixed[0]], args.keep_weight)
             P = smooth_field(Vd, Fd, S, w, lam, args.field_order)
             if args.arap:
                 P = arap_field(
@@ -764,7 +819,7 @@ def main():
                 k=args.k, radius=args.radius, w_prior=args.w_prior, iters=args.iters,
                 radius_s=args.radius_s, w_smooth=args.w_smooth, pred=P,
                 k_prior=max(args.k_prior, args.coarse_k_prior), parts=parts, w_part=args.w_part,
-                tview=args.target_view, w_flip=args.w_flip,
+                tview=args.target_view, w_flip=args.w_flip, fixed=fixed,
             )
             t2s = src["idx"][t2s_sample].astype(np.int64)
             if lm is not None:
@@ -775,6 +830,8 @@ def main():
         if mutual is not None:  # an anchor's vertex follows the anchor, not its refined match
             S[cKDTree(Vd).query(mutual[0])[1]] = mutual[1]
         w = confidence(sim, Vd, anchors, t_lm if lm is not None else None)
+        if fixed is not None:
+            w[fixed[0]] = np.maximum(w[fixed[0]], args.keep_weight)
         if unmatched is not None and unmatched.any():
             w[unmatched & (w < 3.0)] = 1e-3  # a part the source does not have: follow the rest
             stats["unmatched_part_fraction"] = round(float(unmatched.mean()), 4)

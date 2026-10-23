@@ -647,3 +647,14 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   on; the span, distortion and mirror numbers are diagnostics. The next steps aim at the
   keypoints: finer features (zoomed views, running on the server) and a refinement that keeps
   the nearest-neighbour accuracy where it is right instead of smoothing it away.
+- Where the keypoint accuracy is lost (89 keypoints, 13 same-category pairs, PCK within 2 %):
+  nearest neighbour 54 %; the discrete choice with the rigid-filtered anchors, prior window and
+  two smoothing passes 51 % (k 16 candidates: 56 %; prior-position candidates `--k_prior 16`:
+  45 %; RBF width 0.1: 47 %); then the coarse-to-fine rematching 39 % and the field/ARAP 38–40 %.
+  So the prior stage is nearly neutral once the anchors are filtered, and the losses are the
+  coarse-to-fine levels and the smoothing. `--keep_confident q` keeps the nearest neighbour of
+  the vertices whose similarity is above the quantile q and that pass a soft mutual test (on
+  the keypoints these matches reach 65 % within 2 %); on the synthetic pairs it costs
+  (cat 67.7 → 59.3 % within 1 % with q 0.7), because there the prior improves every match.
+  Variants without coarse-to-fine and with kept matches are being run on the server against the
+  keypoints.
