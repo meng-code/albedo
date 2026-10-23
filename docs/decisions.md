@@ -668,3 +668,13 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   present features no setting of this chain keeps both. Conclusion: the lever is the features
   (zoomed views running on the server) and, for the map, a formulation that keeps confident
   matches as hard constraints rather than weights.
+- Smoothing-strength sweep on the Windows laptop (`results/diff3f/sweep_smooth/`, branch
+  sweep-win-tmp merged; 8 settings × 28 pairs, keypoints on the 13 same-category pairs, texture
+  measures on the 16): weakening the smoothing raises keypoint PCK@2 % monotonically from 37 %
+  (field 0.1, ARAP weight 3) to 42 % (ARAP 1), 43 % (ARAP 0.3), 45–46 % (no ARAP), while the
+  texture quality falls just as monotonically: triangles within 5 % 97.5 → 89.5 %, median
+  conformal distortion 2.37 → 4.30, stretched over tenfold 11.6 → 27.0 %. Kept confident matches
+  with field weight 10 or 30 are worse on both sides and cost the synthetic pairs 9 points. So with
+  the present features the chain only trades fine accuracy against texture coherence; nothing in
+  it recovers the nearest neighbour's 54 %. This curve is the argument for changing the features
+  (zoomed views) or the input (a generated full mesh), not the smoothing.
