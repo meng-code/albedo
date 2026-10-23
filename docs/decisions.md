@@ -694,3 +694,12 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   Labubu → camel. A seed-1 rerun of the plain extraction (painting is random) and zoom 3 are
   running as controls; zoom 2 for the remaining 15 keypoint meshes follows overnight.
 - First evidence that the feature resolution, not the matching, is what limits "eye to eye".
+- Zoom 3 and a control (server, `features_zoom3/`, `features_zoom1_seed1/`): the control is not
+  a noise estimate, because Diff3F fixes the painting seed (torch.manual_seed(60) per view in its
+  diffusion.py), so `--seed` only changes the vertex subsample and the features are the same;
+  through the pipeline the numbers still move by up to 1.5 points, which is the pipeline's own
+  spread. Synthetic within 1 %, nearest neighbour (check_features) / after the pipeline: cat zoom 1
+  38.8 / 70.6 %, zoom 2 49.5 / 75.8 %, zoom 3 53.9 / 72.4 %; cow 30.4 / 57.2, 37.2 / 55.2,
+  38.4 / 53.3 %. Zoom 3 adds a little on the raw measure, nothing through the pipeline, at twice
+  the cost (22–28 min per mesh): zoom 2 is the setting kept. A true noise estimate needs a
+  different paint seed per run (a patch of that line); deferred.
