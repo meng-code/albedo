@@ -114,3 +114,55 @@ def test_k_prior_offers_the_point_the_prior_predicts():
         Vd, Fd, fd, src_xyz, fs, anchors, k=1, radius=0.1, iters=0, k_prior=4
     )
     assert np.abs(with_prior - np.arange(10)).max() <= 1
+
+
+def grid_mesh(n=6, spacing=0.1):
+    """A flat n x n grid in the xy plane facing +z (counter-clockwise faces seen from +z)."""
+    xs, ys = np.meshgrid(np.arange(n) * spacing, np.arange(n) * spacing, indexing="ij")
+    V = np.stack([xs.ravel(), ys.ravel(), np.zeros(n * n)], axis=1)
+    F = []
+    for i in range(n - 1):
+        for j in range(n - 1):
+            a, b, c, d = i * n + j, (i + 1) * n + j, (i + 1) * n + j + 1, i * n + j + 1
+            F += [[a, b, c], [a, c, d]]
+    return V, np.array(F)
+
+
+def test_face_fans_and_mirrored_fraction_detect_a_mirrored_choice():
+    V, F = grid_mesh()
+    J, K, SGN = rc.face_fans(V, F, (0.0, 0.0, 1.0))
+    assert (SGN[J >= 0] == 1).all()  # every face winds counter-clockwise on screen
+    # candidates: the vertex's own position and its mirror image in x; with the neighbours at
+    # their own positions the first mirrors nothing, with the neighbours mirrored the second
+    # choice (mirrored with them) reverses every face of the fan
+    Vm = V * [-1, 1, 1]
+    C = np.stack([V, Vm], axis=1)
+    inner = (J >= 0).sum(axis=1) == 6  # interior vertices with a full fan
+    frac = rc.mirrored_fraction(C, V, J, K, SGN)
+    assert np.all(frac[inner, 0] == 0.0)
+    frac_m = rc.mirrored_fraction(C, Vm, J, K, SGN)
+    assert np.all(frac_m[inner, 1] == 1.0)
+    assert np.all(frac_m[inner, 0] < 1.0)
+    # a mesh seen from behind has no camera-facing fan
+    J2, _, _ = rc.face_fans(V, F, (0.0, 0.0, -1.0))
+    assert (J2 < 0).all()
+
+
+def test_arap_view_term_keeps_an_exact_rigid_map():
+    # target = source turned by a rotation; the matches are exact, so the field must return
+    # them, with and without the view pair (which must not inflate the scale)
+    Vs, F = grid_mesh(7)
+    ang = 0.6
+    Rg = np.array([[np.cos(ang), 0, np.sin(ang)], [0, 1, 0], [-np.sin(ang), 0, np.cos(ang)]])
+    Vd = Vs @ Rg.T + [1.0, 0.0, 0.0]
+    S = Vs.copy()
+    w = np.full(len(Vd), 1.0)
+    view = Rg @ np.array([0.0, 0.0, 1.0])  # the source camera axis seen in target space
+    rng = np.random.default_rng(0)
+    P0 = S + 0.02 * rng.normal(size=S.shape)  # the alternation converges from nearby
+    for w_view in (0.0, 1.0, 5.0):
+        P = rc.arap_field(Vd, F, S, w, P0, lam=3.0, iters=20, view=view, w_view=w_view)
+        assert np.linalg.norm(P - S, axis=1).max() < 1e-3, w_view
+    # a view pair pointing the wrong way must pull the field off the exact solution
+    P = rc.arap_field(Vd, F, S, w, P0, lam=3.0, iters=20, view=-view, w_view=5.0)
+    assert np.linalg.norm(P - S, axis=1).max() > 1e-2

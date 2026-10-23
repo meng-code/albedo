@@ -398,6 +398,112 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   before running: both models were trained on closed, whole objects normalised to the unit cube;
   our source is an open, front-only relief.
 
+## 2026-10-22 — MeshFM as a feature replacement: fails on partial shapes
+
+- The server ran MeshFM (checkpoint 502 MB, env cloned from diff3f, 0.1–0.7 s per mesh, 1.4 GB
+  GPU) at the Diff3F sample points of all 29 meshes (`scripts/idarb/meshfm_features.py`,
+  `results/diff3f/check_meshfm/`). The features are smooth and part-like on the open reliefs, but
+  the partial mesh's features are shifted against the full mesh's: synthetic ground truth within
+  5 % of the diagonal, nearest neighbour, cow 36 % (Diff3F 86 %), cat 58 % (97 %); mutual nearest
+  neighbours 0.5 % vs 1 % on the real cat and cow pairs. Through the whole pipeline (ARAP field,
+  `eval_features.py`): cat 10.8 % / cow 7.8 % within 1 % against 72.1 / 58.2 for Diff3F. Fusing
+  the two sets (`fuse_features.py`, w 0.75 on Diff3F) gives 63.0 / 55.7, below Diff3F alone.
+- Over the 26 real pairs (`results/diff3f/features_meshfm.csv`) the span numbers look no worse
+  (same-category ARAP 97.4 % within 5 % vs 96.6 %), but they are the span of a collapsed matching:
+  relief used 20 % (nearest neighbour) against 53 % for Diff3F, mutual anchors 38 per pair against
+  127, mirrored screen area 34 % against 24 %; cross-category 8 mutual anchors per pair against 47.
+  The caveat recorded on 2026-10-21 applies: span without source-used is not a quality measure.
+  The fused set (w 0.75) over the same 26 pairs is indistinguishable from Diff3F alone
+  (`results/diff3f/features_fused_w0.75.csv`: same-category ARAP 96.5 % within 5 %, relief used
+  64 %, 118 anchors; synthetic 59.4 % within 1 % against 65.3 %): MeshFM adds nothing there either.
+- Cause, by elimination on the server: not the orientation, the normalisation or the number of
+  encoder points (50k–200k; moving the partial into the full mesh's frame with the true transform
+  changes nothing). The encoder sees the whole shape, so a front-only relief is a different shape to
+  it. Closing the relief with a mirrored back copy (thin shell) gains 2–10 points and is still 30–50
+  points behind Diff3F; a thick closure hurts. Diff3F works view by view, so what it sees of the
+  front is the same on both meshes: this is what makes it robust to partial input.
+- Decision: no feed-forward 3D encoder on the partial relief (PartField uses the same PVCNN +
+  triplane encoder and is expected to fail the same way, so its 4–5 GB download is not started).
+  Better features have to come from the 2D side: variants of the Diff3F extraction (real albedo
+  render of the relief instead of a ControlNet painting, DINOv3 in the DINO branch, MeshFM's
+  SAM-based anti-aliasing of the 2D feature maps) are the next server runs. A 3D-native model
+  would only become usable with a completed shape (an image-to-3D model such as TRELLIS, whose
+  back is a guess); that widens the project's scope and is for the owner to decide.
+- Negative side result on the laptop: anchors from neighbourhood-pooled Diff3F features (the
+  global-then-local idea of HNSR) are fewer and less precise than the plain mutual nearest
+  neighbours (cat anchors within 1 %: 62 → 56 / 48 / 36 % for pooling radii 2 / 5 / 10 % of the
+  diagonal; refined accuracy drops accordingly). Not adopted.
+
+## 2026-10-22 — Part-level anchors after SemAnCorr: tested on the Diff3F features
+
+- SemAnCorr (Dong et al., RA-L 2026) matches parts before points: k-means parts on lifted 2D
+  features, part similarity after removing each object's mean feature, a joint rigid alignment
+  with a soft part assignment, bilateral-margin confidence with each part used once, anchors only
+  inside confident part pairs. `scripts/idarb/part_anchors.py` implements this on our feature
+  files (the paper uses SigLIP2 features and a functional map afterwards; we feed the anchors to
+  the existing prior / field / ARAP chain).
+- Same-category synthetic pairs: the part pairs are right (clear diagonal in the relative
+  similarity, 0.8–0.9), but anchors taken by nearest neighbour inside the matched regions are
+  imprecise (cat 47 %, cow 67 % within 5 % of the diagonal) against 98–100 % for the mutual
+  nearest neighbours, so as a source of anchors the part step is worse here (refined accuracy
+  cat 19 % vs 73 % within 1 %). As a filter it keeps the mutual anchors' precision (99–100 %) and
+  discards a third to three quarters of them.
+- Cross-category Labubu → camel: after removing the object means the Diff3F part similarities
+  are all below 0.35 and the selected pairs have confidence 0.001: the features do not tell the
+  parts of a toy from the parts of a camel. This is the measurement behind the supervisor's
+  judgement, and it points at the feature itself, not the matching. SemAnCorr's language-aligned
+  SigLIP2 features are the next server variant; `part_anchors.py --out_dir` writes the part
+  similarity matrix and part-coloured point clouds, so the same measurement is repeated on every
+  new feature set.
+
+## 2026-10-23 — Where the mirrored texture comes from, and three steps against it (night run)
+
+- Measurement first. On the synthetic pairs (the partial cut from the target itself) the mirrored
+  screen area after refinement is about 1 %, so the 20–35 % on the real pairs is not a property
+  of the pipeline but of real pairs: different individuals, different poses, and features that
+  cannot tell the left edge of a limb from its right edge. By facing angle (ARAP, 16 same-category
+  pairs): faces almost edge-on to the texture camera mirror 47 % of their area, faces turned
+  towards it 6.5 %; the worst pairs (posed human, the chairs, the stone bird, dragon → lizard)
+  keep 25–40 % even on front faces. Anchor consistency: on real pairs 14–44 % of the mutual
+  anchors disagree with one similarity transform (synthetic: 0–1 %).
+- Tried, no effect: a penalty in the candidate choice for mirroring the vertex's camera-facing fan
+  (`--w_flip`; the neighbours are mirrored together, so no single change helps).
+- Three steps that do help, each a refinement option, measured on the five most mirrored pairs
+  (superman_posed, chair10_roundchair, bird_bird, cat_lion, dragon_lizard; ARAP; triangles
+  within 2 % / 5 %, relief used, median distortion, mirrored area):
+  - `--anchor_filter rigid:0.1`: anchors farther than 10 % of the diagonal from a RANSAC
+    similarity transform of all anchors are dropped. All 26 pairs: same-category 64.3 → 66.2 %
+    within 2 %, mirrored 23.7 → 21.3 %, distortion 2.18 → 2.12; cross 44.3 → 47.9 %. Small, consistent.
+  - `--w_view w`: every vertex's ARAP rotation also has to carry the texture camera's direction
+    onto the relief's viewing axis (a virtual edge pair weighted by w times the one-ring), so a
+    limb cannot be turned about its own axis to put its hidden side on the relief's visible side.
+    w = 1: mirrored area 32.4 → 21.9 %, within 2 % 76.2 → 79.5 %, but distortion 2.53 → 3.75 and
+    relief used 59 → 55 %. (A first version let the pair inflate the ARAP scale; the scale is now
+    fitted from the edges alone.) Visibly: the posed human's legs lose the cape bleed, the chair's
+    backrest becomes one continuous pattern.
+  - `--coarse_to_fine 2 --coarse_factor 4`: the field and the choice of matches alternate, the
+    smoothness falling from 16× to the final weight, every level predicting each vertex's source
+    position from the current field (the non-rigid ICP schedule of Jung et al. 2025). Within 2 %
+    76.2 → 79.9 %, distortion 2.53 → 2.21, mirrored area about unchanged (chair 37 → 24 %).
+  - Combined (`--coarse_to_fine 2 --coarse_factor 4 --w_view 1 --anchor_filter rigid:0.1`):
+    within 2 % 76.2 → 85.5 %, within 5 % 97.4 → 99.3 %, mirrored 32.4 → 17.9 %, distortion
+    2.53 → 3.36, relief used 59 → 53 %; with `--w_view 0.3` instead: 81.1 % / 98.8 % / 17.8 % /
+    3.03 / 55 %. Synthetic ground truth: the view pair costs about 2 points within 1 % (cat 72.1 →
+    69.9), coarse-to-fine is neutral, the rigid filter gains (cat 72.1 → 77.6 at 5 % threshold).
+- Decision, after runs over all 28 pairs with 2, 3 and 4 coarse-to-fine levels
+  (`results/diff3f/features_diff3f_c2f{2,3,4}.csv`, with `--w_view 0.3 --anchor_filter
+  rigid:0.1`): three levels is the recommended setting
+  (`outputs/diff3f/09_texture_view_consistent/`). ARAP means, 07 → 09: same-category within 2 %
+  64.3 → 80.1 %, within 5 % 96.6 → 99.2 %, mirrored area 23.7 → 9.1 %, distortion 2.18 → 2.23,
+  relief used 65 → 56 %; cross-category 44.3 → 72.1 %, 89.3 → 98.2 %, 39.0 → 14.1 %, 2.31 → 2.45,
+  49 → 37 %; synthetic within 1 % 65.3 → 60.4 % (within 5 % 99.5 both). Each extra level smooths
+  more; four levels reaches 84.6 / 81.5 % within 2 % and 6.8 / 8.8 % mirrored but uses only 52 /
+  31 % of the relief and drops the synthetic accuracy to 58.1 %, and on Labubu → camel the face
+  vanishes instead of landing anywhere, so the map is collapsing: not adopted. The confidence gate
+  on top adds little (`features_diff3f_c2f3_gate.csv`); `--w_view 1` costs distortion and relief
+  used (`features_diff3f_view1_c2f.csv`). Visible gains beyond the numbers: the Labubu's, the
+  cat's and the panda's faces now land on the man's face, the dragon's on the lizard's head.
+
 ## 2026-10-22 — Better semantic features: MeshFM and Diff3F variants (server results)
 
 - **MeshFM** (threedle/MeshFM `e6577b1`, 502 MB checkpoint, no license file): queried at the idx /
@@ -440,3 +546,74 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   original Diff3F files exactly (mean cosine 1.0000 on all 29), so the concatenation is simply the
   existing Diff3F features plus SigLIP2 and is formed on the laptop instead of stored. SAM and A
   are not pursued. The text-embedding route waits for that measurement.
+
+## 2026-10-23 — SigLIP2 at the part level, and the part-naming test
+
+- The 29 SigLIP2 feature files (server, `results/diff3f/features_siglip2/` on the temporary branch,
+  `outputs/diff3f/features_siglip2/` locally) were put through `part_anchors.py` next to the
+  Diff3F files. Relative part similarity (object mean removed), best value and best pair
+  confidence: Labubu → camel 0.43 / 0.03 (Diff3F 0.33 / 0.05), Labubu → lion 0.31 / 0.01
+  (0.35 / 0.02), cat → man 0.35 / 0.03 (0.32 / 0.04), superman → camel 0.54 / 0.04 (0.39 / 0.03);
+  same-category cat → lion 0.55 / 0.06 (0.61 / 0.07), synthetic cat 0.91 / 0.55 (0.92 / 0.32). So
+  the lifted per-pixel SigLIP2 features separate parts of the same object about as well as Diff3F
+  and cross-category parts no better. The server's note explains why: the per-pixel features are
+  the transformer's token outputs before the attention-pool head, which is where SigLIP2's
+  image-text alignment is formed, so they are not in the joint space.
+- Test in progress on the server: each part's patch tokens pooled through the attention-pool head
+  per rendered view (masked pooling), averaged over views, compared with text embeddings of a part
+  vocabulary ("a photo of the hump of a camel", ...). Part labels of eight meshes are on the
+  temporary branch `part-labels-tmp` (`results/diff3f/part_labels_tmp/`). If "face" and "hump" come
+  apart there, the own method's first version (parts named by image-text similarity, matched by
+  name, unmatched parts follow the body through `--parts`) is viable; if not, the language route
+  is dropped.
+- Full pipeline (09 setting, `eval_features.py`) on the SigLIP2 files and on the Diff3F+SigLIP2
+  concatenation (`fuse_features.py --w 0.5`, built locally; `results/diff3f/features_siglip2.csv`,
+  `features_diff3f_siglip2.csv`): SigLIP2 alone synthetic 34.7 % within 1 % (Diff3F 60.4 %),
+  mutual anchors 30 / 5 per same / cross pair (99 / 27), same-category within 2 % 77.0 % (80.1 %);
+  the concatenation 62.4 % synthetic, 79.9 / 70.7 % within 2 %, 79 / 16 anchors: equal to Diff3F
+  within noise. Neither is adopted; the 1.5 GB of concatenated files are not stored.
+
+## 2026-10-23 — Part naming with SigLIP2 (server) and name-based part matching: partial
+
+- Server (`scripts/idarb/siglip2_part_naming.py`, `results/diff3f/part_naming/`): every part of
+  eight meshes pooled through SigLIP2's attention head over Diff3F's painted views, compared with
+  a part vocabulary. Whole objects are all named right (8 of 8). Parts: the camel's parts come out
+  as hump, front leg, leg, paw, foot, hind leg; the cow's as head, snout, tail, hoof; the Labubu's
+  as ear, hood, face, face, shirt, shirt. But the scores are small (0.02–0.11) with margins
+  between the best names often below 0.01, and the raw part-vector cosines across objects are
+  nearly flat (0.61–0.79); after mean removal the Labubu's face still goes to the camel's
+  hump-and-head part.
+- Two limits come from the parts themselves: they are k-means clusters of the Diff3F features,
+  so the camel's hump and head sit in one part (the feature confusion the whole line is about),
+  and six parts on the Labubu leave its legs and shoes inside "shirt". And the names of a dressed
+  toy (hood, shirt) and of an animal (leg, paw) do not overlap, so name agreement alone
+  (`name_parts.py`, same word or same group over the best three names, plus a little of the
+  vector cosine) yields no confident pair on Labubu → camel or Labubu → lion, one on cat → man
+  (face ← snout), three on cat → lion and cow → cow (head, snout, tail). With no pair, `--parts`
+  would gate every target part, so the step cannot drive the correspondence as it stands.
+- Decision: keep the machinery (naming works at the object level and for animal parts) and
+  change the two inputs before judging the method: parts from a part model rather than from the
+  Diff3F clusters (PartField on the full mesh, SAM masks lifted to the relief), and name
+  similarity from text embeddings rather than a hand-written group table. Not pursued tonight;
+  the owner reviews the dataset phase A first.
+
+## 2026-10-23 — Supervisor: fine-scale matching ("eye to eye, nose to nose"); keypoint accuracy
+
+- The supervisor's reading of the Labubu → camel result (08:40): what is needed is fine-scale
+  matching, eye to eye and nose to nose, and the face features look wrong. New measure:
+  `scripts/idarb/eval_keypoints.py` maps every annotated target landmark through a correspondence
+  and reports its distance to the annotated source landmark as a fraction of the relief's
+  diagonal (mean, median, PCK within 2 / 5 / 10 %). On the three pairs that have landmarks
+  (`results/diff3f/landmarks/`, 10–11 each; `results/diff3f/keypoints/landmark_accuracy.csv`):
+  cat → lion mean error nearest neighbour 4.2 %, ARAP (07) 2.9 %, the 09 setting 3.5 %;
+  Labubu → camel 8.8 / 8.3 / 9.3 %; Labubu → lion 7.8 / 9.0 / 7.9 %. So at the keypoint level the
+  09 setting is not better than ARAP, and both are 3–9 % of the diagonal away from the landmarks:
+  the smooth-map improvements of the night did not move the fine-scale accuracy, which agrees with
+  the review's warning that span and mirror numbers measure smoothness.
+- Why the face features are coarse: Diff3F renders every view at 512 px and DINOv2 works on
+  14-px patches, so a camel's face in a full-body render covers 3 to 4 patches; the lifted features
+  are blurred at the scale of an eye. Planned test on the server (session to be reopened by the
+  owner): zoomed views (`--zoom 2`: Z×Z tiles per camera at Z times the focal length) and the
+  synthetic 1 % accuracy as the fine-scale measure.
+- The landmark set is being extended to the other pairs (eyes, nose, mouth, ear tips, paws) so
+  that keypoint accuracy becomes the primary number next to the synthetic ground truth.

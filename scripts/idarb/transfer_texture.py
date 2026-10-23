@@ -350,6 +350,12 @@ def main():
     ap.add_argument(
         "--both_sides", action="store_true", help="texture every face, not only the seen side"
     )
+    ap.add_argument(
+        "--min_cos",
+        type=float,
+        default=0.0,
+        help="leave faces blank whose normal makes a cosine below this with the texture camera",
+    )
     ap.add_argument("--size", type=int, default=640, help="render size in pixels")
     ap.add_argument(
         "--albedo_image",
@@ -434,6 +440,11 @@ def main():
         textured = np.ones(len(Fd), dtype=bool)
     else:
         textured = visible_faces(Vd, Fd, tview)
+        if args.min_cos > 0:
+            # faces almost edge-on to the texture camera show the image as a streak and are the
+            # ones that mirror most; leave them blank like the unseen side
+            _, nz = face_shade(Vd, Fd, tview)
+            textured &= np.abs(nz) >= args.min_cos
     uvc = uv_d[Fd].copy()
     uvc[~textured] = blank_uv
     export_textured_obj(

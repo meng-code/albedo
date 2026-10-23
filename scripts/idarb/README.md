@@ -962,3 +962,82 @@ belongs. On the synthetic pairs `--k_prior 16` lifts the cat from 72.1 to 74.6 %
 99.4 → 100 %) and leaves the cow unchanged (58.5 → 58.2 %); on Labubu → camel it moves the face
 from the hump to the shoulder, because the prior fitted on the 33 mutual anchors is itself wrong
 there, so it is not a default.
+
+### Part-level matching (`part_anchors.py`, `refine_correspondence.py --parts`)
+
+SemAnCorr (Dong et al., RA-L 2026) matches parts before points. `part_anchors.py` clusters each
+mesh into parts (k-means on PCA-reduced features plus position), scores part pairs by the cosine
+of their mean features after each object's mean is removed, fits a rigid alignment jointly with
+a soft part assignment, keeps the confident one-to-one pairs and writes `part_anchors.npz`, the
+part similarity matrix (`parts.json`) and part-coloured point clouds. `refine_correspondence.py
+--parts <that npz>` then penalises candidates outside the matched source part (`--w_part`) and
+takes the data weight away from the vertices of a target part with no matched source part, so
+such a part follows its neighbours through the field (the rule for a hump the source does not
+have). On the Diff3F features the step is neutral to slightly negative on the synthetic pairs
+(all confident pairs, `--w_part 0.5`: cat 72.1 → 68.9 %, cow 58.5 → 59.2 % within 1 %), and on
+Labubu → camel the part similarities are all below 0.35 with confidences near zero, so the
+features cannot drive it yet; it is kept for the feature sets that can (see `docs/decisions.md`).
+
+### Against the mirrored texture: anchor filter, view-consistent ARAP, coarse-to-fine (2026-10-23)
+
+Where the mirrored patches come from was measured before anything was changed. On the synthetic
+pairs the mirrored screen area after refinement is about 1 %, so the 20–35 % on real pairs is
+made by real pairs: different individuals and poses, and features that cannot tell the left edge
+of a limb from its right edge (edge-on faces mirror 47 % of their area, camera-facing faces
+6.5 %, the posed human, the chairs, the stone bird and dragon → lizard 25–40 % even on front
+faces). Three options of `refine_correspondence.py` act on this (`docs/decisions.md`,
+2026-10-23, has the single-step numbers):
+
+- `--anchor_filter rigid:0.1` drops mutual anchors farther than 10 % of the diagonal from a
+  RANSAC similarity transform of all anchors (on real pairs 14–44 % of the anchors disagree with
+  such a transform, on synthetic pairs 0–1 %).
+- `--w_view 0.3` adds to every vertex's ARAP rotation fit a pair that carries the texture
+  camera's direction onto the relief's viewing axis: the side of the target the camera sees must
+  land on the side of the relief its camera saw, which is exactly what a mirrored patch violates.
+- `--coarse_to_fine 2 --coarse_factor 4` alternates the field with the choice of matches, the
+  smoothness falling from 16× to the final weight, every level predicting each vertex's source
+  position from the current field (the schedule of Jung et al. 2025's non-rigid ICP).
+
+Together they are the 09 setting (`outputs/diff3f/09_texture_view_consistent/`,
+`results/diff3f/features_diff3f_c2f3.csv`); the number of coarse-to-fine levels is the knob:
+
+    python scripts/idarb/eval_features.py --feature_dir outputs/diff3f/features \
+        --out_dir outputs/diff3f/09_texture_view_consistent \
+        --csv results/diff3f/features_diff3f_c2f3.csv --variants arap \
+        --refine_args "--coarse_to_fine 3 --coarse_factor 4 --w_view 0.3 --anchor_filter rigid:0.1"
+
+| ARAP field, means | within 2 % | within 5 % | relief used | median distortion | mirrored area | synthetic within 1 % |
+|---|---|---|---|---|---|---|
+| 16 same-category, 07 setting | 64.3 % | 96.6 % | 65 % | 2.18 | 23.7 % | 65.3 % |
+| same, 2 levels (`features_diff3f_c2f2.csv`) | 73.6 % | 98.7 % | 59 % | 2.32 | 11.6 % | 61.8 % |
+| **same, 3 levels (09)** | **80.1 %** | **99.2 %** | **56 %** | **2.23** | **9.1 %** | **60.4 %** |
+| same, 4 levels (`features_diff3f_c2f4.csv`) | 84.6 % | 99.6 % | 52 % | 2.18 | 6.8 % | 58.1 % |
+| 10 cross-category, 07 setting | 44.3 % | 89.3 % | 49 % | 2.31 | 39.0 % | |
+| cross, 2 levels | 60.4 % | 96.7 % | 41 % | 2.56 | 20.2 % | |
+| **cross, 3 levels (09)** | **72.1 %** | **98.2 %** | **37 %** | **2.45** | **14.1 %** | |
+| cross, 4 levels | 81.5 % | 99.1 % | 31 % | 2.31 | 8.8 % | |
+
+Every level smooths more: consistency and mirroring improve, the share of the relief used and
+the synthetic accuracy fall, and at four levels the map starts to collapse (31 % of the relief on
+the cross pairs; the Labubu's face vanishes from the camel instead of landing anywhere). Three
+levels is the recommended setting. The confidence gate on top (`--gate`,
+`features_diff3f_c2f3_gate.csv`) adds 0.4 / 4.2 points within 2 % for 0.4 / 2 points of relief
+used; not adopted. `--w_view 1` (`features_diff3f_view1_c2f.csv`, two levels) gains 3 points
+within 2 % but costs distortion (2.62 / 2.98) and relief used (56 / 38 %), so 0.3 is kept.
+`results/diff3f/view_consistent_before_after.png` shows eight pairs before and after: the
+posed human's legs lose the cape bleed, the chair's backrest becomes one continuous pattern,
+the stone bird's pattern stops swirling, and the Labubu's, the cat's and the panda's faces land
+on the man's face.
+
+`transfer_texture.py --min_cos c` leaves the faces blank whose normal makes a cosine below `c`
+with the texture camera (the edge-on faces that mirror most and show the image as a streak).
+It trims the mirrored area a little (posed human 19.7 → 17.7 % at 0.35, stone bird 25.1 →
+22.8 %) at the price of a visible grey rim along the silhouette, so it is off by default.
+
+Our own method, first version (`name_parts.py`, 2026-10-23): the parts of both meshes are given
+names by comparing each part's SigLIP2 image-text vector (pooled on the server through the
+model's attention head over the rendered views) with a vocabulary of part names, pairs of parts
+are scored by their vectors and by name agreement, and only confident one-to-one pairs are kept;
+the result is the `part_match.npz` that `refine_correspondence.py --parts` reads, so a target
+part with no counterpart on the relief (a hump) follows its neighbours. The server's part
+vectors are pending; the script is tested on a made-up joint space.
