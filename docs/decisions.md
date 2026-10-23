@@ -658,3 +658,13 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   (cat 67.7 → 59.3 % within 1 % with q 0.7), because there the prior improves every match.
   Variants without coarse-to-fine and with kept matches are being run on the server against the
   keypoints.
+- Six refinement variants without coarse-to-fine, run on the server against the keypoints
+  (`results/diff3f/kp_variants/`, branch kp-variants-tmp; 13 same-category pairs, PCK within
+  2 %): anchor filter + view term 37 %; + kept confident matches (q 0.7) 35 %; k 16 candidates
+  34 %; k 16 + kept 33 %; kept matches without ARAP 44 %; kept q 0.5 with field weight 10 41 %;
+  nearest neighbour 54 %. The variant that keeps the most keypoint accuracy (no ARAP) is the worst
+  on the texture-map measures (triangles stretched over tenfold 28 % against 12 %, mirrored area
+  18 % against 12 %), so the ARAP smoothing is what moves keypoints off their place, and with the
+  present features no setting of this chain keeps both. Conclusion: the lever is the features
+  (zoomed views running on the server) and, for the map, a formulation that keeps confident
+  matches as hard constraints rather than weights.

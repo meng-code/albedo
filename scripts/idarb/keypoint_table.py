@@ -56,6 +56,8 @@ def main():
         diag_s = float(np.linalg.norm(Vs.max(axis=0) - Vs.min(axis=0)))
         src_npz = os.path.join(args.feature_dir, f"{src}_partial.npz")
         dst_npz = os.path.join(args.feature_dir, f"{target}_full.npz")
+        if not (os.path.exists(src_npz) and os.path.exists(dst_npz)):
+            continue  # a feature set computed for part of the pairs only
         S = rp.load_features(src_npz)
         _, _, fd, _ = mesh_features(dst_npz, ef.TARGET_MESH[target])
         nn = S["idx"][nearest_in_features(fd, S["feat"])]
