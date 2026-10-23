@@ -596,3 +596,24 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   Diff3F clusters (PartField on the full mesh, SAM masks lifted to the relief), and name
   similarity from text embeddings rather than a hand-written group table. Not pursued tonight;
   the owner reviews the dataset phase A first.
+
+## 2026-10-23 — Supervisor: fine-scale matching ("eye to eye, nose to nose"); keypoint accuracy
+
+- The supervisor's reading of the Labubu → camel result (08:40): what is needed is fine-scale
+  matching, eye to eye and nose to nose, and the face features look wrong. New measure:
+  `scripts/idarb/eval_keypoints.py` maps every annotated target landmark through a correspondence
+  and reports its distance to the annotated source landmark as a fraction of the relief's
+  diagonal (mean, median, PCK within 2 / 5 / 10 %). On the three pairs that have landmarks
+  (`results/diff3f/landmarks/`, 10–11 each; `results/diff3f/keypoints/landmark_accuracy.csv`):
+  cat → lion mean error nearest neighbour 4.2 %, ARAP (07) 2.9 %, the 09 setting 3.5 %;
+  Labubu → camel 8.8 / 8.3 / 9.3 %; Labubu → lion 7.8 / 9.0 / 7.9 %. So at the keypoint level the
+  09 setting is not better than ARAP, and both are 3–9 % of the diagonal away from the landmarks:
+  the smooth-map improvements of the night did not move the fine-scale accuracy, which agrees with
+  the review's warning that span and mirror numbers measure smoothness.
+- Why the face features are coarse: Diff3F renders every view at 512 px and DINOv2 works on
+  14-px patches, so a camel's face in a full-body render covers 3 to 4 patches; the lifted features
+  are blurred at the scale of an eye. Planned test on the server (session to be reopened by the
+  owner): zoomed views (`--zoom 2`: Z×Z tiles per camera at Z times the focal length) and the
+  synthetic 1 % accuracy as the fine-scale measure.
+- The landmark set is being extended to the other pairs (eyes, nose, mouth, ear tips, paws) so
+  that keypoint accuracy becomes the primary number next to the synthetic ground truth.

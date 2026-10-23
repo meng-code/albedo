@@ -1,0 +1,10 @@
+pair,correspondence,n,mean,median,pck_2,pck_5,pck_10
+cat_lion,nearest_neighbour,11,0.0419,0.0387,0.2727,0.7273,1.0
+cat_lion,arap_07,11,0.0285,0.0262,0.4545,0.9091,1.0
+cat_lion,c2f3_09,11,0.0352,0.0287,0.3636,0.8182,1.0
+labubu_camel,nearest_neighbour,10,0.0884,0.0564,0.0,0.4,0.7
+labubu_camel,arap_07,10,0.0831,0.075,0.0,0.1,0.9
+labubu_camel,c2f3_09,10,0.0934,0.0913,0.0,0.2,0.5
+labubu_lion,nearest_neighbour,10,0.0779,0.0553,0.1,0.4,0.7
+labubu_lion,arap_07,10,0.09,0.0602,0.1,0.4,0.6
+labubu_lion,c2f3_09,10,0.0792,0.0517,0.3,0.5,0.7
