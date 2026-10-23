@@ -1,0 +1,65 @@
+{
+ "feature_dir": "outputs/diff3f/features",
+ "refine_args": [
+  "--field",
+  "0.1",
+  "--field_order",
+  "2",
+  "--arap",
+  "10",
+  "--arap_weight",
+  "3",
+  "--coarse_to_fine",
+  "3",
+  "--coarse_factor",
+  "4",
+  "--w_view",
+  "0.3",
+  "--anchor_filter",
+  "rigid:0.1",
+  "--keep_confident",
+  "0.7"
+ ],
+ "groups": {
+  "same/arap": {
+   "pairs": 16,
+   "textured_faces": 6518.3125,
+   "within_2pct": 0.7658,
+   "within_5pct": 0.9836,
+   "source_used": 0.6041,
+   "conformal_median": 2.4361,
+   "distortion_over_10": 0.1165,
+   "flipped": 0.1701,
+   "flipped_area": 0.0792,
+   "mutual_anchors": 98.9375,
+   "seconds": 70.2438
+  },
+  "cross/arap": {
+   "pairs": 10,
+   "textured_faces": 3797.8,
+   "within_2pct": 0.6928,
+   "within_5pct": 0.956,
+   "source_used": 0.4256,
+   "conformal_median": 2.4868,
+   "distortion_over_10": 0.1213,
+   "flipped": 0.1703,
+   "flipped_area": 0.0967,
+   "mutual_anchors": 26.8,
+   "seconds": 31.07
+  },
+  "synthetic/nn": {
+   "pairs": 2,
+   "mutual_anchors": 241.0,
+   "gt_acc_1pct": 0.4612,
+   "gt_acc_5pct": 0.9072,
+   "seconds": 7.0
+  },
+  "synthetic/arap": {
+   "pairs": 2,
+   "mutual_anchors": 241.0,
+   "gt_acc_1pct": 0.5472,
+   "gt_acc_5pct": 0.992,
+   "seconds": 7.0
+  }
+ }
+}
