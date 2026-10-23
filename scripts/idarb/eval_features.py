@@ -26,7 +26,8 @@ Usage (repository root, mesh environment):
         --out_dir outputs/diff3f/08_features_diff3f --csv results/diff3f/features_diff3f.csv
     python scripts/idarb/eval_features.py --feature_dir outputs/diff3f/features_meshfm \
         --out_dir outputs/diff3f/08_features_meshfm --csv results/diff3f/features_meshfm.csv
-    --groups same cross synthetic (default all), --pairs cat_lion cow (a subset)
+    --groups same cross synthetic (default all), --pairs cat_lion cow (a subset),
+    --jobs 8 --threads 2 on a machine with many cores (pairs run side by side)
 """
 
 import argparse
@@ -251,6 +252,13 @@ def main():
     )
     ap.add_argument("--threads", type=int, default=3, help="BLAS / OpenMP threads per step")
     ap.add_argument(
+        "--jobs",
+        type=int,
+        default=1,
+        help="pairs evaluated at the same time (each with --threads threads); the per-pair "
+        "solves are mostly single-threaded, so parallel pairs scale, more threads do not",
+    )
+    ap.add_argument(
         "--refine_args",
         default="",
         help="extra arguments for refine_correspondence.py, one string, for example "
@@ -266,12 +274,24 @@ def main():
     table = pair_table(args.groups)
     if args.pairs:
         table = [row for row in table if row[1] in args.pairs]
-    rows = []
-    for group, name, src, src_mesh, target, transform, extra in table:
+    def one(row):
+        group, name, src, src_mesh, target, transform, extra = row
         try:
-            rows += evaluate_pair(args, env, group, name, src, src_mesh, target, transform, extra)
+            return evaluate_pair(args, env, group, name, src, src_mesh, target, transform, extra)
         except (RuntimeError, FileNotFoundError, KeyError) as e:
             print(json.dumps(dict(group=group, pair=name, error=str(e)[:300])), flush=True)
+            return []
+
+    rows = []
+    if args.jobs > 1:
+        from concurrent.futures import ThreadPoolExecutor
+
+        with ThreadPoolExecutor(max_workers=args.jobs) as pool:
+            for result in pool.map(one, table):  # table order is kept
+                rows += result
+    else:
+        for row in table:
+            rows += one(row)
     os.makedirs(os.path.dirname(os.path.abspath(args.csv)) or ".", exist_ok=True)
     with open(args.csv, "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=CSV_FIELDS)
