@@ -678,3 +678,19 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   the present features the chain only trades fine accuracy against texture coherence; nothing in
   it recovers the nearest neighbour's 54 %. This curve is the argument for changing the features
   (zoomed views) or the input (a generated full mesh), not the smoothing.
+
+## 2026-10-23 — Zoomed views raise the fine-scale accuracy (server, first batch)
+
+- `diff3f_features.py --zoom 2` (server): for every camera, besides the full view, up to 2×2
+  tiles rendered with twice the focal length through the camera intrinsics (each tile equals a
+  512-px crop of a 1024-px render, same perspective), painted, lifted and averaged like the full
+  views; 300–370 views per mesh, 13–38 min per mesh (relief tiles are mostly foreground), 8.5 GB
+  GPU. Features in `results/diff3f/features_zoom2/` on the temporary branch.
+- Synthetic ground truth, nearest neighbour within 1 % (check_features.py): cat 38.8 → 49.5 %,
+  cow 30.4 → 37.2 %; through the pipeline (eval_features, anchor filter + view term) cat
+  70.6 → 75.8 %, cow 57.2 → 55.2 %. Keypoints on the four pairs in the batch (cat, cat → lion,
+  Labubu → camel, Labubu → lion; 38 keypoints): nearest neighbour PCK@2 % 24 → 34 %, after the
+  pipeline 22 → 34 %; the gain is consistent on the cat pairs and Labubu → lion, none on
+  Labubu → camel. A seed-1 rerun of the plain extraction (painting is random) and zoom 3 are
+  running as controls; zoom 2 for the remaining 15 keypoint meshes follows overnight.
+- First evidence that the feature resolution, not the matching, is what limits "eye to eye".
