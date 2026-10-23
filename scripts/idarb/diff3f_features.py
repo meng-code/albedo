@@ -29,6 +29,14 @@ get_features_per_vertex unchanged; with any of them a step-by-step copy of it ru
                               and write them to <out>_sam.npz.
   --siglip2                   also SigLIP2 features of the same views, written to <out>_siglip2.npz
                               (768-d; pre-head block outputs, not in the image-text joint space).
+--zoom Z (2026-10-23, for finer features: in a 512-px view a face covers only a few of DINOv2's
+14-px patches) adds, for every camera of the view set, Z x Z tiles: the same camera with the focal
+length times Z and the principal point moved, so each tile is a 512-px crop of a Z * 512-px render
+and up to Z tiles per image axis cover the mesh's projected bounding box. Every tile is painted
+and its features are lifted like a normal view, and all views are averaged as before (tiles with
+less than 1 % of foreground pixels are skipped). --num_views stays the base count; --zoom 2 paints
+about 3 to 3.7 times as many images (300 to 370 for 100 cameras), --zoom 3 about 4.3 to 5.4 times.
+It runs the step-by-step copy and needs only the diff3f environment.
 
 Usage (repository root, diff3f environment):
     python scripts/idarb/diff3f_features.py --mesh outputs/mesh_depth/cow/relief.ply --prompt cow \
@@ -140,29 +148,40 @@ def init_pipe(device, sd_repo, fp16_variant=True, cpu_offload=True):
     return pipe
 
 
-@torch.no_grad()
-def render_views(device, mesh, elevation, azimuth, H, W):
-    """Diff3F's run_rendering with the camera angles given explicitly (degrees). Returns the shaded
-    images, the normal-map images, the cameras and the depth buffers, like Diff3F's batch_render."""
-    from normal_shading import HardPhongNormalShader
-    from pytorch3d.renderer import (
-        MeshRenderer,
-        PerspectiveCameras,
-        PointLights,
-        look_at_view_transform,
-    )
-    from pytorch3d.renderer.mesh.rasterizer import MeshRasterizer, RasterizationSettings
-    from pytorch3d.renderer.mesh.shader import HardPhongShader
+def look_at(device, mesh, elevation, azimuth):
+    """Diff3F's camera placement: rotations and translations of cameras at 0.65 times the mesh's
+    bounding-box diagonal from its centre, looking at the centre, at the given angles (degrees)."""
+    from pytorch3d.renderer import look_at_view_transform
 
     bbox = mesh.get_bounding_boxes()
     bmin = bbox.min(dim=-1).values[0]
     bmax = bbox.max(dim=-1).values[0]
     center = ((bmin + bmax) / 2.0)[None]
     distance = torch.sqrt(((bmax - bmin) ** 2).sum()) * 0.65
-    rotation, translation = look_at_view_transform(
+    return look_at_view_transform(
         dist=distance, elev=elevation, azim=azimuth, device=device, at=center
     )
+
+
+@torch.no_grad()
+def render_views(device, mesh, elevation, azimuth, H, W):
+    """Diff3F's run_rendering with the camera angles given explicitly (degrees). Returns the shaded
+    images, the normal-map images, the cameras and the depth buffers, like Diff3F's batch_render."""
+    from pytorch3d.renderer import PerspectiveCameras
+
+    rotation, translation = look_at(device, mesh, elevation, azimuth)
     camera = PerspectiveCameras(R=rotation, T=translation, device=device)
+    return render_cameras(device, mesh, camera, H, W)
+
+
+@torch.no_grad()
+def render_cameras(device, mesh, camera, H, W):
+    """Render the mesh from a batch of PyTorch3D cameras as in Diff3F's run_rendering."""
+    from normal_shading import HardPhongNormalShader
+    from pytorch3d.renderer import MeshRenderer, PointLights
+    from pytorch3d.renderer.mesh.rasterizer import MeshRasterizer, RasterizationSettings
+    from pytorch3d.renderer.mesh.shader import HardPhongShader
+
     settings = RasterizationSettings(
         image_size=(H, W), blur_radius=0.0, faces_per_pixel=1, bin_size=0
     )
@@ -174,13 +193,64 @@ def render_views(device, mesh, elevation, azimuth, H, W):
         location=camera.get_camera_center(),
         device=device,
     )
-    batch = mesh.extend(len(elevation))
+    batch = mesh.extend(len(camera))
     shader = HardPhongShader(device=device, cameras=camera, lights=lights)
     images = MeshRenderer(rasterizer=rasterizer, shader=shader)(batch)
     normal_shader = HardPhongNormalShader(device=device, cameras=camera, lights=lights)
     normals = MeshRenderer(rasterizer=rasterizer, shader=normal_shader)(batch)
     depth = rasterizer(batch).zbuf
     return images, normals, camera, depth
+
+
+@torch.no_grad()
+def zoom_cameras(device, mesh, elevation, azimuth, zoom):
+    """--zoom: for every camera of the view set, a batch of at most 1 + zoom * zoom cameras, the
+    normal view followed by its tiles. A tile keeps the camera's position and orientation and
+    multiplies the focal length by zoom, so it sees 1/zoom of the field of view, and its principal
+    point is moved so that it shows the part of the normal view around the tile centre c (in the
+    normal view's normalised device coordinates): x_tile = zoom * (x - c), i.e. focal zoom and
+    principal point -zoom * c. This is exactly a 512 x 512 crop of a render at zoom * 512 px. Along
+    each image axis, as many tiles as needed to cover the bounding box of the mesh's projection
+    (clipped to the image) are spread evenly over it, at most zoom, so there are up to zoom x zoom
+    tiles and none repeats another (the box often spans less than two tiles in one direction)."""
+    from pytorch3d.renderer import PerspectiveCameras
+
+    rotation, translation = look_at(device, mesh, elevation, azimuth)
+    verts = mesh.verts_list()[0]
+    half = 1.0 / zoom
+    for b in range(len(rotation)):
+        base = PerspectiveCameras(R=rotation[b:b + 1], T=translation[b:b + 1], device=device)
+        xy = base.transform_points(verts)[:, :2].clamp(-1, 1)
+        lo, hi = xy.min(0).values.cpu(), xy.max(0).values.cpu()
+        axes = []
+        for a in range(2):
+            k = min(zoom, max(1, math.ceil(float(hi[a] - lo[a]) / (2 * half) - 1e-6)))
+            if k > 1:
+                axes.append(torch.linspace(float(lo[a]) + half, float(hi[a]) - half, k))
+            else:
+                axes.append(torch.tensor([float(lo[a] + hi[a]) / 2]))
+        cx, cy = torch.meshgrid(axes[0], axes[1], indexing="ij")
+        centres = torch.stack([cx.reshape(-1), cy.reshape(-1)], 1)
+        n = 1 + len(centres)
+        focal = torch.cat([torch.ones(1, 2), torch.full((n - 1, 2), float(zoom))])
+        principal = torch.cat([torch.zeros(1, 2), -zoom * centres])
+        yield PerspectiveCameras(
+            R=rotation[b:b + 1].expand(n, 3, 3),
+            T=translation[b:b + 1].expand(n, 3),
+            focal_length=focal.to(device),
+            principal_point=principal.to(device),
+            device=device,
+        )
+
+
+def sphere_angles(num_views):
+    """Diff3F's full-sphere view set (run_rendering): a steps x steps grid of elevation and
+    azimuth, both 0, 360 / steps, ..., 360 - 360 / steps degrees."""
+    steps = int(math.sqrt(num_views))
+    end = 360 - 360 / steps
+    elev = torch.linspace(start=0, end=end, steps=steps).repeat(steps)
+    azim = torch.repeat_interleave(torch.linspace(start=0, end=end, steps=steps), steps)
+    return elev, azim
 
 
 @torch.no_grad()
@@ -256,12 +326,15 @@ def siglip2_features(model, image, grid):
 
 def features_per_vertex(device, pipe, dino_model, mesh, prompt, mesh_vertices, num_views, H, W,
                         tolerance, appearance="painted", timestep=100, sam_generator=None,
-                        sam_tau=0.0, siglip_model=None, seed=0, save_views=None, part_labels=None):
+                        sam_tau=0.0, siglip_model=None, seed=0, save_views=None, part_labels=None,
+                        zoom=1, angles=None, min_tile_share=0.01):
     """Diff3F's get_features_per_vertex (third_party/Diff3F/diff3f.py), copied step by step with
     hooks: the image and UNet features per view (--appearance), SAM cleaning of the fused per-pixel
-    features (--sam_tau) and SigLIP2 features of the same views (--siglip2). Only used when one of
-    those options is set. Returns a dict of per-vertex features: "diff3f" always, "diff3f_sam" with
-    --sam_tau, "siglip2" with --siglip2, and the mean share of pixels SAM cleaning replaced.
+    features (--sam_tau), SigLIP2 features of the same views (--siglip2) and zoomed tiles (--zoom;
+    angles = (elevation, azimuth) of the view set, tiles with less than min_tile_share of
+    foreground pixels are skipped). Only used when one of those options is set. Returns a dict of
+    per-vertex features: "diff3f" always, "diff3f_sam" with --sam_tau, "siglip2" with --siglip2,
+    the mean share of pixels SAM cleaning replaced, and the numbers of views used and tiles skipped.
     save_views: a folder to store every view's image (view_XX.png, the painted image or the real
     render) and, with part_labels = (xyz, labels), a part-id mask (mask_XX.npy, int16, -1 for the
     background): each foreground pixel takes the label of the nearest labelled point."""
@@ -273,10 +346,11 @@ def features_per_vertex(device, pipe, dino_model, mesh, prompt, mesh_vertices, n
 
     maximal_distance = torch.cdist(mesh_vertices, mesh_vertices).max()
     ball_drop_radius = maximal_distance * tolerance
-    images, normals, camera, depth = d3f.batch_render(
-        device, mesh, mesh.verts_list()[0], num_views, H, W, True
-    )
-    normals, images, camera, depth = normals.cpu(), images.cpu(), camera.cpu(), depth.cpu()
+    if zoom > 1:  # rendered one camera (its view and tiles) at a time, to keep the memory small
+        chunks = (render_cameras(device, mesh, cams, H, W)
+                  for cams in zoom_cameras(device, mesh, angles[0], angles[1], zoom))
+    else:
+        chunks = [d3f.batch_render(device, mesh, mesh.verts_list()[0], num_views, H, W, True)]
     pixel_coords = d3f.arange_pixels((H, W), invert_y_axis=True)[0]
     pixel_coords[:, 0] = torch.flip(pixel_coords[:, 0], dims=[0])
     grid = d3f.arange_pixels((H, W), invert_y_axis=False)[0].to(device).reshape(1, H, W, 2).half()
@@ -289,54 +363,62 @@ def features_per_vertex(device, pipe, dino_model, mesh, prompt, mesh_vertices, n
     count = torch.zeros((len(mesh_vertices), 1)).half()
     gen = torch.Generator(device=device).manual_seed(seed)
     replaced = []
-    for idx in range(len(images)):
-        dp = depth[idx].flatten().unsqueeze(1)
-        xy_depth = torch.cat((pixel_coords, dp), dim=1)
-        indices = xy_depth[:, 2] != -1
-        xy_depth = xy_depth[indices]
-        world_coords = camera[idx].unproject_points(
-            xy_depth, world_coordinates=True, from_ndc=True
-        ).to(device)
-        render_img = (images[idx, :, :, :3].numpy() * 255).astype(np.uint8)
-        if appearance == "painted":
-            out = add_texture_to_render(
-                pipe, render_img, depth[idx, :, :, 0].unsqueeze(0).to(device), prompt,
-                normal_map_input=normals[idx], use_latent=False, num_images_per_prompt=1,
-                return_image=True,
-            )
-            unet_ft, view_img = out[0], out[1][0]
-        else:  # vertex_colors: the rendered real appearance itself
-            view_img = Image.fromarray(render_img)
-            unet_ft = real_image_unet_features(pipe, render_img, prompt, timestep, gen)
-        if save_views is not None:
-            view_img.convert("RGB").save(os.path.join(save_views, f"view_{idx:02d}.png"))
-            if part_labels is not None:
-                pxyz, plab = part_labels
-                lab = torch.full((H * W,), -1, dtype=torch.int16)
-                near = torch.cat([torch.cdist(world_coords[i:i + 4096].float(), pxyz).argmin(1)
-                                  for i in range(0, len(world_coords), 4096)])
-                lab[indices] = plab[near.cpu()]
-                np.save(os.path.join(save_views, f"mask_{idx:02d}.npy"), lab.reshape(H, W).numpy())
-        dino_ft = get_dino_features(device, dino_model, view_img, grid)
-        up = torch.nn.Upsample(size=(H, W), mode="bilinear")(unet_ft.unsqueeze(0)).to(device)
-        aligned = torch.nn.functional.grid_sample(up, grid, align_corners=False)
-        aligned = torch.nn.functional.normalize(aligned.reshape(1, up.size(1), -1), dim=1)
-        aligned = torch.hstack([aligned * 0.5, dino_ft * 0.5])
-        per_view = {"diff3f": aligned}
-        if "diff3f_sam" in acc:
-            per_view["diff3f_sam"], share = sam_clean(
-                aligned, np.asarray(view_img.convert("RGB")), sam_generator, sam_tau
-            )
-            replaced.append(share)
-        if "siglip2" in acc:
-            per_view["siglip2"] = siglip2_features(siglip_model, view_img, grid)
-        q = ball_query(world_coords.unsqueeze(0), mesh_vertices.unsqueeze(0), K=100,
-                       radius=ball_drop_radius, return_nn=False).idx[0].cpu()
-        mask = q != -1
-        count[q[mask]] += 1
-        for k, f in per_view.items():
-            per_pixel = f[0, :, indices].cpu()
-            acc[k][q[mask]] += per_pixel.repeat_interleave(mask.sum(dim=1), dim=1).T
+    view, skipped = 0, 0
+    for images, normals, camera, depth in chunks:
+        normals, images, camera, depth = normals.cpu(), images.cpu(), camera.cpu(), depth.cpu()
+        for idx in range(len(images)):
+            dp = depth[idx].flatten().unsqueeze(1)
+            xy_depth = torch.cat((pixel_coords, dp), dim=1)
+            indices = xy_depth[:, 2] != -1
+            if zoom > 1 and idx > 0 and int(indices.sum()) < min_tile_share * H * W:
+                skipped += 1  # a tile that is almost all background
+                continue
+            xy_depth = xy_depth[indices]
+            world_coords = camera[idx].unproject_points(
+                xy_depth, world_coordinates=True, from_ndc=True
+            ).to(device)
+            render_img = (images[idx, :, :, :3].numpy() * 255).astype(np.uint8)
+            if appearance == "painted":
+                out = add_texture_to_render(
+                    pipe, render_img, depth[idx, :, :, 0].unsqueeze(0).to(device), prompt,
+                    normal_map_input=normals[idx], use_latent=False, num_images_per_prompt=1,
+                    return_image=True,
+                )
+                unet_ft, view_img = out[0], out[1][0]
+            else:  # vertex_colors: the rendered real appearance itself
+                view_img = Image.fromarray(render_img)
+                unet_ft = real_image_unet_features(pipe, render_img, prompt, timestep, gen)
+            if save_views is not None:
+                view_img.convert("RGB").save(os.path.join(save_views, f"view_{view:02d}.png"))
+                if part_labels is not None:
+                    pxyz, plab = part_labels
+                    lab = torch.full((H * W,), -1, dtype=torch.int16)
+                    near = torch.cat([torch.cdist(world_coords[i:i + 4096].float(), pxyz).argmin(1)
+                                      for i in range(0, len(world_coords), 4096)])
+                    lab[indices] = plab[near.cpu()]
+                    np.save(os.path.join(save_views, f"mask_{view:02d}.npy"),
+                            lab.reshape(H, W).numpy())
+            view += 1
+            dino_ft = get_dino_features(device, dino_model, view_img, grid)
+            up = torch.nn.Upsample(size=(H, W), mode="bilinear")(unet_ft.unsqueeze(0)).to(device)
+            aligned = torch.nn.functional.grid_sample(up, grid, align_corners=False)
+            aligned = torch.nn.functional.normalize(aligned.reshape(1, up.size(1), -1), dim=1)
+            aligned = torch.hstack([aligned * 0.5, dino_ft * 0.5])
+            per_view = {"diff3f": aligned}
+            if "diff3f_sam" in acc:
+                per_view["diff3f_sam"], share = sam_clean(
+                    aligned, np.asarray(view_img.convert("RGB")), sam_generator, sam_tau
+                )
+                replaced.append(share)
+            if "siglip2" in acc:
+                per_view["siglip2"] = siglip2_features(siglip_model, view_img, grid)
+            q = ball_query(world_coords.unsqueeze(0), mesh_vertices.unsqueeze(0), K=100,
+                           radius=ball_drop_radius, return_nn=False).idx[0].cpu()
+            mask = q != -1
+            count[q[mask]] += 1
+            for k, f in per_view.items():
+                per_pixel = f[0, :, indices].cpu()
+                acc[k][q[mask]] += per_pixel.repeat_interleave(mask.sum(dim=1), dim=1).T
     filled = (count != 0)[:, 0]
     missing = ~filled
     print("Number of missing features: ", int(missing.sum()))
@@ -348,6 +430,7 @@ def features_per_vertex(device, pipe, dino_model, mesh, prompt, mesh_vertices, n
         if nearest is not None:
             ft[missing] = ft[filled][nearest]
     acc["sam_replaced_share"] = float(np.mean(replaced)) if replaced else None
+    acc["views_used"], acc["tiles_skipped"] = view, skipped
     return acc
 
 
@@ -421,6 +504,12 @@ def main():
         help="an .npz with xyz and labels (int part id per point) for the masks of --save_views",
     )
     ap.add_argument(
+        "--zoom",
+        type=int,
+        default=1,
+        help="Z > 1: per camera also Z x Z tiles at 1/Z of the field of view covering the mesh",
+    )
+    ap.add_argument(
         "--siglip2",
         action="store_true",
         help="also SigLIP2 features of the same views (timm " + SIGLIP2 + ")",
@@ -446,8 +535,10 @@ def main():
         raise SystemExit(f"{args.mesh} has no vertex colours, needed by --appearance vertex_colors")
     render_colors = colors if args.appearance == "vertex_colors" else None
     mesh = to_pytorch3d(verts, faces, device, render_colors)
+    angles = front_hemisphere_angles(args.num_views) if args.front_only else sphere_angles(
+        args.num_views)
     if args.front_only:
-        elev, azim = front_hemisphere_angles(args.num_views)
+        elev, azim = angles
 
         def batch_render(device, mesh, mesh_vertices, num_views, H, W, use_normal_map=False):
             return render_views(device, mesh, elev, azim, H, W)
@@ -469,8 +560,10 @@ def main():
     mesh_vertices = mesh.verts_list()[0][torch.as_tensor(idx, device=device)]
     sam_share = None
     extra = {}
+    torch.cuda.reset_peak_memory_stats()
+    views_used, tiles_skipped = num_views, 0
     upstream = args.appearance == "painted" and args.sam_tau <= 0 and not args.siglip2
-    if upstream and args.save_views is None:  # unchanged upstream path
+    if upstream and args.save_views is None and args.zoom == 1:  # unchanged upstream path
         feat = d3f.get_features_per_vertex(
             device=device,
             pipe=pipe,
@@ -504,9 +597,10 @@ def main():
             device, pipe, dino, mesh, args.prompt, mesh_vertices, num_views, 512, 512,
             args.tolerance, appearance=args.appearance, timestep=args.timestep,
             sam_generator=sam_gen, sam_tau=args.sam_tau, siglip_model=siglip, seed=args.seed,
-            save_views=args.save_views, part_labels=part_labels,
+            save_views=args.save_views, part_labels=part_labels, zoom=args.zoom, angles=angles,
         )
         feat, sam_share = acc["diff3f"], acc["sam_replaced_share"]
+        views_used, tiles_skipped = acc["views_used"], acc["tiles_skipped"]
         extra = {k: v for k, v in acc.items() if k in ("diff3f_sam", "siglip2")}
 
     def unit(f):
@@ -521,6 +615,9 @@ def main():
         mesh=args.mesh,
         prompt=args.prompt,
         num_views=num_views,
+        zoom=args.zoom,
+        views_used=views_used,
+        tiles_skipped=tiles_skipped,
         front_only=args.front_only,
         tolerance=args.tolerance,
         seed=args.seed,
@@ -533,6 +630,7 @@ def main():
         n_vertices=int(len(verts)),
         n_features=int(len(idx)),
         seconds=round(time.time() - t0, 1),
+        peak_gpu_mib=round(torch.cuda.max_memory_allocated() / 2 ** 20),
     )
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     # --out holds the Diff3F features (with --sam_tau or --siglip2 they are still the uncleaned
