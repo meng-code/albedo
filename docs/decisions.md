@@ -703,3 +703,18 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   38.4 / 53.3 %. Zoom 3 adds a little on the raw measure, nothing through the pipeline, at twice
   the cost (22–28 min per mesh): zoom 2 is the setting kept. A true noise estimate needs a
   different paint seed per run (a patch of that line); deferred.
+
+## 2026-10-24 — Zoom 2 on the whole keypoint benchmark: +9 points at the fine scale
+
+- Zoom-2 features now exist for the 23 meshes of the 15 annotated pairs (server,
+  `results/diff3f/features_zoom2/` on the temporary branch; reliefs 29–48 min, full meshes 16–20
+  min each). Keypoints, 13 same-category pairs, PCK within 2 / 5 / 10 % and mean error:
+  nearest neighbour zoom 1 54 / 76 / 89 %, 5.3 % → zoom 2 63 / 77 / 89 %, 4.8 %; after the
+  pipeline (anchor filter + view term + ARAP) 37 / 66 / 88 % → 43 / 69 / 87 %. No pair gets worse
+  at 2 % with the nearest neighbour, 6 of 13 gain; the two cross pairs 5 → 10 %. The texture
+  measures are unchanged (same-category within 2 % 71.1 → 71.6, within 5 % 98.3 → 98.0, mirrored
+  area 10.6 → 10.7 %), the synthetic cat gains and the cow is flat. Numbers in
+  `results/diff3f/kp_variants/` (server runs, branch kp-variants-tmp merged).
+- Decision: zoom 2 is the standard feature extraction from now on; the six meshes still at zoom 1
+  only (the chair pairs' meshes and the two depth-scaled synthetic cows) are queued. The pipeline
+  still loses 20 points of PCK@2 against the nearest neighbour; that is the next thing to change.
