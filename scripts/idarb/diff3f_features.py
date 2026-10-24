@@ -324,15 +324,51 @@ def siglip2_features(model, image, grid):
     return torch.nn.functional.normalize(f, dim=1)
 
 
+DINOV3 = "facebook/dinov3-vitb16-pretrain-lvd1689m"  # Hugging Face id, gated (DINOv3 License)
+
+
+class Dinov3Worker:
+    """--dino dinov3: DINOv3 ViT-B/16 in a separate process (scripts/idarb/dinov3_worker.py),
+    because DINOv3 needs transformers >= 4.56 and so torch >= 2.2, while this environment keeps
+    torch 2.1 for PyTorch3D. python is an interpreter that has both (the trellis2 environment)."""
+
+    def __init__(self, python):
+        worker = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dinov3_worker.py")
+        self.proc = subprocess.Popen([python, worker, "--model", DINOV3], stdin=subprocess.PIPE,
+                                     stdout=subprocess.PIPE)
+
+    def __call__(self, image):
+        """Patch tokens of one PIL image: a float16 n x n x 768 array."""
+        from dinov3_worker import recv_array, send_array
+
+        send_array(self.proc.stdin, np.asarray(image.convert("RGB")))
+        out = recv_array(self.proc.stdout)
+        if out is None:
+            raise RuntimeError("the DINOv3 worker stopped; see its messages above")
+        return out
+
+
+@torch.no_grad()
+def dinov3_features(device, worker, img, grid):
+    """Like Diff3F's get_dino_features with DINOv3: the worker resizes the image to 592 px, which
+    gives the same 37 x 37 patch grid as DINOv2 at 518 px with 14-px patches (DINOv3 uses 16-px
+    patches), and returns the last layer's normalised patch tokens; they are sampled at every
+    pixel and L2-normalised here exactly as for DINOv2. Returns [1, 768, H*W] in float16."""
+    f = torch.as_tensor(worker(img)).permute(2, 0, 1)[None].to(device)
+    f = torch.nn.functional.grid_sample(f, grid, align_corners=False).reshape(1, f.shape[1], -1)
+    return torch.nn.functional.normalize(f, dim=1)
+
+
 def features_per_vertex(device, pipe, dino_model, mesh, prompt, mesh_vertices, num_views, H, W,
                         tolerance, appearance="painted", timestep=100, sam_generator=None,
                         sam_tau=0.0, siglip_model=None, seed=0, save_views=None, part_labels=None,
-                        zoom=1, angles=None, min_tile_share=0.01):
+                        zoom=1, angles=None, min_tile_share=0.01, dino_fn=None):
     """Diff3F's get_features_per_vertex (third_party/Diff3F/diff3f.py), copied step by step with
     hooks: the image and UNet features per view (--appearance), SAM cleaning of the fused per-pixel
     features (--sam_tau), SigLIP2 features of the same views (--siglip2) and zoomed tiles (--zoom;
     angles = (elevation, azimuth) of the view set, tiles with less than min_tile_share of
-    foreground pixels are skipped). Only used when one of those options is set. Returns a dict of
+    foreground pixels are skipped) and DINOv3 instead of DINOv2 (dino_fn, --dino dinov3). Only
+    used when one of those options is set. Returns a dict of
     per-vertex features: "diff3f" always, "diff3f_sam" with --sam_tau, "siglip2" with --siglip2,
     the mean share of pixels SAM cleaning replaced, and the numbers of views used and tiles skipped.
     save_views: a folder to store every view's image (view_XX.png, the painted image or the real
@@ -343,6 +379,8 @@ def features_per_vertex(device, pipe, dino_model, mesh, prompt, mesh_vertices, n
     from dino import get_dino_features
     from PIL import Image
     from pytorch3d.ops import ball_query
+
+    dino_fn = dino_fn or get_dino_features
 
     maximal_distance = torch.cdist(mesh_vertices, mesh_vertices).max()
     ball_drop_radius = maximal_distance * tolerance
@@ -399,7 +437,7 @@ def features_per_vertex(device, pipe, dino_model, mesh, prompt, mesh_vertices, n
                     np.save(os.path.join(save_views, f"mask_{view:02d}.npy"),
                             lab.reshape(H, W).numpy())
             view += 1
-            dino_ft = get_dino_features(device, dino_model, view_img, grid)
+            dino_ft = dino_fn(device, dino_model, view_img, grid)
             up = torch.nn.Upsample(size=(H, W), mode="bilinear")(unet_ft.unsqueeze(0)).to(device)
             aligned = torch.nn.functional.grid_sample(up, grid, align_corners=False)
             aligned = torch.nn.functional.normalize(aligned.reshape(1, up.size(1), -1), dim=1)
@@ -510,6 +548,17 @@ def main():
         help="Z > 1: per camera also Z x Z tiles at 1/Z of the field of view covering the mesh",
     )
     ap.add_argument(
+        "--dino",
+        default="dinov2",
+        choices=["dinov2", "dinov3"],
+        help="image features fused with the UNet's: dinov2 (Diff3F) or dinov3 (" + DINOV3 + ")",
+    )
+    ap.add_argument(
+        "--dino3_python",
+        default=os.path.expanduser("~/miniconda3/envs/trellis2/bin/python"),
+        help="a Python with torch >= 2.2 and transformers >= 4.56 for --dino dinov3",
+    )
+    ap.add_argument(
         "--siglip2",
         action="store_true",
         help="also SigLIP2 features of the same views (timm " + SIGLIP2 + ")",
@@ -554,7 +603,7 @@ def main():
         fp16_variant=not args.no_fp16_variant,
         cpu_offload=not args.no_cpu_offload,
     )
-    dino = init_dino(device)
+    dino = init_dino(device) if args.dino == "dinov2" else Dinov3Worker(args.dino3_python)
     print(f"models ready after {time.time() - t0:.0f} s")
 
     mesh_vertices = mesh.verts_list()[0][torch.as_tensor(idx, device=device)]
@@ -562,7 +611,8 @@ def main():
     extra = {}
     torch.cuda.reset_peak_memory_stats()
     views_used, tiles_skipped = num_views, 0
-    upstream = args.appearance == "painted" and args.sam_tau <= 0 and not args.siglip2
+    upstream = (args.appearance == "painted" and args.sam_tau <= 0 and not args.siglip2
+                and args.dino == "dinov2")
     if upstream and args.save_views is None and args.zoom == 1:  # unchanged upstream path
         feat = d3f.get_features_per_vertex(
             device=device,
@@ -598,6 +648,7 @@ def main():
             args.tolerance, appearance=args.appearance, timestep=args.timestep,
             sam_generator=sam_gen, sam_tau=args.sam_tau, siglip_model=siglip, seed=args.seed,
             save_views=args.save_views, part_labels=part_labels, zoom=args.zoom, angles=angles,
+            dino_fn=dinov3_features if args.dino == "dinov3" else None,
         )
         feat, sam_share = acc["diff3f"], acc["sam_replaced_share"]
         views_used, tiles_skipped = acc["views_used"], acc["tiles_skipped"]
@@ -627,6 +678,7 @@ def main():
         sam_tau=args.sam_tau,
         sam_replaced_share=sam_share,
         siglip2=SIGLIP2 if args.siglip2 else None,
+        dino="dinov2_vitb14" if args.dino == "dinov2" else DINOV3,
         n_vertices=int(len(verts)),
         n_features=int(len(idx)),
         seconds=round(time.time() - t0, 1),
