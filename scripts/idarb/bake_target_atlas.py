@@ -73,7 +73,7 @@ def dilate_filled(tex, filled, passes=4):
     out = tex.copy()
     mask = filled.copy()
     for _ in range(passes):
-        grown = ndimage.binary_dilation(mask)
+        grown = ndimage.binary_dilation(mask, structure=np.ones((3, 3), dtype=bool))
         ring = grown & ~mask
         if not ring.any():
             break
