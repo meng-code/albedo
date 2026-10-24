@@ -166,3 +166,32 @@ def test_arap_view_term_keeps_an_exact_rigid_map():
     # a view pair pointing the wrong way must pull the field off the exact solution
     P = rc.arap_field(Vd, F, S, w, P0, lam=3.0, iters=20, view=-view, w_view=5.0)
     assert np.linalg.norm(P - S, axis=1).max() > 1e-2
+
+
+def test_hard_constraints_are_met_exactly_by_both_fields():
+    rng = np.random.default_rng(6)
+    n = 60
+    Vd = np.stack([np.linspace(0, 1, n), np.zeros(n), np.zeros(n)], axis=1)
+    Fd = np.array([[i, i + 1, (i + 2) % n] for i in range(n - 2)])
+    S = Vd + 0.2 * rng.normal(size=(n, 3))
+    w = np.full(n, 0.5)
+    mask = np.zeros(n, dtype=bool)
+    mask[::7] = True
+    values = Vd + [0.0, 1.0, 0.0]  # pinned vertices sit on a shifted copy of the strip
+    P = rc.smooth_field(Vd, Fd, S, w, lam=1.0, hard=(mask, values))
+    assert np.allclose(P[mask], values[mask])
+    assert np.linalg.norm(P[~mask] - S[~mask], axis=1).max() > 0.0
+    P2 = rc.arap_field(Vd, Fd, S, w, P, lam=1.0, iters=3, hard=(mask, values))
+    assert np.allclose(P2[mask], values[mask])
+    # without constraints the field does not pass through those points
+    P3 = rc.smooth_field(Vd, Fd, S, w, lam=1.0)
+    assert not np.allclose(P3[mask], values[mask])
+
+
+def test_rematch_within_picks_the_most_similar_near_candidate():
+    P = np.zeros((2, 3))
+    cand_xyz = np.array([[[0.1, 0, 0], [0.5, 0, 0], [0.02, 0, 0]],
+                         [[0.9, 0, 0], [0.8, 0, 0], [0.7, 0, 0]]])
+    sims = np.array([[0.9, 0.95, 0.8], [0.9, 0.9, 0.9]])
+    best = rc.rematch_within(P, cand_xyz, sims, radius=0.2)
+    assert best.tolist() == [0, -1]  # the 0.95 candidate is too far; nothing near for vertex 2

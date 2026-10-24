@@ -378,7 +378,35 @@ def gate(w, sim, off_prior, Vd, anchors, sim_quantile=0.2, prior_mult=2.0, ancho
     return w, bad
 
 
-def smooth_field(Vd, Fd, S, w, lam=1.0, order=1):
+def solve_fixed(M, rhs, hard=None):
+    """Solve M P = rhs (M sparse, rhs (n,3)); with hard = (mask, values) the masked rows take the
+    given values exactly (Dirichlet constraints) and only the free rows are solved, with the
+    fixed ones moved to the right-hand side."""
+    if hard is None or not hard[0].any():
+        return np.asarray(spsolve(M.tocsc(), rhs))
+    mask, values = hard
+    free = ~mask
+    M = M.tocsr()
+    Mff = M[free][:, free]
+    Mfh = M[free][:, mask]
+    P = np.zeros_like(rhs, dtype=np.float64)
+    P[mask] = values[mask]
+    P[free] = np.asarray(spsolve(Mff.tocsc(), rhs[free] - Mfh @ values[mask]))
+    return P
+
+
+def rematch_within(P, cand_xyz, sims, radius):
+    """For every vertex, the most similar candidate (cand_xyz (n,k,3), sims (n,k)) within
+    `radius` of its field position P (n,3); -1 where no candidate is that close."""
+    d = np.linalg.norm(cand_xyz - P[:, None, :], axis=2)
+    allowed = d < radius
+    masked = np.where(allowed, sims, -np.inf)
+    best = masked.argmax(axis=1)
+    best[~allowed.any(axis=1)] = -1
+    return best
+
+
+def smooth_field(Vd, Fd, S, w, lam=1.0, order=1, hard=None):
     """A source-space position per target vertex that follows the matched positions S (n,3) where
     the confidence w (n,) is high and varies smoothly along the target surface elsewhere. Minimises
     sum_i w_i |P_i - S_i|^2 + lam * sum_edges |P_i - P_j|^2 (order 1, the Dirichlet energy, solved
@@ -394,12 +422,12 @@ def smooth_field(Vd, Fd, S, w, lam=1.0, order=1):
     if order == 2:
         L = L.T @ L
     W = sp.diags(np.asarray(w, dtype=np.float64))
-    P = spsolve((W + lam * L).tocsc(), W @ np.asarray(S, dtype=np.float64))
-    return np.asarray(P)
+    return solve_fixed(W + lam * L, W @ np.asarray(S, dtype=np.float64), hard)
 
 
 def arap_field(
-    Vd, Fd, S, w, P0, lam=1.0, iters=5, scale_range=(0.3, 3.0), view=None, w_view=0.0
+    Vd, Fd, S, w, P0, lam=1.0, iters=5, scale_range=(0.3, 3.0), view=None, w_view=0.0,
+    hard=None,
 ):
     """As-rigid-as-possible field: like smooth_field, but the smoothness term asks every vertex's
     one-ring to move by a similarity transform (rotation and scale, never a reflection) instead of
@@ -412,7 +440,8 @@ def arap_field(
     relief's own viewing axis (+z): the side of the target the texture camera sees must land on
     the side of the relief its camera saw, which rules out the rotations that mirror the
     texture (a limb turned about its own axis). The pair is weighted by w_view times the
-    one-ring's squared edge length, so it is comparable to the edges."""
+    one-ring's squared edge length, so it is comparable to the edges. hard = (mask, values)
+    pins the masked vertices to the given positions (Dirichlet constraints)."""
     n = len(Vd)
     i = np.concatenate([Fd[:, 0], Fd[:, 1], Fd[:, 2], Fd[:, 1], Fd[:, 2], Fd[:, 0]])
     j = np.concatenate([Fd[:, 1], Fd[:, 2], Fd[:, 0], Fd[:, 0], Fd[:, 1], Fd[:, 2]])
@@ -456,7 +485,7 @@ def arap_field(
         d = np.einsum("eab,eb->ea", 0.5 * (T[ei] + T[ej]), dx)  # M_ij (x_j - x_i)
         B = np.zeros((n, 3))
         np.add.at(B, ei, -d)
-        P = np.asarray(spsolve(M, W @ S + lam * B))
+        P = solve_fixed(M, W @ S + lam * B, hard)
     return P
 
 
@@ -617,6 +646,28 @@ def main():
     )
     ap.add_argument("--keep_mutual_dist", type=float, default=0.05, help="soft mutual test")
     ap.add_argument("--keep_weight", type=float, default=3.0, help="field weight of kept matches")
+    ap.add_argument(
+        "--hard_confident",
+        type=float,
+        default=0.0,
+        help="pin the nearest-neighbour match of the confident vertices (similarity above this "
+        "quantile, soft mutual test) as hard constraints of the final field (0: off)",
+    )
+    ap.add_argument(
+        "--hard_radius",
+        type=float,
+        default=0.0,
+        help="with --hard_confident: pin only the confident matches within this fraction of the "
+        "source diagonal of a first, soft solution of the field (0: all confident matches)",
+    )
+    ap.add_argument(
+        "--final_rematch",
+        type=float,
+        default=0.0,
+        help="after the final field, give every vertex its most similar candidate within this "
+        "fraction of the source diagonal of its field position (the field position where none is "
+        "that close) and solve the field once more (0: off)",
+    )
     ap.add_argument(
         "--view_from_anchors",
         action="store_true",
@@ -842,11 +893,52 @@ def main():
             stats["gated_fraction"] = round(float(gated.mean()), 4)
             extra["gated"] = gated
         P = smooth_field(Vd, Fd, S, w, args.field, args.field_order)
+        lam = args.arap_weight if args.arap_weight is not None else args.field
         if args.arap:
-            lam = args.arap_weight if args.arap_weight is not None else args.field
             P = arap_field(
                 Vd, Fd, S, w, P, lam, args.arap, view=args.target_view, w_view=args.w_view
             )
+        diag_src = float(np.linalg.norm(src["xyz"].max(axis=0) - src["xyz"].min(axis=0)))
+        hard = None
+        if args.hard_confident > 0:
+            # the trusted nearest neighbours become Dirichlet constraints of the field: the
+            # map passes through them exactly instead of averaging them away
+            h_mask, h_nn = confident_matches(
+                fd, src["feat"], Vd, src["xyz"], args.hard_confident, args.keep_mutual_dist
+            )
+            h_val = src["xyz"][h_nn].astype(np.float64)
+            if args.hard_radius > 0:
+                h_mask &= np.linalg.norm(h_val - P, axis=1) < args.hard_radius * diag_src
+            if lm is not None:
+                h_mask[t_lm] = False  # landmarks keep their own (high) data weight
+            hard = (h_mask, h_val)
+            stats["hard_fraction"] = round(float(h_mask.mean()), 4)
+            P = smooth_field(Vd, Fd, S, w, args.field, args.field_order, hard=hard)
+            if args.arap:
+                P = arap_field(
+                    Vd, Fd, S, w, P, lam, args.arap, view=args.target_view,
+                    w_view=args.w_view, hard=hard,
+                )
+        if args.final_rematch > 0:
+            # a last discrete choice near the field: the most similar candidate within the
+            # radius replaces the matched position (the field itself where there is none), the
+            # replaced vertices get the kept-match weight, and the field is solved once more
+            cand, sims = topk_candidates(fd, src["feat"], args.k)
+            best = rematch_within(P, src["xyz"][cand], sims, args.final_rematch * diag_src)
+            has = best >= 0
+            S2 = P.copy()
+            S2[has] = src["xyz"][cand[np.arange(len(Vd)), np.maximum(best, 0)]][has]
+            w2 = w.copy()
+            w2[has] = np.maximum(w2[has], args.keep_weight)
+            if mutual is not None:
+                S2[cKDTree(Vd).query(mutual[0])[1]] = mutual[1]
+            stats["rematch_fraction"] = round(float(has.mean()), 4)
+            P = smooth_field(Vd, Fd, S2, w2, args.field, args.field_order, hard=hard)
+            if args.arap:
+                P = arap_field(
+                    Vd, Fd, S2, w2, P, lam, args.arap, view=args.target_view,
+                    w_view=args.w_view, hard=hard,
+                )
         if args.field_iters and args.target_view is not None:
             # flipped or over-stretched triangles: take the data weight away from their vertices
             # (and the ring around them) and let the field, rigid if --arap, fill them in from
