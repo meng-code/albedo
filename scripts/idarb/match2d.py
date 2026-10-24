@@ -50,6 +50,36 @@ def albedo_image(Vs, Cs):
     return image, vert
 
 
+def square_crop(image, mask, margin=0.08, fill=255):
+    """The image cropped to the mask's bounding box, padded to a square with `fill` and a margin
+    on every side, so that the object fills the crop the same way in the photo and in the
+    render. Returns the crop and its box (y0, x0, side): crop pixel (py, px) is image pixel
+    (y0 + py, x0 + px)."""
+    H, W = image.shape[:2]
+    rows, cols = np.nonzero(mask)
+    if len(rows) == 0:
+        return image, (0, 0, max(H, W))
+    y0, y1 = int(rows.min()), int(rows.max()) + 1
+    x0, x1 = int(cols.min()), int(cols.max()) + 1
+    side = int(np.ceil(max(y1 - y0, x1 - x0) * (1.0 + 2.0 * margin)))
+    cy, cx = (y0 + y1) // 2, (x0 + x1) // 2
+    oy, ox = cy - side // 2, cx - side // 2
+    out = np.full((side, side) + image.shape[2:], fill, dtype=image.dtype)
+    ys0, xs0 = max(oy, 0), max(ox, 0)
+    ys1, xs1 = min(oy + side, H), min(ox + side, W)
+    out[ys0 - oy:ys1 - oy, xs0 - ox:xs1 - ox] = image[ys0:ys1, xs0:xs1]
+    return out, (oy, ox, side)
+
+
+def cell_pixels(grid, box):
+    """Image-pixel coordinates (rows, cols) of the centres of a feature grid laid over a crop."""
+    h, w = grid
+    oy, ox, side = box
+    rows = oy + (np.arange(h) + 0.5) * side / h
+    cols = ox + (np.arange(w) + 0.5) * side / w
+    return rows, cols
+
+
 def turned_views(view, turn=25.0, elev=0.0, up=(0.0, 1.0, 0.0)):
     """The view itself, then turned left and right about the up axis by `turn` degrees and, with
     elev > 0, up and down about the screen-right axis."""
@@ -175,15 +205,17 @@ def match_grids(fp, mp, fr, mr, temperature=0.05):
     return np.stack([rr, rc], axis=1), photo, sim[np.arange(len(rr)), best], mutual
 
 
-def lift_matches(render_rc, photo_yx, grid_render, grid_photo, fid, w0, w1, Vd, Fd, vert,
-                 image_shape, tree_d=None):
+def lift_matches(render_rc, photo_yx, grid_render, box_render, grid_photo, box_photo, fid, w0,
+                 w1, Vd, Fd, vert, tree_d=None):
     """Render cells -> target vertices (through the face and barycentric buffers at the cell
-    centre) and photo positions -> relief vertices (the nearest pixel that holds one). Returns
-    t_idx, s_idx (relief vertex) and a validity mask."""
+    centre) and photo positions -> relief vertices (the nearest pixel that holds one); both
+    grids lie over square crops given by their boxes (see square_crop). Returns t_idx, s_idx
+    (relief vertex) and a validity mask."""
     size = fid.shape[0]
     hr, wr = grid_render
-    py = ((render_rc[:, 0] + 0.5) * size / hr).astype(np.int64).clip(0, size - 1)
-    px = ((render_rc[:, 1] + 0.5) * size / wr).astype(np.int64).clip(0, size - 1)
+    oy, ox, side = box_render
+    py = (oy + (render_rc[:, 0] + 0.5) * side / hr).astype(np.int64).clip(0, size - 1)
+    px = (ox + (render_rc[:, 1] + 0.5) * side / wr).astype(np.int64).clip(0, size - 1)
     k = fid[py, px]
     ok = k >= 0
     kk = np.maximum(k, 0)
@@ -192,15 +224,15 @@ def lift_matches(render_rc, photo_yx, grid_render, grid_photo, fid, w0, w1, Vd, 
            + (1 - a - b)[:, None] * Vd[Fd[kk, 2]])
     tree_d = tree_d or cKDTree(Vd)
     t_idx = tree_d.query(pts)[1]
-    H, W = image_shape
     hp, wp = grid_photo
-    qy = (photo_yx[:, 0] * H / hp).clip(0, H - 1)
-    qx = (photo_yx[:, 1] * W / wp).clip(0, W - 1)
+    oy, ox, side = box_photo
+    qy = oy + photo_yx[:, 0] * side / hp
+    qx = ox + photo_yx[:, 1] * side / wp
     rows, cols = np.nonzero(vert >= 0)
     tree_p = cKDTree(np.stack([rows, cols], axis=1))
     d, j = tree_p.query(np.stack([qy, qx], axis=1))
     s_idx = vert[rows[j], cols[j]]
-    ok &= d <= max(H / hp, W / wp)  # within one cell of a relief pixel
+    ok &= d <= side / min(hp, wp)  # within one cell of a relief pixel
     return t_idx, s_idx, ok
 
 
@@ -235,7 +267,9 @@ def main():
     ap.add_argument("--resolution", type=int, default=518, help="model input size")
     ap.add_argument("--size", type=int, default=1024, help="render size")
     ap.add_argument("--device", default="cuda")
-    ap.add_argument("--mutual_only", action="store_true", help="keep mutual matches only")
+    ap.add_argument("--include_nonmutual", action="store_true",
+                    help="keep every match, not only the mutual ones")
+    ap.add_argument("--margin", type=float, default=0.08, help="crop margin around the object")
     ap.add_argument("--min_sim", type=float, default=0.0)
     ap.add_argument("--landmarks", type=int, default=400, help="matches in --landmarks_out")
     ap.add_argument("--landmarks_out")
@@ -262,13 +296,18 @@ def main():
         sys.exit("give --view or --view_from")
 
     photo, vert = albedo_image(Vs, Cs)
-    extract = make_extractor(args.extractor, args.device, args.resolution)
-    fp = extract(photo)
-    hp, wp = fp.shape[:2]
+    fg = vert >= 0
+    photo = photo.copy()
+    photo[~fg] = 255  # the background is white, like the renders', not the texture's fill
     H, W = photo.shape[:2]
+    crop_p, box_p = square_crop(photo, fg, args.margin)
+    extract = make_extractor(args.extractor, args.device, args.resolution)
+    fp = extract(crop_p)
+    hp, wp = fp.shape[:2]
     # photo cells on the object: the cell centre's pixel holds a relief vertex
-    cy = ((np.arange(hp) + 0.5) * H / hp).astype(np.int64)
-    cx = ((np.arange(wp) + 0.5) * W / wp).astype(np.int64)
+    cy, cx = cell_pixels((hp, wp), box_p)
+    cy = cy.astype(np.int64).clip(0, H - 1)
+    cx = cx.astype(np.int64).clip(0, W - 1)
     mp = vert[cy][:, cx] >= 0
 
     tree_d = cKDTree(Vd)
@@ -278,16 +317,18 @@ def main():
     for vi, v in enumerate(views):
         img, fid, w0, w1 = render_target(Vd, Fd, v, args.size, colors)
         renders.append(img)
-        fr = extract(img)
+        crop_r, box_r = square_crop(img, fid >= 0, args.margin)
+        fr = extract(crop_r)
         hr, wr = fr.shape[:2]
-        ry = ((np.arange(hr) + 0.5) * args.size / hr).astype(np.int64)
-        rx = ((np.arange(wr) + 0.5) * args.size / wr).astype(np.int64)
+        ry, rx = cell_pixels((hr, wr), box_r)
+        ry = ry.astype(np.int64).clip(0, args.size - 1)
+        rx = rx.astype(np.int64).clip(0, args.size - 1)
         mr = fid[ry][:, rx] >= 0
         rc, yx, sim, mutual = match_grids(fp, mp, fr, mr)
-        t_idx, s_idx, ok = lift_matches(rc, yx, (hr, wr), (hp, wp), fid, w0, w1, Vd, Fd, vert,
-                                        (H, W), tree_d)
+        t_idx, s_idx, ok = lift_matches(rc, yx, (hr, wr), box_r, (hp, wp), box_p, fid, w0, w1,
+                                        Vd, Fd, vert, tree_d)
         keep = ok & (sim >= args.min_sim)
-        if args.mutual_only:
+        if not args.include_nonmutual:
             keep &= mutual
         all_t.append(t_idx[keep])
         all_s.append(s_idx[keep])

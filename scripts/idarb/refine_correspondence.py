@@ -660,6 +660,9 @@ def main():
         help="with --hard_confident: pin only the confident matches within this fraction of the "
         "source diagonal of a first, soft solution of the field (0: all confident matches)",
     )
+    ap.add_argument("--rematch_rounds", type=int, default=1, help="repeat --final_rematch")
+    ap.add_argument("--rematch_weight", type=float, default=None,
+                    help="field weight of the re-matched vertices (default --keep_weight)")
     ap.add_argument(
         "--final_rematch",
         type=float,
@@ -922,23 +925,26 @@ def main():
         if args.final_rematch > 0:
             # a last discrete choice near the field: the most similar candidate within the
             # radius replaces the matched position (the field itself where there is none), the
-            # replaced vertices get the kept-match weight, and the field is solved once more
+            # replaced vertices get the re-match weight, and the field is solved once more;
+            # repeated --rematch_rounds times
             cand, sims = topk_candidates(fd, src["feat"], args.k)
-            best = rematch_within(P, src["xyz"][cand], sims, args.final_rematch * diag_src)
-            has = best >= 0
-            S2 = P.copy()
-            S2[has] = src["xyz"][cand[np.arange(len(Vd)), np.maximum(best, 0)]][has]
-            w2 = w.copy()
-            w2[has] = np.maximum(w2[has], args.keep_weight)
-            if mutual is not None:
-                S2[cKDTree(Vd).query(mutual[0])[1]] = mutual[1]
-            stats["rematch_fraction"] = round(float(has.mean()), 4)
-            P = smooth_field(Vd, Fd, S2, w2, args.field, args.field_order, hard=hard)
-            if args.arap:
-                P = arap_field(
-                    Vd, Fd, S2, w2, P, lam, args.arap, view=args.target_view,
-                    w_view=args.w_view, hard=hard,
-                )
+            w_re = args.rematch_weight if args.rematch_weight is not None else args.keep_weight
+            for _ in range(max(args.rematch_rounds, 1)):
+                best = rematch_within(P, src["xyz"][cand], sims, args.final_rematch * diag_src)
+                has = best >= 0
+                S2 = P.copy()
+                S2[has] = src["xyz"][cand[np.arange(len(Vd)), np.maximum(best, 0)]][has]
+                w2 = w.copy()
+                w2[has] = np.maximum(w2[has], w_re)
+                if mutual is not None:
+                    S2[cKDTree(Vd).query(mutual[0])[1]] = mutual[1]
+                stats["rematch_fraction"] = round(float(has.mean()), 4)
+                P = smooth_field(Vd, Fd, S2, w2, args.field, args.field_order, hard=hard)
+                if args.arap:
+                    P = arap_field(
+                        Vd, Fd, S2, w2, P, lam, args.arap, view=args.target_view,
+                        w_view=args.w_view, hard=hard,
+                    )
         if args.field_iters and args.target_view is not None:
             # flipped or over-stretched triangles: take the data weight away from their vertices
             # (and the ring around them) and let the field, rigid if --arap, fill them in from

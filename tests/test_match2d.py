@@ -37,7 +37,8 @@ def test_lift_matches_hits_vertices_and_relief_pixels():
     vert[1:3, 1:3] = np.arange(4).reshape(2, 2)
     rc = np.array([[1, 0], [1, 1]])  # render cells on a 2x2 grid of the 64-px render
     yx = np.array([[1.2, 1.2], [2.4, 2.4]])  # photo positions on a 4x4 grid
-    t_idx, s_idx, ok = m2.lift_matches(rc, yx, (2, 2), (4, 4), fid, w0, w1, Vd, Fd, vert, (4, 4))
+    t_idx, s_idx, ok = m2.lift_matches(rc, yx, (2, 2), (0, 0, 64), (4, 4), (0, 0, 4), fid, w0, w1,
+                                       Vd, Fd, vert)
     assert ok.all() and set(t_idx.tolist()) <= {0, 1, 2}
     assert s_idx.tolist() == [0, 3]
 
@@ -49,3 +50,18 @@ def test_albedo_image_maps_pixels_to_vertices():
     image, vert = m2.albedo_image(Vs, Cs)
     assert image.shape == (3, 5, 3) and (vert >= 0).all()
     assert vert[0, 0] == 0 and vert[2, 4] == 14
+
+
+def test_square_crop_centres_the_object_and_keeps_the_offset():
+    image = np.zeros((20, 30, 3), dtype=np.uint8)
+    mask = np.zeros((20, 30), dtype=bool)
+    mask[5:9, 10:20] = True  # a 4 x 10 object
+    image[mask] = 7
+    crop, (oy, ox, side) = m2.square_crop(image, mask, margin=0.1, fill=255)
+    assert crop.shape == (side, side, 3) and side == int(np.ceil(10 * 1.2))
+    assert (crop == 7).any(axis=2).sum() == 40  # every object pixel is in the crop
+    ys, xs = np.nonzero((crop == 7).any(axis=2))
+    assert np.array_equal(np.unique(ys + oy), np.arange(5, 9))
+    assert np.array_equal(np.unique(xs + ox), np.arange(10, 20))
+    rows, cols = m2.cell_pixels((3, 3), (oy, ox, side))
+    assert np.allclose(rows, oy + (np.arange(3) + 0.5) * side / 3)

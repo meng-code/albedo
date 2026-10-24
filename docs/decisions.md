@@ -940,3 +940,30 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   runs on the laptop); the 2D route is designed next. The server queue already running
   tonight (paint baselines, DINOv3 and DistillDIFT five-mesh tests, front-only on the laptop)
   is left to finish since its GPU time is otherwise idle.
+
+## 2026-10-25 — Hard constraints and re-match (sweep 1); the 2D route's first run
+
+- Sweep 1 (Windows laptop, zoom-2 features, keypoint-oriented setting with the anchor camera,
+  all 28 pairs; `results/diff3f/hard_sweep/`): keypoints on the 13 same-category pairs, PCK@2
+  (3D / image plane): nearest neighbour 63 / 64 %; the chain without the new options 43 %;
+  hard constraints alone (`--hard_confident 0.5–0.7`, with or without `--hard_radius`)
+  48–49 / 49–50 %; `--final_rematch 0.02` 49 %; `--final_rematch 0.05` 54 / 58 % (the best for
+  keypoints; paired against the nearest neighbour −8.7 points [−16.5, −2.5], 8 losses, 1 win,
+  6 ties, sign test p 0.039, against −17.7 for the old chain); with three coarse-to-fine levels
+  plus hard constraints plus re-match 0.02 (`c2f_h7r5_rm2`) 50 % with the best texture numbers
+  so far (16 same-category pairs: within 2 % 73.6 % against 71.6 %, mirrored area 9.5 % against
+  10.7 %; cross 68.2 % / 9.8 %). So the second review's reading holds in part: pinning and
+  re-matching recover about half of the gap to the nearest neighbour without losing texture
+  coherence; the hard set alone (23–34 % of the vertices) is not enough, the re-match near the
+  field is what helps, and 5 % is the useful radius. Synthetic ground truth within 1 %:
+  re-match 0.02 57.3 % (best), the others 52–56 %. Sweep 2 (larger radii, several rounds, a
+  higher re-match weight, no-ARAP and coarse-to-fine combinations) queued.
+- The 2D route, first run (`match2d.py`, DINOv2 ViT-B/14 at 518 px on the CPU, 13–20 s per
+  pair, three views, all matches kept; `results/diff3f/match2d/`): PCK@2 23 % (image plane
+  25 %), far below both the nearest neighbour and the chain. The previews show two faults of
+  the first version: the photo side was the texture image whose background is filled with
+  stretched edge colours (no foreground mask), and the object fills the photo while the render
+  shows the target at a third of the frame, so the patch features compare different scales.
+  Version 2 (white background, square crops around the object on both sides, mutual matches
+  only) is written; its run at 518 and 840 px is queued, DINOv3 after the owner's token is on
+  the laptop.

@@ -1099,3 +1099,25 @@ half is only reported. The script summarises any keypoint-accuracy CSV per metho
 mean PCK@2 / 5 over pairs, the pooled PCK@2 over keypoints and a 95 % bootstrap interval of the
 mean (`results/diff3f/keypoints/split_accuracy.csv`). With 7–8 pairs per half the intervals are
 about ±15–20 points, which is the resolution the benchmark has.
+
+### Hard constraints and a final re-match (`refine_correspondence.py`; 2026-10-25)
+
+`--hard_confident q` pins the nearest-neighbour match of the confident vertices (similarity above
+the quantile q and a soft mutual test) as Dirichlet constraints of the final smooth and ARAP solves
+instead of weighting it; `--hard_radius r` pins only those within r of a first soft solution.
+`--final_rematch r` gives every vertex its most similar candidate within r of its field position
+(the field position where none is that close), raises those vertices' weight to
+`--rematch_weight` (default `--keep_weight`) and solves once more, `--rematch_rounds` times. On the
+keypoint benchmark at zoom 2 the re-match at 0.05 lifts the chain from 43 % to 54 % PCK@2
+(`results/diff3f/hard_sweep/`); details in `docs/decisions.md`, 2026-10-25.
+
+### Matching on the 2D side (`match2d.py`; 2026-10-25)
+
+The photo (the relief's albedo image, whose pixels are the relief's vertices) is matched against
+renders of the target from the relief camera's direction and turned views with DINOv2 or DINOv3
+patch features (square crops around the object on both sides, soft-argmax over a 3×3 window,
+mutual test), and every match is lifted through the rasteriser to a target vertex. The output is
+an npz in `refine_correspondence.py`'s layout (`src_pos` filled from the nearest matched vertex
+for the unmatched ones, a `matched` mask) plus a landmarks JSON of the best mutual matches. Runs
+on a CPU in seconds per pair with DINOv2; the first version scored 23 % PCK@2
+(`results/diff3f/match2d/`), the second (crops, white background) is being evaluated.
