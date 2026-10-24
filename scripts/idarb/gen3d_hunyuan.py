@@ -112,13 +112,12 @@ def run_shape(args, inputs):
         print(json.dumps(info), flush=True)
 
 
-def run_paint(args, inputs):
-    import torch
-    import trimesh
-
+def paint_pipeline(repo, max_num_view, resolution):
+    """Hunyuan3D-2.1's paint pipeline, set up as its demo.py does (also used by
+    gen3d_paint_baseline.py). The working directory must be the repository."""
     sys.modules.setdefault("bpy", types.ModuleType("bpy"))  # only used for OBJ -> GLB
-    sys.path.insert(0, os.path.join(args.repo, "hy3dpaint"))
-    sys.path.insert(0, args.repo)
+    sys.path.insert(0, os.path.join(repo, "hy3dpaint"))
+    sys.path.insert(0, repo)
     # the upscaler's basicsr imports torchvision.transforms.functional_tensor, which torchvision
     # 0.20 no longer has; the repository's own fix (used by its demo.py) provides a stand-in
     from torchvision_fix import apply_fix
@@ -126,11 +125,18 @@ def run_paint(args, inputs):
     apply_fix()
     from textureGenPipeline import Hunyuan3DPaintConfig, Hunyuan3DPaintPipeline
 
-    conf = Hunyuan3DPaintConfig(args.max_num_view, args.resolution)
-    conf.realesrgan_ckpt_path = os.path.join(args.repo, "hy3dpaint/ckpt/RealESRGAN_x4plus.pth")
-    conf.multiview_cfg_path = os.path.join(args.repo, "hy3dpaint/cfgs/hunyuan-paint-pbr.yaml")
-    conf.custom_pipeline = os.path.join(args.repo, "hy3dpaint/hunyuanpaintpbr")
-    pipe = Hunyuan3DPaintPipeline(conf)
+    conf = Hunyuan3DPaintConfig(max_num_view, resolution)
+    conf.realesrgan_ckpt_path = os.path.join(repo, "hy3dpaint/ckpt/RealESRGAN_x4plus.pth")
+    conf.multiview_cfg_path = os.path.join(repo, "hy3dpaint/cfgs/hunyuan-paint-pbr.yaml")
+    conf.custom_pipeline = os.path.join(repo, "hy3dpaint/hunyuanpaintpbr")
+    return Hunyuan3DPaintPipeline(conf)
+
+
+def run_paint(args, inputs):
+    import torch
+    import trimesh
+
+    pipe = paint_pipeline(args.repo, args.max_num_view, args.resolution)
     for path in inputs:
         name = os.path.splitext(os.path.basename(path))[0]
         out = os.path.join(args.out_root, name)

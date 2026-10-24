@@ -253,7 +253,11 @@ python scripts/idarb/diff3f_features.py --mesh third_party/Diff3F/meshes/cow.obj
 Options: `--num_views` (default 100, a square number; `--front_only` uses a grid over elevations ±45°
 and azimuths ±75°), `--max_vertices` (default 15000; the whole mesh is rendered but features are stored
 for a random subset of this size, which keeps a 90k-vertex relief mesh tractable), `--tolerance`
-(ball-query radius as a fraction of the mesh extent, 0.004 as in the Diff3F notebook), `--seed`.
+(ball-query radius as a fraction of the mesh extent, 0.004 as in the Diff3F notebook), `--seed`,
+`--zoom 2` (render tiles at twice the resolution through the intrinsics; the standard setting since
+2026-10-24, nearest-neighbour PCK@2 54 → 63 %) and `--lift gpu` (the per-view lift onto the mesh
+points on the GPU, 0.13 s per view instead of 2.3–2.7 s, features within noise of the CPU lift;
+2026-10-25).
 The `.npz` holds `idx` (vertex indices), `xyz`, `feat` (float16, unit length), `colors` (vertex colours if
 the mesh has them) and `meta` (command, git commit, settings, run time). A 15000-vertex file is about 60 MB
 and stays out of git. Expect 2 to 4 minutes per mesh on an A40.

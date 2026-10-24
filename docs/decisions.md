@@ -1142,3 +1142,22 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   are overridden" from "the 2D matches are wrong": if pinning them exactly lowers PCK@2 toward
   the 2D route's 50 %, the 2D matches are worse than the chain at the keypoints and the 2D
   route is closed as an anchor source.
+
+## 2026-10-25 — Diff3F lifting on the GPU (server run), and three scripts merged from the data branches
+
+- `diff3f_features.py --lift gpu` (server, features-3d-tmp a34e073,
+  `results/diff3f/features_zoom2_liftgpu/`): the per-view lift of the 2D features onto the
+  mesh points, formerly a CPU ball query at 2.3–2.7 s per relief view, runs on the GPU in
+  about 0.13 s per view. Checked on four meshes against the CPU files: synthetic cat, GT
+  accuracy within 1 % 49.5 → 51.2 %, within 5 % 96.8 → 94.9 %, median error 0.0101 → 0.0096;
+  mutual-nearest-neighbour fraction 0.121 → 0.119 (cat_partial → cat_full 0.0099 → 0.0117,
+  cat_partial → lion 0.0100 → 0.0103); cosine to the CPU features 0.93–0.97 mean. Whole-mesh
+  times 665 / 679 / 910 / 755 s against 796 / 937 / 2284 / 912 s, so painting (the UNet pass
+  per view, 610–780 s) is now the only large stage. Keypoint check on cat and cat → lion is
+  for the laptop. Adopted for new extractions; the stored zoom-2 features stay the CPU ones.
+- Code that lived only on data branches is now on `diff3f-registration`: `diff3f_features.py`
+  with `--lift gpu` (from features-3d-tmp), `gen3d_hunyuan.py` with `paint_pipeline()` (from
+  paint-baseline-tmp; `gen3d_paint_baseline.py` imports it, so the paint baseline was not
+  runnable from this branch before) and `make_partial_dataset.py` (from dataset-tmp). The
+  server compared every other script blob by blob: identical. Those branches can go once the
+  Windows archive has verified its copies.
