@@ -625,7 +625,8 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   seat corners and leg bottoms on the chair pair) on 12 more pairs with `pick_landmarks.py`,
   each verified on its contact sheet (`results/diff3f/keypoints/<pair>.json`, sheets in
   `results/diff3f/keypoints/check/`); with the three older landmark sets that is 15 pairs and
-  93 keypoints. `keypoint_table.py` evaluates every result folder on all of them.
+  109 keypoints (89 on the 13 same-category pairs, 20 on the two cross pairs; an earlier count
+  of 93 in these notes was wrong). `keypoint_table.py` evaluates every result folder on all of them.
 - Result (`results/diff3f/keypoints/keypoint_accuracy.csv`), 13 same-category pairs, mean error
   as a fraction of the relief diagonal and PCK within 2 / 5 / 10 %: nearest neighbour 5.3 %,
   54 / 76 / 89 %; ARAP (07) 6.0 %, 39 / 68 / 82 %; the 09 setting 5.6 %, 40 / 63 / 82 %. So the
@@ -736,7 +737,8 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   of the generated front surface 80–98 % (Hunyuan3D fire_dragon and superman 61–62 %), ICP rms
   1–6 % of the diagonal (TRELLIS.2 1–2 %), rotations mostly below 10° (okapi 40–57°: the fitted
   camera was off and ICP recovered it). The relief's keypoints land on the generated mesh with
-  snap distances below 0.11 of the diagonal (median about 0.05), and the photo's albedo is
+  snap distances below 0.11 of the diagonal (median 0.019; 48 % of the keypoints snap by more
+  than 2 %, which matters at the 2 % scale of the benchmark, see 25 Oct), and the photo's albedo is
   projected onto the visible side (58–100 % of the front faces). So the generated mesh can take
   the relief's place as the source with the keypoint benchmark intact; its zoom-2 Diff3F features
   are being computed on the server (28 meshes, 7–9 h) for the full-to-full matching.
@@ -762,7 +764,8 @@ The repository will be used beyond the original course, so the owner rewrote `AG
 - Why (`keypoint_rank.py`, `results/diff3f/keypoint_rank_{relief,hunyuan3d}.csv`): for every
   target keypoint, the rank of the true source location among all source points by feature
   similarity (0 = the nearest neighbour is right) and whether the nearest neighbour faces the
-  photo's camera. Relief: median rank 4–51 on 11 of 13 same-category pairs (labubu_man 294,
+  photo's camera. Relief: median rank 4–51 on 9 of 13 same-category pairs (cat_lion 79, dragon
+  82, labubu_man 294,
   bird 105), nearest neighbours on the photo's side by construction. Generated mesh: median rank
   57–1969, and 0–57 % of the nearest neighbours land on the side the photo never saw (the
   other ear or hoof, the back). The similarity at the true location is as high or higher for
@@ -779,7 +782,8 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   relief-feature point 0.65–0.80, on 12 of 15 pairs), so the unreplaced side takes the match
   (nearest neighbour on a replaced point 0–71 % per pair). Restricted to the replaced points
   the nearest neighbour reaches 14–57 % per pair, below the relief's own 63 %, because the
-  carried features inherit the alignment error (ICP rms 1–2 % of the diagonal).
+  carried features inherit the alignment error (ICP rms 2.8–6.3 % of the diagonal for the
+  Hunyuan3D meshes; the 1–2 % figure is TRELLIS.2's).
 - Standing: the generated full mesh does not replace the relief as the matching source at the
   fine scale with Diff3F features; it remains the candidate for the geometry and the unseen
   side. Open: the same evaluation with the TRELLIS.2 sources (features in progress on the
@@ -887,3 +891,50 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   front-only Hunyuan3D batch (14 meshes, pushed on its own branch features-front-tmp), and the
   server drops that batch. Rule from the owner: CPU batch work and GPU feature work both go to
   the laptop; the Mac only edits, tests and publishes.
+
+## 2026-10-25 — Second independent review (Opus): corrections and a re-ranked plan
+
+- Asked by the owner. The reviewer read the records and recomputed from the CSVs; it changed
+  nothing. Corrections it found, now applied above: 109 keypoints, not 93; the keypoints
+  carried onto the generated meshes snap by a median 1.9 % of the diagonal and 48 % of them by
+  more than 2 %, so the generated-source numbers at the 2 % scale are confounded by the carried
+  ground truth (where the snap is under 1 % the generated source gets 6 of 20 right against the
+  relief's 8; where it is over 2 %, 7 of 42 against 30); Hunyuan3D's ICP rms is 2.8–6.3 %; the
+  median-rank range holds on 9 of 13 pairs; `align_generated.py`'s albedo fraction can exceed
+  1 (up to 1.18, a counting bug to fix); the tuning/held-out split shares reliefs (superman,
+  labubu) and targets (cat, man, camel) between halves and the bootstrap is unpaired, so
+  leave-one-source-out and paired per-keypoint tests are the right tools; and the nearest
+  neighbour's facing test checks the normal's sign, not visibility, so front-side left-right
+  swaps are not detected by it.
+- Its reading of the fine-scale loss: the smoothing sweep covers one family (L2 data term +
+  Laplacian/ARAP, field read-out); the pipeline's mean error equals the nearest neighbour's
+  (0.0481 vs 0.0483 at zoom 2) while its PCK@2 is 20 points lower, so it removes gross errors
+  and blurs fine ones; `--keep_confident` used soft weights, never hard constraints. Untried:
+  Dirichlet constraints on a consistency-checked confident set with ARAP elsewhere, a final
+  re-match within 2 % of the field, a truncated data term; and the error measured in the image
+  plane as well as in 3D.
+- Its reading of the generated source: the target's features also use all-around views, so
+  the generated source is the matched condition and the front-only ablation is expected to
+  show little; the loss concentrates where the generated surface departs from the photo; the
+  features were computed on the 40 k-face remesh. Cheaper checks: nearest neighbour restricted
+  to the photo-visible points, and keypoints annotated directly on the generated meshes.
+- Its main proposal: match on the 2D side. Render the target from the anchor camera (and its
+  mirror, ±20–30°), compute GeoAware-SC / DINOv3 / DistillDIFT features at 840 px or more with
+  window soft-argmax against the photo itself, keep mutual pixel matches that do not cross relief
+  depth jumps, lift through the rasteriser, and feed the result as constraints to the map; the
+  relief stays for occlusion, regularisation and evaluation. Minutes of GPU per pair, 3–5 days
+  of work; close to SemTex's design, so the lifting and the flip-free map carry the novelty.
+- Its ranking: (1) evaluation fixes (paired tests, leave-one-source-out, image-plane error,
+  keypoints on the generated meshes, a second annotator); (2) hard constraints + final re-match
+  on the existing features (expected 43 → 55–60 %); (3) the 2D route; (4) the injective
+  image-plane map fed by (2) or (3) as the core contribution; (5) the paint baselines plus a
+  correspondence-free metric; (6) larger ground truth (Animal3D, KeypointNet); (7) route (b)
+  with a full-to-full matcher (ZoomOut) or a "completed relief" (generated mesh deformed onto
+  the relief by non-rigid ICP, closed, front vertices = photo pixels) for the unseen side;
+  (8) atlas fixes, TEXGen; (9) TRELLIS.2 source, front-only last; (10) DenseMatcher. Drop
+  GeoAware-SC inside Diff3F (use it in the 2D route); defer DINOv3 / DistillDIFT inside Diff3F
+  until the 2D route has a result, then run on all meshes rather than five.
+- Adopted now: the corrections; (1) and (2) start on the existing features (code on the Mac,
+  runs on the laptop); the 2D route is designed next. The server queue already running
+  tonight (paint baselines, DINOv3 and DistillDIFT five-mesh tests, front-only on the laptop)
+  is left to finish since its GPU time is otherwise idle.
