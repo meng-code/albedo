@@ -1255,3 +1255,21 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   saving is in the lift stage (2.3–2.7 s to 0.13 s per view; on the server's DINOv3 run the
   CPU lift was 535–1134 s of 1288–2022 s per relief); with CPU offload on, as on the laptop,
   the whole run gains little (1349 against 1399 s) because the painting dominates there.
+
+## 2026-10-25 — DINOv3 on the full keypoint set (laptop run): no case for switching; concatenation lifts the nearest neighbour only
+
+- DINOv3 zoom-2 features for all 23 keypoint-benchmark meshes (server, features-3d-tmp
+  a6c6d6e, same sample points as the Diff3F files), evaluated alone and concatenated with
+  Diff3F at equal weight (`fuse_features.py --w 0.5`, 4096-d), nearest neighbour and the chain
+  (`results/diff3f/dinov3_full/`). Keypoints on the 13 same-category pairs, PCK@2 (3D) and mean
+  error: Diff3F 63 % / 0.048 (nearest neighbour), 61 % / 0.038 (chain); DINOv3 59 % / 0.072,
+  58 % / 0.042; concatenation 65 % / 0.049, 60 % / 0.038. Cross pairs unchanged at 10 / 5 %.
+  Synthetic GT within 1 %: cat 57.2 / 62.1 (Diff3F), 54.4 / 57.0 (DINOv3), 57.0 / 60.9
+  (concatenation); cow 41.7 / 48.3, 40.3 / 50.5, 41.0 / 49.1. Texture measures within noise.
+- Per pair DINOv3 alone helps okapi → camel and panda and hurts cow, cat, cat → lion, dragon →
+  lizard and chair1 (chain 50 → 17 %); the concatenation's nearest-neighbour gain is one keypoint
+  each on okapi → camel and bird against one lost on cat → lion, and the chain does not keep it.
+- Standing: Diff3F stays the feature; the concatenation's 65 % is the best nearest-neighbour
+  number so far but within two keypoints of Diff3F and not carried through the chain. The
+  five-mesh test of 2026-10-24 is confirmed on the full set. DistillDIFT on the same 23 meshes is
+  next.
