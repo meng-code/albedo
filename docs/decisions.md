@@ -982,3 +982,19 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   corners land in different charts spans the atlas; the merged previews show the generated side
   broken into fragments for the same reason. Per-texel baking onto a target atlas (the second
   review's point) would remove it; the keypoint numbers are the comparison that counts.
+
+## 2026-10-25 — Profile of a zoom-2 run after the rasteriser fix; concurrency measured
+
+- Server, single jobs, seconds per stage (render / lift / paint / DINO): cat relief, 382
+  views: 39 / 1043 / 783 / 29 (1904 s); labubu relief, 300 views: 49 / 690 / 615 / 18; camel
+  full mesh, 370 views: 4 / 135 / 762 / 23 (932 s). Painting is 2.1 s per view; on reliefs the
+  lifting (CPU half-precision accumulation of 2048-d features over every pixel-neighbour pair)
+  is now the largest stage at 2.3–2.7 s per view. Two zoom-2 jobs at once: 1649 s against
+  1848 s for the two single runs (ratio 0.89), so the GPU is already saturated and jobs run one
+  at a time. Approved as an option to be validated against the current files: lifting on the
+  GPU with a proper average over duplicate contributions (deterministic, about half the relief
+  time); it changes the features slightly, so it becomes the default only if it agrees with the
+  present files at the measured noise floor.
+- DINOv3 inside Diff3F: the five test meshes are computed (`features_zoom2_dinov3/`, 8.2 GB
+  peak), with the painted views cached for the DistillDIFT run; keypoint evaluation on the
+  four pairs they cover is running on the laptop.
