@@ -660,6 +660,12 @@ def main():
         help="with --hard_confident: pin only the confident matches within this fraction of the "
         "source diagonal of a first, soft solution of the field (0: all confident matches)",
     )
+    ap.add_argument(
+        "--landmarks_hard",
+        action="store_true",
+        help="pin the landmark vertices exactly in the final field and the re-match rounds "
+        "(Dirichlet constraints) instead of giving them data weight 10",
+    )
     ap.add_argument("--rematch_rounds", type=int, default=1, help="repeat --final_rematch")
     ap.add_argument("--rematch_weight", type=float, default=None,
                     help="field weight of the re-matched vertices (default --keep_weight)")
@@ -903,6 +909,8 @@ def main():
             )
         diag_src = float(np.linalg.norm(src["xyz"].max(axis=0) - src["xyz"].min(axis=0)))
         hard = None
+        h_mask = np.zeros(len(Vd), dtype=bool)
+        h_val = P.copy()
         if args.hard_confident > 0:
             # the trusted nearest neighbours become Dirichlet constraints of the field: the
             # map passes through them exactly instead of averaging them away
@@ -914,8 +922,15 @@ def main():
                 h_mask &= np.linalg.norm(h_val - P, axis=1) < args.hard_radius * diag_src
             if lm is not None:
                 h_mask[t_lm] = False  # landmarks keep their own (high) data weight
-            hard = (h_mask, h_val)
             stats["hard_fraction"] = round(float(h_mask.mean()), 4)
+        if lm is not None and args.landmarks_hard:
+            # the landmark vertices become Dirichlet constraints too: the field and the re-match
+            # rounds pass through them exactly, where the weight-10 data term alone is smoothed
+            # over by the field and overridden by the re-matches
+            h_mask[t_lm] = True
+            h_val[t_lm] = Vs[s_lm]
+        if h_mask.any():
+            hard = (h_mask, h_val)
             P = smooth_field(Vd, Fd, S, w, args.field, args.field_order, hard=hard)
             if args.arap:
                 P = arap_field(
@@ -938,6 +953,8 @@ def main():
                 w2[has] = np.maximum(w2[has], w_re)
                 if mutual is not None:
                     S2[cKDTree(Vd).query(mutual[0])[1]] = mutual[1]
+                if lm is not None:  # landmarks are re-pinned every round, like the anchors
+                    S2[t_lm] = Vs[s_lm]
                 stats["rematch_fraction"] = round(float(has.mean()), 4)
                 P = smooth_field(Vd, Fd, S2, w2, args.field, args.field_order, hard=hard)
                 if args.arap:
@@ -978,6 +995,9 @@ def main():
             stats["field_snapped"] = evaluate(t2s_field, Vd, gt)
     print(json.dumps(stats))
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
+    if lm is not None:  # the landmark pairs, for checks of how far the final map sits from them
+        extra["landmarks_t"] = np.asarray(t_lm, dtype=np.int64)
+        extra["landmarks_s"] = np.asarray(s_lm, dtype=np.int64)
     if args.target_view is not None:
         extra["view"] = np.asarray(args.target_view, dtype=np.float64)
     np.savez_compressed(
