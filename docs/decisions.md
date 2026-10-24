@@ -859,3 +859,31 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   test. Placed in the owner's cost-ordered list: TRELLIS.2 texturing with item 3, DistillDIFT
   after item 4, TEXGen completion of the unseen side after item 3, KeypointNet / Animal3D
   ground truth with item 7.
+
+## 2026-10-25 — Speed-ups on the server; the laptop's GPU joins; Diff3F run-to-run noise measured
+
+- Owner (night of 24/25 Oct): the queue is too slow. Server changes (features-3d-tmp 63ea23e,
+  merged into this branch at 25efa8b): (1) the queue reordered so the short, decision-relevant
+  jobs run first (paint baselines, DINOv3 test, DistillDIFT) and the front-only ablation last;
+  (2) `--save_views` / `--views_from`: the painted views are cached once, so a DINO-only
+  extractor variant (DistillDIFT) reruns in 10 s instead of 71 s on the cow_synth test; the SD
+  UNet branch still needs the diffusion pass; (3) Diff3F rasterised with `bin_size=0`, which was
+  30 % of a relief run; 64-px bins give identical fragments and 8–12× faster rasterisation (cat
+  relief, 12 zoom-2 views: 111 → 80 s); (4) batching the painting was not done: Diff3F reseeds the
+  generator before every view and DDIM with eta = 1 draws noise per step, so a batch would not
+  reproduce the sequential result. Profile of a zoom-2 run: painting 55–90 % of the time, lifting
+  22 % on reliefs (unproject + ball query + CPU accumulation), rendering now negligible; fp16 SD and
+  ControlNets with PyTorch SDPA attention, DINOv2 in fp32. Two feature jobs at once on the GPU
+  are being timed on the DINOv3 test (cat_full + lion_full); below 0.75 of the sum of single-run
+  times, the remaining batches run two at a time.
+- Diff3F's lifting is not run-to-run deterministic (GPU ball_query returns neighbours in varying
+  order and the upstream `acc[idx] += ...` keeps one write per duplicated vertex): two runs on the
+  same painted views differ by max |diff| 0.05, min cosine 0.977 (cow_synth). This is the noise
+  floor of every feature comparison in this project; differences of that size between feature
+  variants are not evidence.
+- The owner's Windows laptop (RTX 4080 12 GB, WSL2 Ubuntu, 48 GB RAM) is being set up as a second
+  GPU with the recipe in `scripts/idarb/requirements-diff3f.txt`; after a validation run of
+  cat_full against the server's features (pass mark: mean cosine above 0.95) it takes the
+  front-only Hunyuan3D batch (14 meshes, pushed on its own branch features-front-tmp), and the
+  server drops that batch. Rule from the owner: CPU batch work and GPU feature work both go to
+  the laptop; the Mac only edits, tests and publishes.
