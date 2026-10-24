@@ -1203,3 +1203,18 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   cat_partial, compared with both files, to separate the lift from the other changes. Until
   then `--lift gpu` is not the standard; the standard extraction stays `--zoom 2` with the CPU
   lift.
+
+## 2026-10-25 — Generated mesh as source with front-only features (laptop extraction, Mac evaluation): the line stays closed
+
+- Front-only zoom-2 Diff3F features of the 14 Hunyuan3D meshes (laptop GPU, 7 h in all,
+  23–40 min per mesh; branch features-front-tmp 31a99a2, archived on Windows), evaluated with
+  `eval_generated.py --model hunyuan3d --gen_features outputs/diff3f/features_zoom2_gen_front`
+  (`results/diff3f/generated_hunyuan3d_front.csv`, outputs in
+  `outputs/diff3f/14_generated_match/hunyuan3d_front/`). Keypoint PCK@2 on the 13 same-category
+  pairs: nearest neighbour 23.2 % (full-mesh features 17.3 %, hybrid 18.1 %), pipeline 14.4 %
+  (15.5 %, 19.9 %); mean error 0.056. The relief source gives 63 % / 61 % (chain with re-match).
+- Reading: removing the unseen side's features does take some stolen matches back (nearest
+  neighbour +6 points), so the back did compete, but the generated mesh's features remain far
+  below the relief's even on its visible side (its shape and texture are the generator's, not
+  the photo's), and the pipeline gains nothing. Generate-then-match stays closed as a source for
+  correspondence; its remaining use is the painted target for the unseen side.
