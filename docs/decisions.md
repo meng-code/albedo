@@ -740,3 +740,55 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   projected onto the visible side (58–100 % of the front faces). So the generated mesh can take
   the relief's place as the source with the keypoint benchmark intact; its zoom-2 Diff3F features
   are being computed on the server (28 meshes, 7–9 h) for the full-to-full matching.
+
+## 2026-10-24 — Generate-then-match, step 3: Hunyuan3D sources lose the fine scale
+
+- Setting: source = the Hunyuan3D-2.1 mesh generated from the photo, aligned to the relief
+  (`align_generated.py`), with the photo's albedo baked into its atlas (`bake_albedo.py`) and
+  the relief's keypoints carried onto it (`gen_keypoints.py`); zoom-2 Diff3F features of the
+  welded generated mesh computed on the server (commit c8d58a1: 100 views all around, 320 tiles,
+  15 000 points; the relief's features, commit 61b4c84, used `--front_only`: 314 tiles from the
+  front hemisphere). Target and keypoints as in the keypoint benchmark. Driver
+  `eval_generated.py` (recommended refinement setting, anchor-derived camera, `--source_glb`).
+- Result (`results/diff3f/generated_hunyuan3d.csv`), PCK@2 = keypoints within 2 % of the source
+  diagonal, 13 same-category pairs: nearest neighbour 17 %, pipeline 16 %; with the relief as
+  source (zoom 2, `results/diff3f/kp_variants/keypoint_accuracy_zoom2_all.csv`) 63 % / 43 %.
+  The two cross-category pairs with keypoints are near zero with either source. Per pair the
+  generated source is worse on 12 of 13 (cat is equal at 71 % after refinement). Texture-space
+  measures (mirrored area, conformal distortion) are not comparable for an atlas texture: the
+  GLB's uv charts have their own orientation and scale, so `uv_metrics.py` reports 30–70 %
+  "mirrored" area that is chart orientation, not a mirrored mapping. Triangle span within 2 %
+  is 0.62 on the same-category pairs.
+- Why (`keypoint_rank.py`, `results/diff3f/keypoint_rank_{relief,hunyuan3d}.csv`): for every
+  target keypoint, the rank of the true source location among all source points by feature
+  similarity (0 = the nearest neighbour is right) and whether the nearest neighbour faces the
+  photo's camera. Relief: median rank 4–51 on 11 of 13 same-category pairs (labubu_man 294,
+  bird 105), nearest neighbours on the photo's side by construction. Generated mesh: median rank
+  57–1969, and 0–57 % of the nearest neighbours land on the side the photo never saw (the
+  other ear or hoof, the back). The similarity at the true location is as high or higher for
+  the generated source on the animals (cat 0.83 against 0.77) but lower on the faces
+  (superman_man 0.63 against 0.78): on the animals the generated features are less distinctive
+  (many points score as high), on the faces the generator's smooth geometry does not carry the
+  photo's facial structure that the relief's normals do. The alignment is not the cause: the
+  carried keypoints sit on the right parts (`outputs/diff3f/13_generated/*/check.png`).
+- Hybrid source (`hybrid_features.py`: the relief's features on the camera-visible points of
+  the generated mesh through the alignment, 33–55 % of the points; the generated features
+  elsewhere; `results/diff3f/generated_hunyuan3d_hybrid.csv`): nearest neighbour 18 %,
+  pipeline 20 %. The generated-style features score systematically higher similarity to the
+  target than the relief's (best similarity to a generated-feature point 0.77–0.90, to a
+  relief-feature point 0.65–0.80, on 12 of 15 pairs), so the unreplaced side takes the match
+  (nearest neighbour on a replaced point 0–71 % per pair). Restricted to the replaced points
+  the nearest neighbour reaches 14–57 % per pair, below the relief's own 63 %, because the
+  carried features inherit the alignment error (ICP rms 1–2 % of the diagonal).
+- Standing: the generated full mesh does not replace the relief as the matching source at the
+  fine scale with Diff3F features; it remains the candidate for the geometry and the unseen
+  side. Open: the same evaluation with the TRELLIS.2 sources (features in progress on the
+  server), and the view-sampling confound (generated features with `--front_only`, queued
+  on the server), which separates fewer front views from the smoother geometry.
+- Commands (repository root, `mesh` environment, this commit):
+  `python scripts/idarb/eval_generated.py --model hunyuan3d --gen_features outputs/diff3f/features_zoom2_gen --feature_dir outputs/diff3f/features_zoom2 --out_dir outputs/diff3f/14_generated_match/hunyuan3d --csv results/diff3f/generated_hunyuan3d.csv --threads 3`;
+  `python scripts/idarb/hybrid_features.py --model hunyuan3d --out outputs/diff3f/features_zoom2_gen_hybrid`
+  followed by the same driver with `--gen_features outputs/diff3f/features_zoom2_gen_hybrid`
+  and `--csv results/diff3f/generated_hunyuan3d_hybrid.csv`;
+  `python scripts/idarb/keypoint_rank.py --source relief --csv results/diff3f/keypoint_rank_relief.csv`
+  and `--source hunyuan3d --csv results/diff3f/keypoint_rank_hunyuan3d.csv`.

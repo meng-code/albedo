@@ -1041,3 +1041,42 @@ are scored by their vectors and by name agreement, and only confident one-to-one
 the result is the `part_match.npz` that `refine_correspondence.py --parts` reads, so a target
 part with no counterpart on the relief (a hump) follows its neighbours. The server's part
 vectors are pending; the script is tested on a made-up joint space.
+
+### Generate, then match (`align_generated.py`, `bake_albedo.py`, `gen_keypoints.py`, `eval_generated.py`, `hybrid_features.py`, `keypoint_rank.py`; 2026-10-24)
+
+The supervisor's direction of 23 October: generate a full mesh from the photo first (Hunyuan3D-2.1
+or TRELLIS.2, `gen3d_hunyuan.py` and `gen3d_trellis.py` on the server, meshes under
+`outputs/diff3f/gen3d/<model>/<name>/`), then match that full mesh to the target instead of the
+relief. The relief stays the link to the photo:
+
+- `align_generated.py` registers the relief (the photo's frame) to the generated mesh: the camera
+  rotation from the fitted view, a similarity in x and y from the silhouettes, the depth offset
+  from the generated front surface under each relief pixel, then ICP with the relief's depth
+  factor. It writes `transform.json`, the relief's keypoints carried onto the generated mesh,
+  the albedo as vertex colours and a `check.png`.
+- `bake_albedo.py` projects the photo's albedo into the generated mesh's texture atlas (every
+  texel the photo's camera sees takes the relief's colour; the rest keeps the generated colour)
+  and writes `baked.glb`, the source texture for the transfer.
+- `gen_keypoints.py` writes the keypoint benchmark's source keypoints on the generated meshes
+  (`results/diff3f/keypoints_gen/<model>/<pair>.json`).
+- `eval_generated.py` runs the recommended refinement (anchor-derived camera), the transfer with
+  `--source_glb` and the keypoint accuracy over the annotated pairs, one CSV row per pair. The
+  source features are the zoom-2 Diff3F features of the welded generated mesh
+  (`outputs/diff3f/features_zoom2_gen/<model>/<name>.npz`, the mesh they index beside them).
+- `hybrid_features.py` builds a source whose camera-visible points carry the relief's features
+  (through the alignment) and whose other points keep the generated mesh's own features.
+- `keypoint_rank.py` explains nearest-neighbour errors keypoint by keypoint: the rank of the true
+  location among all source points by similarity, the similarity there, and whether the nearest
+  neighbour faces the photo's camera. Works for the relief and for a generated source.
+
+Result with Hunyuan3D sources (`results/diff3f/generated_hunyuan3d.csv`,
+`generated_hunyuan3d_hybrid.csv`, `keypoint_rank_{relief,hunyuan3d}.csv`; details in
+`docs/decisions.md`, 2026-10-24, step 3): keypoint PCK@2 on the 13 same-category pairs 17 %
+(nearest neighbour) and 16 % (pipeline) against 63 % and 43 % with the relief; the hybrid source
+18 % and 20 %. The full source doubles the candidates and the features do not tell left from
+right (up to 57 % of the nearest neighbours on the side the photo never saw), the generator's
+smooth geometry gives less distinctive features (true-location rank 57–1969 against 4–51), and
+mixed relief and generated features are not comparable (the generated style scores higher).
+Texture-space measures (mirrored area, conformal distortion) do not apply to an atlas source,
+whose uv charts have their own orientation. TRELLIS.2 sources and a front-only feature
+extraction of the generated meshes are pending on the server.
