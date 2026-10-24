@@ -398,7 +398,7 @@ def features_per_vertex(device, pipe, dino_model, mesh, prompt, mesh_vertices, n
                         tolerance, appearance="painted", timestep=100, sam_generator=None,
                         sam_tau=0.0, siglip_model=None, seed=0, save_views=None, part_labels=None,
                         zoom=1, angles=None, min_tile_share=0.01, dino_fn=None,
-                        view_features=None, views_from=None, profile=None):
+                        view_features=None, views_from=None, profile=None, lift="cpu"):
     """Diff3F's get_features_per_vertex (third_party/Diff3F/diff3f.py), copied step by step with
     hooks: the image and UNet features per view (--appearance), SAM cleaning of the fused per-pixel
     features (--sam_tau), SigLIP2 features of the same views (--siglip2) and zoomed tiles (--zoom;
@@ -407,7 +407,8 @@ def features_per_vertex(device, pipe, dino_model, mesh, prompt, mesh_vertices, n
     per-view features instead of Diff3F's (view_features, --features distilldift), the painted
     views read from a --save_views folder instead of painted again (views_from; only with
     view_features, since the UNet features need the diffusion pass) and the time spent per stage
-    (profile: a dict that gets seconds for render, paint, features, lift). Only
+    (profile: a dict that gets seconds for render, paint, features, lift), and the lifting on the
+    GPU (lift="gpu", see --lift). Only
     used when one of those options is set. Returns a dict of
     per-vertex features: "diff3f" always, "diff3f_sam" with --sam_tau, "siglip2" with --siglip2,
     the mean share of pixels SAM cleaning replaced, and the numbers of views used and tiles skipped.
@@ -439,6 +440,9 @@ def features_per_vertex(device, pipe, dino_model, mesh, prompt, mesh_vertices, n
         dims["siglip2"] = siglip_model.num_features
     acc = {k: torch.zeros((len(mesh_vertices), d)).half() for k, d in dims.items()}
     count = torch.zeros((len(mesh_vertices), 1)).half()
+    if lift == "gpu":  # float32 sums on the GPU, averaged and moved to the CPU at the end
+        acc = {k: torch.zeros((len(mesh_vertices), d), device=device) for k, d in dims.items()}
+        count = torch.zeros((len(mesh_vertices), 1), device=device)
     gen = torch.Generator(device=device).manual_seed(seed)
     replaced = []
     view, skipped = 0, 0
@@ -514,13 +518,29 @@ def features_per_vertex(device, pipe, dino_model, mesh, prompt, mesh_vertices, n
                 per_view["siglip2"] = siglip2_features(siglip_model, view_img, grid)
             mark("features")
             q = ball_query(world_coords.unsqueeze(0), mesh_vertices.unsqueeze(0), K=100,
-                           radius=ball_drop_radius, return_nn=False).idx[0].cpu()
-            mask = q != -1
-            count[q[mask]] += 1
-            for k, f in per_view.items():
-                per_pixel = f[0, :, indices].cpu()
-                acc[k][q[mask]] += per_pixel.repeat_interleave(mask.sum(dim=1), dim=1).T
+                           radius=ball_drop_radius, return_nn=False).idx[0]
+            if lift == "gpu":
+                # every (pixel, vertex) pair within the ball adds its pixel's feature: a proper
+                # average over all contributions, whatever order ball_query returns them in
+                pair = torch.nonzero(q != -1)
+                vert, pix = q[pair[:, 0], pair[:, 1]], pair[:, 0]
+                count.index_add_(0, vert, torch.ones((len(vert), 1), device=device))
+                for k, f in per_view.items():
+                    per_pixel = f[0][:, indices.to(device)]
+                    for s in range(0, len(vert), 200000):
+                        acc[k].index_add_(0, vert[s:s + 200000],
+                                          per_pixel[:, pix[s:s + 200000]].T.float())
+            else:  # Diff3F's own: duplicated indices keep one write per vertex and view
+                q = q.cpu()
+                mask = q != -1
+                count[q[mask]] += 1
+                for k, f in per_view.items():
+                    per_pixel = f[0, :, indices].cpu()
+                    acc[k][q[mask]] += per_pixel.repeat_interleave(mask.sum(dim=1), dim=1).T
             mark("lift")
+    if lift == "gpu":  # average here; count becomes 1 where filled, so the division below keeps it
+        acc = {k: (v / count.clamp(min=1)).half().cpu() for k, v in acc.items()}
+        count = (count != 0).half().cpu()
     filled = (count != 0)[:, 0]
     missing = ~filled
     print("Number of missing features: ", int(missing.sum()))
@@ -637,6 +657,13 @@ def main():
     )
     ap.add_argument("--profile", action="store_true", help="record seconds per stage in meta")
     ap.add_argument(
+        "--lift",
+        default="cpu",
+        choices=["cpu", "gpu"],
+        help="cpu: Diff3F's lifting (per view one write per vertex, order-dependent); gpu: "
+        "index_add_ over every (pixel, vertex) pair, a proper average, much faster",
+    )
+    ap.add_argument(
         "--distilldift_checkpoint",
         default=os.path.expanduser("~/semtex/DistillDIFT/eval/checkpoints/distilled_s.ckpt"),
         help="distilled_s (supervised, the default), distilled_ws or distilled_us",
@@ -704,7 +731,8 @@ def main():
     torch.cuda.reset_peak_memory_stats()
     views_used, tiles_skipped = num_views, 0
     upstream = (args.appearance == "painted" and args.sam_tau <= 0 and not args.siglip2
-                and args.dino == "dinov2" and args.features == "diff3f" and not args.profile)
+                and args.dino == "dinov2" and args.features == "diff3f" and not args.profile
+                and args.lift == "cpu")
     profile = {} if args.profile else None
     if upstream and args.save_views is None and args.zoom == 1:  # unchanged upstream path
         feat = d3f.get_features_per_vertex(
@@ -743,6 +771,7 @@ def main():
             save_views=args.save_views, part_labels=part_labels, zoom=args.zoom, angles=angles,
             dino_fn=dinov3_features if args.dino == "dinov3" else None,
             view_features=view_features, views_from=args.views_from, profile=profile,
+            lift=args.lift,
         )
         feat, sam_share = acc["diff3f"], acc["sam_replaced_share"]
         views_used, tiles_skipped = acc["views_used"], acc["tiles_skipped"]
@@ -775,6 +804,7 @@ def main():
         dino="dinov2_vitb14" if args.dino == "dinov2" else DINOV3,
         features=args.features,
         views_from=args.views_from,
+        lift=args.lift,
         profile_seconds={k: round(v, 1) for k, v in profile.items()} if profile else None,
         distilldift_checkpoint=(os.path.basename(args.distilldift_checkpoint)
                                 if args.features == "distilldift" else None),
