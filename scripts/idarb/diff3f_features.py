@@ -182,8 +182,13 @@ def render_cameras(device, mesh, camera, H, W):
     from pytorch3d.renderer.mesh.rasterizer import MeshRasterizer, RasterizationSettings
     from pytorch3d.renderer.mesh.shader import HardPhongShader
 
+    # Diff3F rasterises with bin_size=0 (naive, every pixel tests every face), which takes about
+    # 5 s per view batch on a 100 k-face relief; coarse-to-fine binning with 64-px bins gives
+    # exactly the same fragments (pix_to_face identical, zbuf difference 0 on a relief and on
+    # camel.obj) about 8-12 times faster, for about 130 MB more GPU memory.
     settings = RasterizationSettings(
-        image_size=(H, W), blur_radius=0.0, faces_per_pixel=1, bin_size=0
+        image_size=(H, W), blur_radius=0.0, faces_per_pixel=1, bin_size=64,
+        max_faces_per_bin=int(mesh.num_faces_per_mesh()[0]),
     )
     rasterizer = MeshRasterizer(cameras=camera, raster_settings=settings)
     lights = PointLights(
@@ -393,13 +398,16 @@ def features_per_vertex(device, pipe, dino_model, mesh, prompt, mesh_vertices, n
                         tolerance, appearance="painted", timestep=100, sam_generator=None,
                         sam_tau=0.0, siglip_model=None, seed=0, save_views=None, part_labels=None,
                         zoom=1, angles=None, min_tile_share=0.01, dino_fn=None,
-                        view_features=None):
+                        view_features=None, views_from=None, profile=None):
     """Diff3F's get_features_per_vertex (third_party/Diff3F/diff3f.py), copied step by step with
     hooks: the image and UNet features per view (--appearance), SAM cleaning of the fused per-pixel
     features (--sam_tau), SigLIP2 features of the same views (--siglip2) and zoomed tiles (--zoom;
     angles = (elevation, azimuth) of the view set, tiles with less than min_tile_share of
     foreground pixels are skipped), DINOv3 instead of DINOv2 (dino_fn, --dino dinov3) and other
-    per-view features instead of Diff3F's (view_features, --features distilldift). Only
+    per-view features instead of Diff3F's (view_features, --features distilldift), the painted
+    views read from a --save_views folder instead of painted again (views_from; only with
+    view_features, since the UNet features need the diffusion pass) and the time spent per stage
+    (profile: a dict that gets seconds for render, paint, features, lift). Only
     used when one of those options is set. Returns a dict of
     per-vertex features: "diff3f" always, "diff3f_sam" with --sam_tau, "siglip2" with --siglip2,
     the mean share of pixels SAM cleaning replaced, and the numbers of views used and tiles skipped.
@@ -434,8 +442,21 @@ def features_per_vertex(device, pipe, dino_model, mesh, prompt, mesh_vertices, n
     gen = torch.Generator(device=device).manual_seed(seed)
     replaced = []
     view, skipped = 0, 0
+    if views_from is not None and view_features is None:
+        raise ValueError("views_from needs view_features: the UNet features need the painting")
+    clock = [time.time()]
+
+    def mark(stage):
+        """Add the time since the last mark to profile[stage] (after the GPU has finished)."""
+        if profile is not None:
+            torch.cuda.synchronize()
+            now = time.time()
+            profile[stage] = profile.get(stage, 0.0) + now - clock[0]
+            clock[0] = now
+
     for images, normals, camera, depth in chunks:
         normals, images, camera, depth = normals.cpu(), images.cpu(), camera.cpu(), depth.cpu()
+        mark("render")
         for idx in range(len(images)):
             dp = depth[idx].flatten().unsqueeze(1)
             xy_depth = torch.cat((pixel_coords, dp), dim=1)
@@ -448,7 +469,11 @@ def features_per_vertex(device, pipe, dino_model, mesh, prompt, mesh_vertices, n
                 xy_depth, world_coordinates=True, from_ndc=True
             ).to(device)
             render_img = (images[idx, :, :, :3].numpy() * 255).astype(np.uint8)
-            if appearance == "painted":
+            mark("lift")  # unprojection of the view's pixels
+            if views_from is not None:  # the painting is deterministic (seed 60 per view)
+                view_img = Image.open(os.path.join(views_from, f"view_{view:02d}.png"))
+                view_img, unet_ft = view_img.convert("RGB"), None
+            elif appearance == "painted":
                 out = add_texture_to_render(
                     pipe, render_img, depth[idx, :, :, 0].unsqueeze(0).to(device), prompt,
                     normal_map_input=normals[idx], use_latent=False, num_images_per_prompt=1,
@@ -469,6 +494,7 @@ def features_per_vertex(device, pipe, dino_model, mesh, prompt, mesh_vertices, n
                     np.save(os.path.join(save_views, f"mask_{view:02d}.npy"),
                             lab.reshape(H, W).numpy())
             view += 1
+            mark("paint")
             if view_features is None:
                 dino_ft = dino_fn(device, dino_model, view_img, grid)
                 up = torch.nn.Upsample(size=(H, W), mode="bilinear")(unet_ft.unsqueeze(0))
@@ -486,6 +512,7 @@ def features_per_vertex(device, pipe, dino_model, mesh, prompt, mesh_vertices, n
                 replaced.append(share)
             if "siglip2" in acc:
                 per_view["siglip2"] = siglip2_features(siglip_model, view_img, grid)
+            mark("features")
             q = ball_query(world_coords.unsqueeze(0), mesh_vertices.unsqueeze(0), K=100,
                            radius=ball_drop_radius, return_nn=False).idx[0].cpu()
             mask = q != -1
@@ -493,6 +520,7 @@ def features_per_vertex(device, pipe, dino_model, mesh, prompt, mesh_vertices, n
             for k, f in per_view.items():
                 per_pixel = f[0, :, indices].cpu()
                 acc[k][q[mask]] += per_pixel.repeat_interleave(mask.sum(dim=1), dim=1).T
+            mark("lift")
     filled = (count != 0)[:, 0]
     missing = ~filled
     print("Number of missing features: ", int(missing.sum()))
@@ -602,6 +630,13 @@ def main():
     )
     ap.add_argument("--distilldift_repo", default=os.path.expanduser("~/semtex/DistillDIFT"))
     ap.add_argument(
+        "--views_from",
+        default=None,
+        help="a --save_views folder of the same mesh and view set: read the painted views instead "
+        "of painting them again (only with --features distilldift)",
+    )
+    ap.add_argument("--profile", action="store_true", help="record seconds per stage in meta")
+    ap.add_argument(
         "--distilldift_checkpoint",
         default=os.path.expanduser("~/semtex/DistillDIFT/eval/checkpoints/distilled_s.ckpt"),
         help="distilled_s (supervised, the default), distilled_ws or distilled_us",
@@ -645,13 +680,18 @@ def main():
     else:
         num_views = args.num_views
 
-    pipe = init_pipe(
-        device,
-        args.sd_repo,
-        fp16_variant=not args.no_fp16_variant,
-        cpu_offload=not args.no_cpu_offload,
-    )
-    dino = init_dino(device) if args.dino == "dinov2" else Dinov3Worker(args.dino3_python)
+    if args.views_from is not None and args.features != "distilldift":
+        raise SystemExit("--views_from only with --features distilldift (no UNet features)")
+    pipe, dino = None, None
+    if args.views_from is None:
+        pipe = init_pipe(
+            device,
+            args.sd_repo,
+            fp16_variant=not args.no_fp16_variant,
+            cpu_offload=not args.no_cpu_offload,
+        )
+    if args.features == "diff3f":
+        dino = init_dino(device) if args.dino == "dinov2" else Dinov3Worker(args.dino3_python)
     view_features = None
     if args.features == "distilldift":
         view_features = DistillDiftFeatures(args.distilldift_repo, args.distilldift_checkpoint,
@@ -664,7 +704,8 @@ def main():
     torch.cuda.reset_peak_memory_stats()
     views_used, tiles_skipped = num_views, 0
     upstream = (args.appearance == "painted" and args.sam_tau <= 0 and not args.siglip2
-                and args.dino == "dinov2" and args.features == "diff3f")
+                and args.dino == "dinov2" and args.features == "diff3f" and not args.profile)
+    profile = {} if args.profile else None
     if upstream and args.save_views is None and args.zoom == 1:  # unchanged upstream path
         feat = d3f.get_features_per_vertex(
             device=device,
@@ -701,7 +742,7 @@ def main():
             sam_generator=sam_gen, sam_tau=args.sam_tau, siglip_model=siglip, seed=args.seed,
             save_views=args.save_views, part_labels=part_labels, zoom=args.zoom, angles=angles,
             dino_fn=dinov3_features if args.dino == "dinov3" else None,
-            view_features=view_features,
+            view_features=view_features, views_from=args.views_from, profile=profile,
         )
         feat, sam_share = acc["diff3f"], acc["sam_replaced_share"]
         views_used, tiles_skipped = acc["views_used"], acc["tiles_skipped"]
@@ -733,6 +774,8 @@ def main():
         siglip2=SIGLIP2 if args.siglip2 else None,
         dino="dinov2_vitb14" if args.dino == "dinov2" else DINOV3,
         features=args.features,
+        views_from=args.views_from,
+        profile_seconds={k: round(v, 1) for k, v in profile.items()} if profile else None,
         distilldift_checkpoint=(os.path.basename(args.distilldift_checkpoint)
                                 if args.features == "distilldift" else None),
         n_vertices=int(len(verts)),
