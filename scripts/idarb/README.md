@@ -1080,3 +1080,22 @@ mixed relief and generated features are not comparable (the generated style scor
 Texture-space measures (mirrored area, conformal distortion) do not apply to an atlas source,
 whose uv charts have their own orientation. TRELLIS.2 sources and a front-only feature
 extraction of the generated meshes are pending on the server.
+
+### Two-sided texture (`merge_sides.py`, `eval_generated.py --merge`; 2026-10-24)
+
+The side the photo's camera sees keeps the photo's texture through the relief correspondence;
+every other face takes the generated mesh's texture (its atlas with the photo's albedo baked into
+the seen side) through the generated-mesh correspondence. `merge_sides.py` packs the two images
+side by side into one texture and writes one OBJ + MTL + PNG plus a preview from the front, the
+back and both sides. `eval_generated.py --merge` runs it for every annotated pair, computing the
+relief correspondence with the same setting when it is missing (`--relief_dir`), and adds the
+relief's keypoint accuracy and the front/back face counts to the CSV.
+
+### Held-out split of the keypoint benchmark (`keypoint_split.py`; 2026-10-24)
+
+`results/diff3f/keypoints/split.json` is a seeded split of the 15 annotated pairs into a tuning
+half (7 pairs) and a held-out half (8 pairs); setting decisions use the tuning half, the held-out
+half is only reported. The script summarises any keypoint-accuracy CSV per method, half and group:
+mean PCK@2 / 5 over pairs, the pooled PCK@2 over keypoints and a 95 % bootstrap interval of the
+mean (`results/diff3f/keypoints/split_accuracy.csv`). With 7–8 pairs per half the intervals are
+about ±15–20 points, which is the resolution the benchmark has.

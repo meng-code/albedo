@@ -792,3 +792,38 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   and `--csv results/diff3f/generated_hunyuan3d_hybrid.csv`;
   `python scripts/idarb/keypoint_rank.py --source relief --csv results/diff3f/keypoint_rank_relief.csv`
   and `--source hunyuan3d --csv results/diff3f/keypoint_rank_hunyuan3d.csv`.
+
+## 2026-10-24 — Owner: try every open item, cheapest first; two-sided texture; held-out split
+
+- The owner's instruction (evening): try all the open items, ordered by time cost from small to
+  large: (1) the two-sided texture (photo through the relief on the seen side, the generated
+  mesh's texture on the rest), (2) a held-out split of the keypoint benchmark, (3) a Hunyuan3D-
+  Paint baseline (target white mesh + photo), (4) DINOv3 inside Diff3F, (5) GeoAware-SC
+  features inside Diff3F, (6) a DenseMatcher baseline, (7) dataset phase B features, (8) a
+  locally injective image-plane map with a chirality filter, (9) method 1 redone (SAM2 +
+  PartField + VLM naming), (10) method 2. Standing rule from the same evening: no CPU runs on
+  the Mac; every run goes to the Windows laptop, GPU work to the server.
+- (1) `merge_sides.py` + `eval_generated.py --merge`: the faces the texture camera sees take
+  the relief's image through the relief correspondence (keypoint-oriented setting, anchor
+  camera), every other face takes the generated mesh's atlas (photo albedo baked into the seen
+  side) through the generated-mesh correspondence; both images packed into one texture, one
+  OBJ. Cat pair (Mac, before the rule): 4 401 front faces from the photo, 10 009 from the
+  generated mesh, no grey face left; the far flank continues the stripes plausibly, the seam
+  along the silhouette shows colour and pattern jumps on the face and chest. The 15 pairs run
+  on the Windows laptop (`results/diff3f/generated_hunyuan3d_merge.csv`, previews under
+  `results/diff3f/generated_merge/`, pending).
+- (2) `keypoint_split.py`: a seeded split of the 15 annotated pairs, stored in
+  `results/diff3f/keypoints/split.json`: tuning = cat, cat_lion, dragon_lizard, labubu_lion,
+  okapi1_camel, okapi_camel, superman_man; held out = bird_bird, cat5_cat, chair1_armchair,
+  cow, labubu_camel, labubu_man, panda_panda, superman_posed. From now on setting decisions use
+  the tuning half; the held-out half is reported. Per half (`split_accuracy.csv`; mean PCK@2
+  over pairs with a 95 % bootstrap interval): zoom 2 nearest neighbour tuning 61 % [46, 80],
+  held out 51 % [30, 73]; zoom 2 pipeline 45 % [30, 60] and 32 % [13, 55]; zoom 1 nearest
+  neighbour 49 % and 47 %, three-level setting 41 % and 33 %. The held-out half is the harder
+  one (bird, chair, cow, Labubu → camel). With 7–8 pairs per half the intervals are about ±15
+  to 20 points wide, so differences of a few points between settings (the 37–43 % range of the
+  refinement variants) are within noise, while nearest neighbour against the pipeline and the
+  relief against the generated source (63 % against 17 %) are not.
+- (3) and (4) are specified for the server (Hunyuan3D-Paint on the 15 pairs; `--dino dinov3`
+  in `diff3f_features.py`, tested on five meshes); the server session was unreachable when they
+  were sent, so they wait for the owner to reopen it.
