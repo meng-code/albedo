@@ -886,10 +886,12 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   floor of every feature comparison in this project; differences of that size between feature
   variants are not evidence.
 - The owner's Windows laptop (RTX 4080 12 GB, WSL2 Ubuntu, 48 GB RAM) is being set up as a second
-  GPU with the recipe in `scripts/idarb/requirements-diff3f.txt`; after a validation run of
-  cat_full against the server's features (pass mark: mean cosine above 0.95) it takes the
-  front-only Hunyuan3D batch (14 meshes, pushed on its own branch features-front-tmp), and the
-  server drops that batch. Rule from the owner: CPU batch work and GPU feature work both go to
+  GPU with the recipe in `scripts/idarb/requirements-diff3f.txt`. Validation (cat_full, zoom 2,
+  CPU offload on because the 12 GB card leaves 0.7 GB free): features agree with the server's
+  file at mean cosine 0.9997 (min 0.987, identical vertex subsample, 318 views used), 30 min
+  against the server's 15.6 min; torch peak 5.9 GB, nvidia-smi 11.6 GB. It then took the
+  front-only Hunyuan3D batch (14 meshes, 15–30 min each, pushed on its own branch
+  features-front-tmp), and the server dropped that batch. Rule from the owner: CPU batch work and GPU feature work both go to
   the laptop; the Mac only edits, tests and publishes.
 
 ## 2026-10-25 — Second independent review (Opus): corrections and a re-ranked plan
