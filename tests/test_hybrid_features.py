@@ -26,6 +26,9 @@ def test_relief_frame_inverts_the_fit():
 
 def test_hybrid_replaces_only_the_visible_front():
     # a box: the camera looks down -z, so only the z = +1 face is visible
+    import pytest
+
+    pytest.importorskip("open3d")  # the ray casting of align_generated.front_depth
     import trimesh
 
     box = trimesh.creation.box(extents=(2, 2, 2))
