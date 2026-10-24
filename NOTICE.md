@@ -123,6 +123,45 @@ Add each future dependency with its source URL, version or commit, license, inte
 - **Use:** Loads SigLIP2's image and text towers in `scripts/idarb/siglip2_part_naming.py`. Installed
   in the siglip2oc environment on the GPU server (`scripts/idarb/requirements-meshfm.txt`).
 
+## Hunyuan3D-2.1 (source code and weights, not included)
+
+- **Source:** https://github.com/Tencent-Hunyuan/Hunyuan3D-2.1, commit `82920d6`, cloned outside this
+  repository (`~/semtex/Hunyuan3D-2.1` on the GPU server). Weights https://huggingface.co/tencent/Hunyuan3D-2.1,
+  revision `0b94677654` (shape model `hunyuan3d-dit-v2-1`, paint model `hunyuan3d-paintpbr-v2-1`, VAE;
+  14 GB), downloaded 2026-10-23. The paint model also loads facebook/dinov2-giant (revision
+  `611a9d42f2`, Apache-2.0) and Real-ESRGAN `RealESRGAN_x4plus.pth` (v0.1.0 release of
+  xinntao/Real-ESRGAN, BSD-3-Clause).
+- **License:** Tencent Hunyuan 3D 2.1 Community License Agreement (`LICENSE` and `Notice.txt` in the
+  repository). It does **not** apply in the European Union, the United Kingdom or South Korea, and
+  use or display of the model or its outputs there is not licensed. Section 5(b): the model and its
+  outputs must not be used to improve any other AI model, so meshes generated with it may be used
+  for evaluation but not as training data for our own models (for example a feature refiner).
+  Tencent claims no rights in the outputs (Section 5(d)). Distributing the model itself requires
+  the agreement and its Notice text; we do not distribute it.
+- **Paper:** Hunyuan3D Team, "Hunyuan3D 2.1: From Images to High-Fidelity 3D Assets with
+  Production-Ready PBR Material", arXiv:2506.15442.
+- **Use:** Full textured meshes from our single photos (`scripts/idarb/gen3d_hunyuan.py`), for the
+  "generate the full mesh first, then match" route; results in `results/diff3f/gen3d/hunyuan3d/`.
+
+## TRELLIS.2 (source code and weights, not included)
+
+- **Source:** https://github.com/microsoft/TRELLIS.2, commit `75fbf01`, cloned outside this repository
+  (`~/semtex/TRELLIS.2`). Weights https://huggingface.co/microsoft/TRELLIS.2-4B, revision `af44b45f2e`
+  (16 GB), and one decoder from https://huggingface.co/microsoft/TRELLIS-image-large, revision
+  `25e0d31ffb`, downloaded 2026-10-23.
+- **License:** MIT (code and weights).
+- **Dependencies built from source on the server** (not included): nvdiffrast v0.4.0 (`253ac4f`) and
+  nvdiffrec renderutils (`b296927`), both under the NVIDIA Source Code License, **non-commercial use
+  (research or evaluation) only**; CuMesh (`12289e1`), FlexGEMM (`6dd94a8`) and o-voxel (in the
+  TRELLIS.2 repository), MIT; flash-attn 2.7.3 (prebuilt wheel), BSD-3-Clause.
+- **Image encoder:** facebook/dinov3-vitl16-pretrain-lvd1689m, revision `ea8dc2863c`, gated; the
+  owner accepted the DINOv3 License with his Hugging Face account on 2026-10-24. The pipeline's
+  background-removal model (briaai/RMBG-2.0, CC BY-NC 4.0, gated) is not used: our inputs are RGBA.
+- **Paper:** Xiang et al., "Native and Compact Structured Latents for 3D Generation" (TRELLIS.2),
+  tech report, 2025 (as cited in the repository's README).
+- **Use:** Full textured meshes from our single photos (`scripts/idarb/gen3d_trellis.py`, 512
+  setting); results in `results/diff3f/gen3d/trellis2/`.
+
 ## rembg (Python package)
 
 - **Source:** https://github.com/danielgatis/rembg, version 2.0.61 (from PyPI)
