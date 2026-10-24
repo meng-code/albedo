@@ -837,3 +837,25 @@ The repository will be used beyond the original course, so the owner rewrote `AG
 - (3) and (4) are specified for the server (Hunyuan3D-Paint on the 15 pairs; `--dino dinov3`
   in `diff3f_features.py`, tested on five meshes); the server session was unreachable when they
   were sent, so they wait for the owner to reopen it.
+
+## 2026-10-24 — Literature search widened for the new direction (evening)
+
+- Asked by the owner after the two-sided texture result. Found and recorded on the site's
+  papers page, grouped by what they would serve: fine-scale features on the 2D side (Geometry
+  Matters, arXiv 2605.30093: PartField descriptors rendered into the image plane + a light
+  adapter on DINO/SD features, geodesic pseudo-label filtering, code not released; the TPAMI
+  2025 unified benchmark with a DINOv2 baseline at 85.1 % on SPair-71k, weights public;
+  DistillDIFT, WACV 2025, DINOv2 + SDXL-Turbo distilled, code public); cross-category 3D
+  features (SGSoft, arXiv 2605.18039; HNSR, SIGGRAPH Asia 2025, no code); ground truth for a
+  benchmark (KeypointNet, MIT, 16 rigid categories; Animal3D; HouseCorr3D; SOCO as the 2D
+  cross-category protocol); partial matching baselines (EchoMatch, CVPR 2025; the 2026 non-rigid
+  correspondence survey); texturing the target from the photo without correspondence
+  (TRELLIS.2 texturing mode, RomanTex, MVPaint) and completing the unseen side from a partial
+  texture (TEXGen, NaTex; the 2026 mesh-texturing survey); normal-bridged image-to-geometry
+  (Hi3DGen, code public) as a counterpart of the relief; seam handling for the two-sided
+  texture (Waechter 2014, Wang 2024).
+- Added to the server queue: the TRELLIS.2 texturing mode on the 15 pairs as a second paint
+  baseline, and DistillDIFT as a per-view feature extractor inside Diff3F after the DINOv3
+  test. Placed in the owner's cost-ordered list: TRELLIS.2 texturing with item 3, DistillDIFT
+  after item 4, TEXGen completion of the unseen side after item 3, KeypointNet / Animal3D
+  ground truth with item 7.
