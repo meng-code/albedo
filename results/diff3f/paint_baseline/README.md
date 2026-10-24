@@ -13,6 +13,12 @@ Folders:
 | `results/diff3f/paint_baseline_trellis2/` | TRELLIS.2 texturing (1024 texture flow, 2048 px texture, seed 0) | photo frame |
 | `results/diff3f/paint_baseline_trellis2_canonical/` | TRELLIS.2 texturing | TRELLIS.2's own pose for the photo |
 
+Result (2026-10-25): TRELLIS.2 texturing takes a median 17 s and 6–10 GB against Hunyuan3D-Paint's
+44 s and 14 GB, but its textures are blurrier and drop the photo's fine patterns (leopard spots,
+okapi stripes) and speckle the superman suit; panda, bird and dragon → lizard are good. The canonical
+frame makes no visible difference. Hunyuan3D-Paint stays the painter of the unseen side
+(`docs/decisions.md`, 2026-10-25).
+
 Per pair: `renders.png` (the photo, the painted target from the photo's camera, from behind) and
 `paint.json` (seconds, peak GPU memory, face count, the surface check, command, commits). The
 painted meshes in the target's own frame are in `paint_baseline_meshes/<painter>/<pair>/`

@@ -1096,3 +1096,25 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   neighbour's 0.08. Matches per pair 589–2109 (1120 px) and 741–2480 (five views); 35–46 s and
   28–40 s per pair at 8 threads. Reading: the 2D route alone will not pass the 3D chain; its use
   is as a second opinion (anchors) next to the Diff3F field, which is the next run.
+
+## 2026-10-25 — TRELLIS.2 texturing baseline: faster and cheaper than Hunyuan3D-Paint, but blurrier
+
+- Server (`gen3d_paint_baseline.py --painter trellis2`, paint-baseline-tmp ea04345b): the same
+  15 targets painted by TRELLIS.2's texturing mode (1024 texture flow, 2048 px texture, seed 0)
+  with the photo as reference, in the photo frame and in TRELLIS.2's own canonical frame
+  (`results/diff3f/paint_baseline_trellis2/`, `paint_baseline_trellis2_canonical/`; meshes on
+  the branch). Cost per pair: median 17 s (11–31 s) and 6.3–10 GB of GPU memory, against
+  Hunyuan3D-Paint's 44 s (39–47 s) and 14 GB; every painted mesh lies on the target (surface
+  distance 0).
+- Quality, from the renders: panda, bird and dragon → lizard are good (the lizard gets the
+  orange back and cream belly that Hunyuan3D-Paint flattened to plain orange); cat → lion and
+  okapi → camel lose the photo's pattern (no leopard spots, no leg stripes: a blurred,
+  low-contrast mottled coat, where Hunyuan3D-Paint keeps stripes, tail rings and the white
+  patches); superman → man is speckled with red-and-white noise over the whole suit and the
+  emblem is smeared onto both the chest and the crotch, where Hunyuan3D-Paint gives a clean
+  suit with belt and emblem; the cross pair labubu → camel fails as expected (grey camel with
+  faint pink patches). The canonical frame changes nothing visible on cat → lion, okapi → camel
+  and superman → man, so the photo frame is the setting for the baseline table.
+- Standing: Hunyuan3D-Paint remains the painter for the unseen side of the two-sided texture;
+  TRELLIS.2 texturing is the second painting-baseline row (faster, half the memory, blurrier,
+  loses fine patterns).
