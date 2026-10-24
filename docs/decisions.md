@@ -967,3 +967,18 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   Version 2 (white background, square crops around the object on both sides, mutual matches
   only) is written; its run at 518 and 840 px is queued, DINOv3 after the owner's token is on
   the laptop.
+
+## 2026-10-25 — Generate-then-match with TRELLIS.2 sources
+
+- Same pipeline as the Hunyuan3D run (alignment, bake, `eval_generated.py --merge`, Windows
+  laptop; `results/diff3f/generated_trellis2_merge.csv`, `keypoint_rank_trellis2.csv`,
+  `generated_merge/trellis2_merged_sheet.png`). Keypoints, 13 same-category pairs, PCK@2:
+  pipeline 17.2 %, nearest neighbour 18.4 % (Hunyuan3D 15.5 % / 17.3 %; the relief 43.2 % /
+  63 %). The two generators are equivalent as matching sources and both fail at the fine scale
+  for the same reasons (true-location rank median 41–448 per pair, 0–83 % of nearest
+  neighbours away from the camera, carried-keypoint snap error). The texture-space numbers of
+  the TRELLIS.2 run (within 5 % 44.6 %, median distortion 11.5) are an atlas artefact, not a
+  worse map: its 2048-px texture is cut into many small charts, and a target triangle whose
+  corners land in different charts spans the atlas; the merged previews show the generated side
+  broken into fragments for the same reason. Per-texel baking onto a target atlas (the second
+  review's point) would remove it; the keypoint numbers are the comparison that counts.
