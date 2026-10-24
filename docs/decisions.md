@@ -1241,3 +1241,17 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   minimum cosine of about 0.98, because the winning pixel depends on ball-query order): mean
   cosine about 0.9997 against the stored CPU file, share above 0.95 of 1.00, cat → lion nearest
   neighbour 45 % PCK@2. Until that passes, the standard extraction stays the CPU lift.
+
+## 2026-10-25 — The fixed GPU lift passes: `--zoom 2 --lift gpu` is the standard extraction
+
+- Laptop confirmation (`lift-ab2-win-tmp` 34c8c5d, archived): lion_full at e07b147 with
+  `--lift gpu`, same settings as the A/B. Cosine against the CPU file of the same commit mean
+  0.9996, median 0.9998, minimum 0.992, every vertex above 0.95; against the stored CPU file
+  0.9997 / 0.9999 / 0.979, the same as the CPU path against itself (0.9997 / 0.9999 / 0.988).
+  Keypoints on cat → lion identical to the CPU files: nearest neighbour 45 % PCK@2 / 0.031,
+  chain 36 % / 0.038; texture measures within 0.005. The unit test passes in a torch
+  environment (laptop and server).
+- Standard from now on: `diff3f_features.py --zoom 2 --lift gpu` at e07b147 or later. The
+  saving is in the lift stage (2.3–2.7 s to 0.13 s per view; on the server's DINOv3 run the
+  CPU lift was 535–1134 s of 1288–2022 s per relief); with CPU offload on, as on the laptop,
+  the whole run gains little (1349 against 1399 s) because the painting dominates there.
