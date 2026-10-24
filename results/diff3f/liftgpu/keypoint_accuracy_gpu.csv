@@ -1,0 +1,9 @@
+group,pair,method,n,mean,median,pck_2,pck_5,pck_10
+same,cat,nearest_neighbour,7,0.0553,0.0091,0.7143,0.8571,0.8571
+same,cat,nearest_neighbour_xy,7,0.0543,0.0082,0.8571,0.8571,0.8571
+same,cat,rm5x3_gpu,7,0.0301,0.0116,0.7143,0.8571,0.8571
+same,cat,rm5x3_gpu_xy,7,0.0288,0.0116,0.7143,0.8571,0.8571
+same,cat_lion,nearest_neighbour,11,0.0962,0.0456,0.2727,0.5455,0.9091
+same,cat_lion,nearest_neighbour_xy,11,0.0951,0.0434,0.2727,0.5455,0.9091
+same,cat_lion,rm5x3_gpu,11,0.0367,0.031,0.2727,0.6364,1.0
+same,cat_lion,rm5x3_gpu_xy,11,0.0347,0.0263,0.2727,0.7273,1.0

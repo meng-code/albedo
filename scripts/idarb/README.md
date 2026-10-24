@@ -256,8 +256,8 @@ for a random subset of this size, which keeps a 90k-vertex relief mesh tractable
 (ball-query radius as a fraction of the mesh extent, 0.004 as in the Diff3F notebook), `--seed`,
 `--zoom 2` (render tiles at twice the resolution through the intrinsics; the standard setting since
 2026-10-24, nearest-neighbour PCK@2 54 → 63 %) and `--lift gpu` (the per-view lift onto the mesh
-points on the GPU, 0.13 s per view instead of 2.3–2.7 s, features within noise of the CPU lift;
-2026-10-25).
+points on the GPU, 0.13 s per view instead of 2.3–2.7 s; not the standard yet: its features moved
+the keypoints on cat → lion by several points in the laptop check of 2026-10-25, cause under test).
 The `.npz` holds `idx` (vertex indices), `xyz`, `feat` (float16, unit length), `colors` (vertex colours if
 the mesh has them) and `meta` (command, git commit, settings, run time). A 15000-vertex file is about 60 MB
 and stays out of git. Expect 2 to 4 minutes per mesh on an A40.

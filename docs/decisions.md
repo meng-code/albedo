@@ -1154,7 +1154,8 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   cat_partial → lion 0.0100 → 0.0103); cosine to the CPU features 0.93–0.97 mean. Whole-mesh
   times 665 / 679 / 910 / 755 s against 796 / 937 / 2284 / 912 s, so painting (the UNet pass
   per view, 610–780 s) is now the only large stage. Keypoint check on cat and cat → lion is
-  for the laptop. Adopted for new extractions; the stored zoom-2 features stay the CPU ones.
+  for the laptop (see the next entry: it failed, so the GPU lift is not adopted yet; the stored
+  zoom-2 features stay the CPU ones).
 - Code that lived only on data branches is now on `diff3f-registration`: `diff3f_features.py`
   with `--lift gpu` (from features-3d-tmp), `gen3d_hunyuan.py` with `paint_pipeline()` (from
   paint-baseline-tmp; `gen3d_paint_baseline.py` imports it, so the paint baseline was not
@@ -1183,3 +1184,22 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   ground-truth landmarks exactly. The chain (61 %) and the nearest neighbour (63 %) are both
   limited by the features; the next candidates are the DINOv3 and DistillDIFT full runs on the
   server.
+
+## 2026-10-25 — GPU-lift features fail the keypoint check (laptop run): not adopted, cause to be separated
+
+- Batch 16 on the laptop (`results/diff3f/liftgpu/`, liftgpu-win-tmp 5ec745e): the
+  `--lift gpu` files of features-3d-tmp a34e073 (made at 5a02292) against the stored CPU-lift
+  zoom-2 files (made at 1f37fe3), same vertex indices and views. Keypoints, PCK@2 / mean error:
+  cat nearest neighbour 71 % / 0.055 against 71 % / 0.022 (CPU); cat → lion nearest neighbour
+  27 % / 0.096 against 45 % / 0.031, chain 27 % / 0.037 against 36 % / 0.038. Synthetic cat GT
+  within 1 %: nearest neighbour 51.5 against 57.2 %, chain 56.0 against 62.1 %. Feature cosine
+  GPU against CPU per mesh: mean 0.93–0.97, minimum 0.72–0.88, where the laptop-against-server
+  reproduction of the same commit gives mean 0.9997 and the server's run-to-run minimum is
+  about 0.977. So the two files differ 10–30 times more than run-to-run noise and the keypoints
+  move by several points, not by one.
+- Caveat: the two files also differ in commit (5a02292 against 1f37fe3, which spans the
+  rasteriser-bin change), and the server's own check (a different matching protocol) saw
+  similar GT accuracy. Next: a `--lift cpu` run at the current commit on lion_full and
+  cat_partial, compared with both files, to separate the lift from the other changes. Until
+  then `--lift gpu` is not the standard; the standard extraction stays `--zoom 2` with the CPU
+  lift.
