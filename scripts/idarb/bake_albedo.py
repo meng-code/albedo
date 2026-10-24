@@ -34,14 +34,20 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from align_generated import front_depth  # noqa: E402
 
 
-def texel_points(uv, F, V, H, W):
+def texel_points(uv, F, V, H, W, extra=False):
     """For every texel inside a uv triangle (u right, v up): its pixel (row, col) and 3D point.
     Scanline fill per face in texture pixel space; faces smaller than a texel still give their
-    centre texel."""
-    px = np.column_stack([uv[:, 0] * W - 0.5, (1.0 - uv[:, 1]) * H - 0.5])  # x right, y down
-    rows_out, cols_out, pts_out = [], [], []
-    for f in F:
-        t = px[f]
+    centre texel. uv is per vertex (N,2) or per corner (M,3,2). With extra=True also returns the
+    face index and the barycentric coordinates of every texel."""
+    uv = np.asarray(uv, dtype=np.float64)
+    per_corner = uv.ndim == 3
+    px_v = None if per_corner else np.column_stack([uv[:, 0] * W - 0.5, (1.0 - uv[:, 1]) * H - 0.5])
+    rows_out, cols_out, pts_out, fid_out, bary_out = [], [], [], [], []
+    for fi, f in enumerate(F):
+        if per_corner:
+            t = np.column_stack([uv[fi, :, 0] * W - 0.5, (1.0 - uv[fi, :, 1]) * H - 0.5])
+        else:
+            t = px_v[f]
         x0, x1 = int(np.floor(t[:, 0].min())), int(np.ceil(t[:, 0].max()))
         y0, y1 = int(np.floor(t[:, 1].min())), int(np.ceil(t[:, 1].max()))
         x0, y0 = max(x0, 0), max(y0, 0)
@@ -66,12 +72,23 @@ def texel_points(uv, F, V, H, W):
                 rows_out.append(np.array([c[1]]))
                 cols_out.append(np.array([c[0]]))
                 pts_out.append(V[f].mean(axis=0, keepdims=True))
+                fid_out.append(np.array([fi]))
+                bary_out.append(np.full((1, 3), 1.0 / 3.0))
             continue
         b = np.column_stack([b0, b1, b2])[inside]
         rows_out.append(q[inside, 1].astype(int))
         cols_out.append(q[inside, 0].astype(int))
         pts_out.append(b @ V[f])
-    return np.concatenate(rows_out), np.concatenate(cols_out), np.concatenate(pts_out)
+        fid_out.append(np.full(len(b), fi))
+        bary_out.append(b)
+    if not rows_out:
+        empty = np.zeros(0, dtype=int)
+        out = (empty, empty, np.zeros((0, 3)))
+        return out + (empty, np.zeros((0, 3))) if extra else out
+    out = (np.concatenate(rows_out), np.concatenate(cols_out), np.concatenate(pts_out))
+    if extra:
+        out = out + (np.concatenate(fid_out), np.concatenate(bary_out))
+    return out
 
 
 def main():
