@@ -1,0 +1,8 @@
+{
+ "source": "textured_vc.ply",
+ "vertices_in": 22999,
+ "faces_in": 40000,
+ "vertices_out": 20002,
+ "faces_out": 40000,
+ "method": "open3d 0.20 merge_close_vertices(1e-6)"
+}
