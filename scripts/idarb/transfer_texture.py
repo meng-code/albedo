@@ -87,6 +87,39 @@ def relief_uv_of_points(P, V, image_shape, blank_rows=BLANK_ROWS, scale=1):
     return np.stack([(col + 0.5) / W, 1.0 - (row + 0.5) * scale / Ht], axis=1)
 
 
+def atlas_texture(glb_path, blank_rows=BLANK_ROWS):
+    """A source that carries its own texture atlas (a generated full mesh as a GLB with
+    per-vertex texture coordinates and a base-colour image): the image with the blank strip
+    appended below it, the per-vertex uv moved up accordingly (v up, strip at the bottom), the
+    blank uv, and the mesh's vertices and faces for looking up points on its surface."""
+    m = trimesh.load(glb_path, force="mesh", process=False)
+    tex = np.asarray(m.visual.material.baseColorTexture.convert("RGB"))
+    uv = np.asarray(m.visual.uv, dtype=np.float64)
+    H, W = tex.shape[:2]
+    image = np.concatenate([tex, np.full((blank_rows, W, 3), BLANK, dtype=np.uint8)], axis=0)
+    Ht = H + blank_rows
+    uv_s = np.column_stack([uv[:, 0], (blank_rows + uv[:, 1] * H) / Ht])
+    blank_uv = np.array([0.5, 0.5 * blank_rows / Ht])
+    return image, uv_s, blank_uv, np.asarray(m.vertices, dtype=np.float64), np.asarray(m.faces)
+
+
+def uv_of_points_on_mesh(P, V, F, uv_v, k=8):
+    """Texture coordinates of arbitrary points P near the surface of a mesh with per-vertex uv:
+    the closest surface point's barycentric mix of its triangle's corner uv. The closest point
+    is searched among the k faces whose centroids are nearest (no spatial index needed)."""
+    P = np.asarray(P, dtype=np.float64)
+    tri_all = V[F]
+    cand = cKDTree(tri_all.mean(axis=1)).query(P, min(k, len(F)))[1].reshape(len(P), -1)
+    n, kk = cand.shape
+    closest = trimesh.triangles.closest_point(tri_all[cand.ravel()], np.repeat(P, kk, axis=0))
+    d = np.linalg.norm(closest - np.repeat(P, kk, axis=0), axis=1).reshape(n, kk)
+    best = d.argmin(axis=1)
+    tri = cand[np.arange(n), best]
+    pt = closest.reshape(n, kk, 3)[np.arange(n), best]
+    b = trimesh.triangles.points_to_barycentric(tri_all[tri], pt)
+    return np.einsum("nk,nkd->nd", b, uv_v[F[tri]])
+
+
 def find_grid_offset(V, C, albedo, search=14, white=245):
     """Where the relief's pixel grid sits inside the decomposition image it was built from: the
     (row, column) of the grid's first pixel, found by matching the relief's vertex colours against
@@ -367,16 +400,30 @@ def main():
         help="the decomposition image the relief was built from (four panels or the albedo "
         "alone), to locate the relief's pixel grid in it; needed with --albedo_image",
     )
+    ap.add_argument(
+        "--source_glb",
+        help="a source that is a full mesh with its own texture atlas (textured.glb of a "
+        "generated mesh, same vertices as --source_mesh): its uv and image are used instead of "
+        "the relief's pixel grid",
+    )
     ap.add_argument("--out_dir", required=True)
     args = ap.parse_args()
     os.makedirs(args.out_dir, exist_ok=True)
 
     Vs, Fs, fs, cs = mesh_features(args.source, args.source_mesh, args.feature)
     Vd, Fd, fd, _ = mesh_features(args.target, args.target_mesh, args.feature)
-    if cs is None:
+    atlas = None
+    if args.source_glb:
+        image, uv_s, blank_uv, V_glb, F_glb = atlas_texture(args.source_glb)
+        if len(V_glb) != len(Vs) or not np.allclose(V_glb, Vs, atol=1e-5):
+            sys.exit("--source_glb must have the same vertices as --source_mesh")
+        atlas = (V_glb, F_glb, uv_s)
+    elif cs is None:
         sys.exit("the source mesh has no colours; texture transfer needs the relief with albedo")
     scale = 1
-    if args.albedo_image:
+    if atlas is not None:
+        pass
+    elif args.albedo_image:
         panel = np.asarray(Image.open(args.albedo_panel).convert("RGB"))
         if panel.shape[1] == 4 * panel.shape[0]:  # four panels: albedo is the first
             panel = panel[:, : panel.shape[0]]
@@ -409,6 +456,8 @@ def main():
         t2s = nearest_in_features(fd, fs)
     if src_pos is None:
         uv_d = uv_s[t2s]
+    elif atlas is not None:
+        uv_d = uv_of_points_on_mesh(src_pos, atlas[0], atlas[1], atlas[2])
     else:
         uv_d = relief_uv_of_points(src_pos, Vs, image.shape, scale=scale)
     uv_d = np.clip(uv_d, 0.0, 1.0)

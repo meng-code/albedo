@@ -120,3 +120,28 @@ def test_export_textured_obj_roundtrip(tmp_path):
         text = f.read()
     assert text.count("\nvt ") == len(V) + 1
     assert f"/{len(V) + 1} " in text.splitlines()[-1]
+
+
+def test_atlas_texture_and_uv_lookup(tmp_path):
+    import trimesh
+    from PIL import Image as _Image
+
+    # a textured square: two triangles, uv = xy, a 64x64 image
+    V = np.array([[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0]], dtype=float)
+    F = np.array([[0, 1, 2], [0, 2, 3]])
+    uv = V[:, :2].copy()
+    img = _Image.fromarray(np.full((64, 64, 3), 200, dtype=np.uint8))
+    mat = trimesh.visual.material.PBRMaterial(baseColorTexture=img)
+    m = trimesh.Trimesh(V, F, visual=trimesh.visual.TextureVisuals(uv=uv, material=mat),
+                        process=False)
+    m.export(tmp_path / "sq.glb")
+    image, uv_s, blank_uv, Vg, Fg = tt.atlas_texture(str(tmp_path / "sq.glb"))
+    assert image.shape == (64 + tt.BLANK_ROWS, 64, 3) and len(Vg) == 4
+    # v is lifted above the blank strip, u unchanged
+    assert np.allclose(uv_s[:, 0], uv[:, 0], atol=1e-6)
+    assert uv_s[:, 1].min() >= tt.BLANK_ROWS / (64 + tt.BLANK_ROWS) - 1e-9
+    assert blank_uv[1] < uv_s[:, 1].min()
+    # a point inside the square gets the barycentric uv of its triangle
+    P = np.array([[0.25, 0.5, 0.0], [0.9, 0.1, 0.0]])
+    got = tt.uv_of_points_on_mesh(P, Vg, Fg, uv_s)
+    assert np.allclose(got[:, 0], [0.25, 0.9], atol=1e-6)
