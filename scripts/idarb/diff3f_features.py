@@ -359,15 +359,47 @@ def dinov3_features(device, worker, img, grid):
     return torch.nn.functional.normalize(f, dim=1)
 
 
+class DistillDiftFeatures:
+    """--features distilldift: per-view features from the DistillDIFT student (Fundel et al.,
+    WACV 2025, github.com/CompVis/DistillDIFT, cloned outside this repository): DINOv2 ViT-B/14
+    with registers whose attention layers carry rank-8 LoRA adapters trained to reproduce
+    SD + DINOv2 correspondence features. Used as in the repository's SPair-71k evaluation
+    (eval/preprocess_map.py and configs/eval_distilldift_*.yaml): the image resized to 434 px
+    (31 x 31 patches), the token facet of layer 11, 768 numbers per patch. They replace the whole
+    Diff3F per-pixel feature (SD UNet + DINOv2); the views are still painted by Diff3F."""
+
+    dim = 768
+
+    def __init__(self, repo, checkpoint, device, size=434, layer=11):
+        sys.path.insert(0, os.path.join(repo, "eval"))
+        from model_utils.extractor_dino import ViTExtractor
+
+        self.ex = ViTExtractor("dinov2_vitb14_reg", 14, device=str(device), lora_rank=8,
+                               lora_layers=list(range(12)), weights=checkpoint)
+        self.size, self.layer = size, layer
+
+    @torch.no_grad()
+    def __call__(self, image, grid):
+        batch = self.ex.preprocess_pil(image.convert("RGB").resize((self.size, self.size),
+                                                                  resample=3))
+        desc = self.ex.extract_descriptors(batch.to(grid.device), self.layer, "token")
+        n = self.size // 14
+        f = desc.permute(0, 1, 3, 2).reshape(1, -1, n, n).to(grid.dtype)
+        f = torch.nn.functional.grid_sample(f, grid, align_corners=False).reshape(1, f.shape[1], -1)
+        return torch.nn.functional.normalize(f, dim=1)
+
+
 def features_per_vertex(device, pipe, dino_model, mesh, prompt, mesh_vertices, num_views, H, W,
                         tolerance, appearance="painted", timestep=100, sam_generator=None,
                         sam_tau=0.0, siglip_model=None, seed=0, save_views=None, part_labels=None,
-                        zoom=1, angles=None, min_tile_share=0.01, dino_fn=None):
+                        zoom=1, angles=None, min_tile_share=0.01, dino_fn=None,
+                        view_features=None):
     """Diff3F's get_features_per_vertex (third_party/Diff3F/diff3f.py), copied step by step with
     hooks: the image and UNet features per view (--appearance), SAM cleaning of the fused per-pixel
     features (--sam_tau), SigLIP2 features of the same views (--siglip2) and zoomed tiles (--zoom;
     angles = (elevation, azimuth) of the view set, tiles with less than min_tile_share of
-    foreground pixels are skipped) and DINOv3 instead of DINOv2 (dino_fn, --dino dinov3). Only
+    foreground pixels are skipped), DINOv3 instead of DINOv2 (dino_fn, --dino dinov3) and other
+    per-view features instead of Diff3F's (view_features, --features distilldift). Only
     used when one of those options is set. Returns a dict of
     per-vertex features: "diff3f" always, "diff3f_sam" with --sam_tau, "siglip2" with --siglip2,
     the mean share of pixels SAM cleaning replaced, and the numbers of views used and tiles skipped.
@@ -392,7 +424,7 @@ def features_per_vertex(device, pipe, dino_model, mesh, prompt, mesh_vertices, n
     pixel_coords = d3f.arange_pixels((H, W), invert_y_axis=True)[0]
     pixel_coords[:, 0] = torch.flip(pixel_coords[:, 0], dims=[0])
     grid = d3f.arange_pixels((H, W), invert_y_axis=False)[0].to(device).reshape(1, H, W, 2).half()
-    dims = {"diff3f": d3f.FEATURE_DIMS}
+    dims = {"diff3f": d3f.FEATURE_DIMS if view_features is None else view_features.dim}
     if sam_generator is not None and sam_tau > 0:
         dims["diff3f_sam"] = d3f.FEATURE_DIMS
     if siglip_model is not None:
@@ -437,11 +469,15 @@ def features_per_vertex(device, pipe, dino_model, mesh, prompt, mesh_vertices, n
                     np.save(os.path.join(save_views, f"mask_{view:02d}.npy"),
                             lab.reshape(H, W).numpy())
             view += 1
-            dino_ft = dino_fn(device, dino_model, view_img, grid)
-            up = torch.nn.Upsample(size=(H, W), mode="bilinear")(unet_ft.unsqueeze(0)).to(device)
-            aligned = torch.nn.functional.grid_sample(up, grid, align_corners=False)
-            aligned = torch.nn.functional.normalize(aligned.reshape(1, up.size(1), -1), dim=1)
-            aligned = torch.hstack([aligned * 0.5, dino_ft * 0.5])
+            if view_features is None:
+                dino_ft = dino_fn(device, dino_model, view_img, grid)
+                up = torch.nn.Upsample(size=(H, W), mode="bilinear")(unet_ft.unsqueeze(0))
+                up = up.to(device)
+                aligned = torch.nn.functional.grid_sample(up, grid, align_corners=False)
+                aligned = torch.nn.functional.normalize(aligned.reshape(1, up.size(1), -1), dim=1)
+                aligned = torch.hstack([aligned * 0.5, dino_ft * 0.5])
+            else:
+                aligned = view_features(view_img, grid)
             per_view = {"diff3f": aligned}
             if "diff3f_sam" in acc:
                 per_view["diff3f_sam"], share = sam_clean(
@@ -559,6 +595,18 @@ def main():
         help="a Python with torch >= 2.2 and transformers >= 4.56 for --dino dinov3",
     )
     ap.add_argument(
+        "--features",
+        default="diff3f",
+        choices=["diff3f", "distilldift"],
+        help="per-view features: diff3f (SD UNet + DINO) or distilldift (the DistillDIFT student)",
+    )
+    ap.add_argument("--distilldift_repo", default=os.path.expanduser("~/semtex/DistillDIFT"))
+    ap.add_argument(
+        "--distilldift_checkpoint",
+        default=os.path.expanduser("~/semtex/DistillDIFT/eval/checkpoints/distilled_s.ckpt"),
+        help="distilled_s (supervised, the default), distilled_ws or distilled_us",
+    )
+    ap.add_argument(
         "--siglip2",
         action="store_true",
         help="also SigLIP2 features of the same views (timm " + SIGLIP2 + ")",
@@ -604,6 +652,10 @@ def main():
         cpu_offload=not args.no_cpu_offload,
     )
     dino = init_dino(device) if args.dino == "dinov2" else Dinov3Worker(args.dino3_python)
+    view_features = None
+    if args.features == "distilldift":
+        view_features = DistillDiftFeatures(args.distilldift_repo, args.distilldift_checkpoint,
+                                            device)
     print(f"models ready after {time.time() - t0:.0f} s")
 
     mesh_vertices = mesh.verts_list()[0][torch.as_tensor(idx, device=device)]
@@ -612,7 +664,7 @@ def main():
     torch.cuda.reset_peak_memory_stats()
     views_used, tiles_skipped = num_views, 0
     upstream = (args.appearance == "painted" and args.sam_tau <= 0 and not args.siglip2
-                and args.dino == "dinov2")
+                and args.dino == "dinov2" and args.features == "diff3f")
     if upstream and args.save_views is None and args.zoom == 1:  # unchanged upstream path
         feat = d3f.get_features_per_vertex(
             device=device,
@@ -649,6 +701,7 @@ def main():
             sam_generator=sam_gen, sam_tau=args.sam_tau, siglip_model=siglip, seed=args.seed,
             save_views=args.save_views, part_labels=part_labels, zoom=args.zoom, angles=angles,
             dino_fn=dinov3_features if args.dino == "dinov3" else None,
+            view_features=view_features,
         )
         feat, sam_share = acc["diff3f"], acc["sam_replaced_share"]
         views_used, tiles_skipped = acc["views_used"], acc["tiles_skipped"]
@@ -679,6 +732,9 @@ def main():
         sam_replaced_share=sam_share,
         siglip2=SIGLIP2 if args.siglip2 else None,
         dino="dinov2_vitb14" if args.dino == "dinov2" else DINOV3,
+        features=args.features,
+        distilldift_checkpoint=(os.path.basename(args.distilldift_checkpoint)
+                                if args.features == "distilldift" else None),
         n_vertices=int(len(verts)),
         n_features=int(len(idx)),
         seconds=round(time.time() - t0, 1),

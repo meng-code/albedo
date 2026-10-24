@@ -78,6 +78,31 @@ Add each future dependency with its source URL, version or commit, license, inte
 - **Paper:** Oquab et al., "DINOv2: Learning Robust Visual Features without Supervision", arXiv:2304.07193.
 - **Use:** Image features fused with the diffusion features inside Diff3F. Downloaded at run time.
 
+## DINOv3 ViT-B/16 (not included)
+
+- **Source:** https://huggingface.co/facebook/dinov3-vitb16-pretrain-lvd1689m (327 MB), gated; the
+  owner accepted the DINOv3 License with his Hugging Face account on 2026-10-24. Loaded with
+  transformers 4.57.1 in the trellis2 environment (`scripts/idarb/dinov3_worker.py`).
+- **License:** DINOv3 License (Meta), as shown on the model page.
+- **Paper:** Siméoni et al., "DINOv3", arXiv:2508.10104.
+- **Use:** Optional replacement of DINOv2 inside Diff3F (`scripts/idarb/diff3f_features.py --dino
+  dinov3`), tested on five meshes on 2026-10-25.
+
+## DistillDIFT (source code and weights, not included)
+
+- **Source:** https://github.com/CompVis/DistillDIFT, commit `b177d83`, cloned outside this repository
+  (`~/semtex/DistillDIFT` on the GPU server), with its LoRA checkpoints
+  `eval/checkpoints/distilled_{s,ws,us}.ckpt` (86 MB each); the base model is DINOv2 ViT-B/14 with
+  registers (`dinov2_vitb14_reg` through `torch.hub`, 331 MB, Apache-2.0).
+- **License:** none stated. The repository has no license file and GitHub reports no license, so
+  by default all rights are reserved by the authors. We only run it locally for research; neither
+  its code nor its weights are copied into this repository. Ask the authors before redistributing
+  anything, including features, in a publication or release.
+- **Paper:** Fundel, Schusterbauer, Hu and Ommer, "DistillDIFT: Distillation of Diffusion Features
+  for Semantic Correspondence", WACV 2025, arXiv:2412.03512.
+- **Use:** Optional per-view features inside Diff3F (`scripts/idarb/diff3f_features.py --features
+  distilldift`, default checkpoint `distilled_s`), tested on five meshes.
+
 ## MeshFM (source code and weights, not included)
 
 - **Source:** https://github.com/threedle/MeshFM, commit `e6577b1`, cloned outside this repository
