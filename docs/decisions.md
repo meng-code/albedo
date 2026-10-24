@@ -1043,3 +1043,21 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   the same-category pairs; DINOv3 looks better on the two cross pairs; with 2 + 2 pairs this is
   at noise level. Not adopted; a full run on the 23 benchmark meshes would be the test, queued
   on the server at low priority with the painted views cached.
+
+## 2026-10-25 — Two-sided texture with the painted target as the unseen side
+
+- Windows laptop (`merge_sides.py --back_identity`, the Hunyuan3D-painted copy of each target
+  read at the vertex's own position for every face the photo's camera does not see; the seen
+  side unchanged, the photo through the relief correspondence):
+  `results/diff3f/generated_merge/painted_hunyuan3d_merged_sheet.png`. The unseen side is now
+  one continuous texture that follows the photo's colours and pattern (the cat's stripes on
+  the far flank and the back of the head, the suit and belt on the man's back, the okapi's coat
+  on the camel), where the generated-mesh correspondence gave a patchwork; the face splits
+  are the same as before (same-category pairs: on average 6 892 faces from the photo, 10 053
+  from the painted copy). What remains: the seam along the photo's silhouette (colour and
+  pattern differences between the photo's albedo and the painted texture) and thin outlines
+  where a target triangle's corners fall in different atlas charts (per-vertex uv lookup into
+  the painter's multi-chart atlas). Both are the engineering items of the second review:
+  per-texel baking onto one target atlas with chart dilation, a visibility margin at the
+  silhouette and Waechter-style colour levelling. Of the three sources for the unseen side
+  tried today, this is the usable one; the generated-mesh correspondence is not.
