@@ -185,9 +185,10 @@ def main():
     with open(os.path.join(args.out_dir, stem + ".obj"), "w") as f:
         f.write("\n".join(lines) + "\n")
 
+    # the three classes partition the faces: photo only (w = 1), blended (0 < w < 1), paint (w = 0)
     blend = (w_face > 0) & (w_face < 1)
     stats = dict(atlas=atlas_kind, size=S, texels=int(len(rows)),
-                 faces_photo=int((w_face >= 0.5).sum()), faces_blend=int(blend.sum()),
+                 faces_photo=int((w_face == 1).sum()), faces_blend=int(blend.sum()),
                  faces_paint=int((w_face == 0).sum()), levelled=not args.no_level,
                  view=[round(float(v), 6) for v in view])
     print(json.dumps(stats))
