@@ -520,16 +520,16 @@ def features_per_vertex(device, pipe, dino_model, mesh, prompt, mesh_vertices, n
             q = ball_query(world_coords.unsqueeze(0), mesh_vertices.unsqueeze(0), K=100,
                            radius=ball_drop_radius, return_nn=False).idx[0]
             if lift == "gpu":
-                # every (pixel, vertex) pair within the ball adds its pixel's feature: a proper
-                # average over all contributions, whatever order ball_query returns them in
-                pair = torch.nonzero(q != -1)
-                vert, pix = q[pair[:, 0], pair[:, 1]], pair[:, 0]
-                count.index_add_(0, vert, torch.ones((len(vert), 1), device=device))
+                # Diff3F's lifting below writes acc[q[mask]] with duplicate vertex indices, which
+                # on the CPU keeps one pixel per vertex and view (the last pair in row-major
+                # order) and counts the view once; the GPU path selects exactly that pair, so
+                # its features match the CPU files (an average over every pair in the ball
+                # blurred the features and cost keypoints, 2026-10-25)
+                vsel, psel = last_pair_per_vertex(q)
+                count[vsel] += 1
                 for k, f in per_view.items():
                     per_pixel = f[0][:, indices.to(device)]
-                    for s in range(0, len(vert), 200000):
-                        acc[k].index_add_(0, vert[s:s + 200000],
-                                          per_pixel[:, pix[s:s + 200000]].T.float())
+                    acc[k][vsel] += per_pixel[:, psel].T.float()
             else:  # Diff3F's own: duplicated indices keep one write per vertex and view
                 q = q.cpu()
                 mask = q != -1
@@ -554,6 +554,21 @@ def features_per_vertex(device, pipe, dino_model, mesh, prompt, mesh_vertices, n
     acc["sam_replaced_share"] = float(np.mean(replaced)) if replaced else None
     acc["views_used"], acc["tiles_skipped"] = view, skipped
     return acc
+
+
+def last_pair_per_vertex(q):
+    """For ball_query's (pixels, K) index tensor q (-1 = empty), the pairs that Diff3F's lifting
+    keeps: for every vertex that any pixel's ball contains, the last (pixel, k) entry in row-major
+    order, which is what `acc[q[mask]] += ...` ends up writing on the CPU. Returns (vertex indices,
+    pixel indices), one entry per vertex hit, in ascending vertex order."""
+    pair = torch.nonzero(q != -1)  # row-major: by pixel, then k, the order of q[mask]
+    vert, pix = q[pair[:, 0], pair[:, 1]], pair[:, 0]
+    order = torch.argsort(vert, stable=True)  # groups by vertex, original order inside a group
+    vs = vert[order]
+    last = torch.ones(len(vs), dtype=torch.bool, device=q.device)
+    last[:-1] = vs[1:] != vs[:-1]
+    keep = order[last]
+    return vert[keep], pix[keep]
 
 
 def front_hemisphere_angles(num_views, max_elev=45.0, max_azim=75.0):
@@ -661,7 +676,7 @@ def main():
         default="cpu",
         choices=["cpu", "gpu"],
         help="cpu: Diff3F's lifting (per view one write per vertex, order-dependent); gpu: "
-        "index_add_ over every (pixel, vertex) pair, a proper average, much faster",
+        "the same selection done on the GPU (identical features, much faster)",
     )
     ap.add_argument(
         "--distilldift_checkpoint",

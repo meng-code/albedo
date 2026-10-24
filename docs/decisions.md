@@ -1218,3 +1218,26 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   below the relief's even on its visible side (its shape and texture are the generator's, not
   the photo's), and the pipeline gains nothing. Generate-then-match stays closed as a source for
   correspondence; its remaining use is the painted target for the unseen side.
+
+## 2026-10-25 — The GPU lift was a different algorithm; rewritten to Diff3F's semantics
+
+- Laptop A/B (`lift-ab-win-tmp` d4b6942, archived): lion_full extracted twice at e11dca0 on one
+  machine with only `--lift` changed. CPU against the stored CPU file: cosine mean 0.9997,
+  minimum 0.988; GPU against the server's GPU file: 1.0000; CPU against GPU: mean 0.933,
+  minimum 0.767, share above 0.95 only 34 %. Keypoints on cat → lion with the stored CPU
+  cat_partial as source: nearest neighbour 45 % PCK@2 / 0.031 with any CPU lion_full, 27 % /
+  0.094 with either GPU one; the chain 36 → 27 %. The commits between 1f37fe3, 5a02292 and
+  e11dca0 change nothing measurable; the lift alone does.
+- Cause, from the code: Diff3F's lifting does `acc[q[mask]] += feature` and
+  `count[q[mask]] += 1` with duplicate vertex indices, which on the CPU keeps one pixel per
+  vertex and view (the last (pixel, k) pair in row-major order) and counts the view once, so a
+  vertex's feature is the mean over views of one pixel each. The GPU path summed every (pixel,
+  vertex) pair in the ball and divided by the number of pairs: a spatial blur within each view
+  with the views weighted by their pixel counts, which is what cost the keypoints.
+- Fix: the GPU path now selects exactly Diff3F's pair per vertex (`last_pair_per_vertex`, stable
+  sort by vertex, last entry of each group) and counts the view once; `tests/test_diff3f_lift.py`
+  checks the selection against the fancy-index write (skipped where torch is absent). Pass mark
+  for the laptop's confirmation run on lion_full (the CPU path itself is only reproducible to a
+  minimum cosine of about 0.98, because the winning pixel depends on ball-query order): mean
+  cosine about 0.9997 against the stored CPU file, share above 0.95 of 1.00, cat → lion nearest
+  neighbour 45 % PCK@2. Until that passes, the standard extraction stays the CPU lift.
