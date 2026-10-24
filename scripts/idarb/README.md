@@ -1124,5 +1124,7 @@ patch features (square crops around the object on both sides, soft-argmax over a
 mutual test), and every match is lifted through the rasteriser to a target vertex. The output is
 an npz in `refine_correspondence.py`'s layout (`src_pos` filled from the nearest matched vertex
 for the unmatched ones, a `matched` mask) plus a landmarks JSON of the best mutual matches. Runs
-on a CPU in seconds per pair with DINOv2; the first version scored 23 % PCK@2
-(`results/diff3f/match2d/`), the second (crops, white background) is being evaluated.
+on a CPU in seconds per pair with DINOv2. On the 13 same-category pairs: version 1 (filled
+background, 518 px) 23 % PCK@2 (`results/diff3f/match2d/`); version 2 (crops, white background)
+28 % at 518 px and 47 % at 840 px (`match2d_v2/`); version 3 44 % at 1120 px and 50 % at 840 px
+with five views (`match2d_v3/`), against the nearest neighbour's 63 % and the 3D chain's 61 %.

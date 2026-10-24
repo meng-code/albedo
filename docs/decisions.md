@@ -1074,3 +1074,25 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   renders already beats the old refinement chain (43 %) and the resolution of the 2D features
   is what moves it; next: 1120 px, five views (turned and tilted), DINOv3 once the owner's
   token is on the laptop, and the matches as a second opinion next to the Diff3F field.
+
+## 2026-10-25 — Baking the target atlas (laptop run) and the 2D route, version 3
+
+- `bake_target_atlas.py` over the 15 pairs on the laptop (Hunyuan3D-painted target as the unseen
+  side, 2048² atlas, xatlas on every pair, painted colours levelled to the photo, 22–46 s per
+  pair; `results/diff3f/generated_merge/baked_hunyuan3d_sheet.png`, per-pair previews on the data
+  branch `baked-win-tmp`): the smears and chart outlines of the painted merge are gone from the
+  side and back views and the texture is continuous everywhere (okapi → camel's back and side
+  stripes are clean). What remains is the content of the painted copy, not seams: superman → man
+  has a dark purple region over the lower back and the arms with a soft photo-to-paint transition
+  in the left view; cat has a dark blot on the rump. Per pair the faces split roughly 1 photo :
+  0.2 blend : 2 paint (cow 2097 / 403 / 3217 of 5500; the stats line counted faces with
+  0.5 ≤ w < 1 twice until 325b0954).
+- The 2D route, version 3 (`match2d.py`, DINOv2 ViT-B/14 on the CPU, mutual matches;
+  `results/diff3f/match2d_v3/keypoint_accuracy.csv`): 1120 px with three views gives PCK@2
+  44 % (3D) / 45 % (image plane) on the 13 same-category pairs, below version 2's 47 % at 840 px,
+  so resolution stops helping at 840 px; 840 px with five views (two extra tilted views) gives
+  50 / 52 %, mean error 0.053. Both stay under the nearest neighbour's 63 % and the 3D chain's
+  61 % (re-match sweep 2). Cross pairs: 15 % and 10 %, mean error 0.14–0.17 against the nearest
+  neighbour's 0.08. Matches per pair 589–2109 (1120 px) and 741–2480 (five views); 35–46 s and
+  28–40 s per pair at 8 threads. Reading: the 2D route alone will not pass the 3D chain; its use
+  is as a second opinion (anchors) next to the Diff3F field, which is the next run.
