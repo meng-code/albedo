@@ -1,0 +1,36 @@
+{
+ "cat_synth_partial:cat_full": {
+  "cpu": {
+   "mutual_nn": 0.1205,
+   "gt_points": 2821,
+   "median_err": 0.0101,
+   "within_1pct": 0.4952,
+   "within_5pct": 0.9677,
+   "within_10pct": 0.9798
+  },
+  "gpu": {
+   "mutual_nn": 0.1191,
+   "gt_points": 2821,
+   "median_err": 0.0096,
+   "within_1pct": 0.5122,
+   "within_5pct": 0.9486,
+   "within_10pct": 0.9777
+  }
+ },
+ "cat_partial:cat_full": {
+  "cpu": {
+   "mutual_nn": 0.0099
+  },
+  "gpu": {
+   "mutual_nn": 0.0117
+  }
+ },
+ "cat_partial:lion_full": {
+  "cpu": {
+   "mutual_nn": 0.01
+  },
+  "gpu": {
+   "mutual_nn": 0.0103
+  }
+ }
+}
