@@ -1161,3 +1161,25 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   runnable from this branch before) and `make_partial_dataset.py` (from dataset-tmp). The
   server compared every other script blob by blob: identical. Those branches can go once the
   Windows archive has verified its copies.
+
+## 2026-10-25 — 2D matches pinned exactly (laptop run): the 2D route adds nothing as an anchor source
+
+- `refine_correspondence.py` at 9799a67 with the match2d v3 landmarks (840 px, five views),
+  three variants over the 15 pairs (`results/diff3f/lm2d_v2/keypoint_accuracy.csv`, 45 runs in
+  569 s): soft re-pin in every re-match round (400 landmarks), `--landmarks_hard` with 400 and
+  with 100 farthest-point-thinned landmarks. The hard variants hold every landmark exactly
+  (distance 0 on all 5907 / 1500 landmark vertices); the soft re-pin halves the drift of the
+  previous run (over 2 % of the diagonal: 75 → 41 %, median 3.6 → 1.7 %).
+- Keypoints on the 13 same-category pairs, PCK@2 (3D / image plane) and mean error: the chain
+  61 / 62 %, 0.038; soft 400 59 / 63 %, 0.041; hard 400 60 / 64 %, 0.043; hard 100 59 / 62 %,
+  0.045; nearest neighbour 63 / 64 %, 0.048. Cross pairs: mean error 0.086 → 0.13–0.16 with
+  landmarks. Per pair the landmarks gain on okapi1 → camel (+2 keypoints with hard pinning) and
+  panda (+1) and lose on superman posed, okapi → camel, cat5 → cat and cat → lion (−1 each,
+  okapi → camel −2 with 100 hard landmarks).
+- Reading: with the override removed, the 2D matches still do not lift the chain; they carry no
+  keypoint accuracy beyond the 3D chain's and some are wrong, so pinning them hurts single
+  pairs and the cross pairs' mean error. The 2D route is closed as an anchor source for the 3D
+  chain (its own best is 50 % PCK@2). `--landmarks_hard` stays as the way to use manual or
+  ground-truth landmarks exactly. The chain (61 %) and the nearest neighbour (63 %) are both
+  limited by the features; the next candidates are the DINOv3 and DistillDIFT full runs on the
+  server.
