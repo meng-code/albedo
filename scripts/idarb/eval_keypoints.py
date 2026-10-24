@@ -39,11 +39,16 @@ import register_partial as rp  # noqa: E402
 from correspondence_maps import load_mesh, mesh_features, nearest_in_features  # noqa: E402
 
 
-def landmark_errors(P_source_of_target, Vd, lm_source, lm_target, diag_s):
-    """Errors (fraction of the source diagonal) of the mapped target landmarks."""
+def landmark_errors(P_source_of_target, Vd, lm_source, lm_target, diag_s, plane=False):
+    """Errors (fraction of the source diagonal) of the mapped target landmarks. plane=True
+    measures in the relief's image plane only (x, y): the error the texture sees, which ignores
+    a field position that left the relief surface across a depth jump."""
     t_idx = cKDTree(Vd).query(lm_target)[1]
     mapped = P_source_of_target[t_idx]
-    return np.linalg.norm(mapped - lm_source, axis=1) / diag_s
+    d = mapped - lm_source
+    if plane:
+        d = d[:, :2]
+    return np.linalg.norm(d, axis=1) / diag_s
 
 
 def summary(err):

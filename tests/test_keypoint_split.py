@@ -33,3 +33,26 @@ def test_summary_pools_by_keypoint_count():
 def test_bootstrap_interval_contains_mean():
     lo, hi = bootstrap_mean([0.2, 0.4, 0.6, 0.8])
     assert lo <= 0.5 <= hi and lo < hi
+
+
+def test_paired_difference_and_sign_test():
+    from keypoint_split import paired_difference
+
+    rows = []
+    for i, (a, b) in enumerate([(0.6, 0.4), (0.5, 0.5), (0.7, 0.3), (0.2, 0.1)]):
+        rows.append(dict(pair=f"p{i}", method="A", pck_2=str(a)))
+        rows.append(dict(pair=f"p{i}", method="B", pck_2=str(b)))
+    r = paired_difference(rows, "A", "B")
+    assert r["pairs"] == 4 and r["wins"] == 3 and r["losses"] == 0 and r["ties"] == 1
+    assert np.isclose(r["mean_diff"], 0.175) and r["ci95_low"] <= 0.175 <= r["ci95_high"]
+    assert np.isclose(r["p_sign"], 0.25)  # three of three one way: 2 * (1/8)
+
+
+def test_components_follow_shared_objects():
+    from keypoint_split import components
+
+    pairs = [("cat", "cat", "cat"), ("cat_lion", "cat", "lion"), ("labubu_lion", "labubu", "lion"),
+             ("cow", "cow", "cow"), ("panda", "panda", "panda")]
+    groups = components(pairs)
+    assert groups[0] == ["cat", "cat_lion", "labubu_lion"]
+    assert ["cow"] in groups and ["panda"] in groups

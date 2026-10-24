@@ -57,6 +57,51 @@ def bootstrap_mean(values, n_boot=2000, seed=0):
     return float(np.percentile(means, 2.5)), float(np.percentile(means, 97.5))
 
 
+def paired_difference(rows, method_a, method_b, column="pck_2", n_boot=2000, seed=0):
+    """Per-pair paired comparison of two methods from one CSV: the mean difference a - b, its
+    95 % paired bootstrap interval (pairs resampled together), and the sign test's two-sided
+    p-value over the pairs that differ."""
+    from math import comb
+
+    a = {r["pair"]: float(r[column]) for r in rows if r["method"] == method_a}
+    b = {r["pair"]: float(r[column]) for r in rows if r["method"] == method_b}
+    pairs = sorted(set(a) & set(b))
+    d = np.array([a[p] - b[p] for p in pairs])
+    if len(d) == 0:
+        raise ValueError("no pair has both methods")
+    rng = np.random.default_rng(seed)
+    boots = d[rng.integers(0, len(d), size=(n_boot, len(d)))].mean(axis=1)
+    pos, neg = int((d > 0).sum()), int((d < 0).sum())
+    m = pos + neg
+    k = min(pos, neg)
+    p_sign = min(1.0, 2 * sum(comb(m, i) for i in range(k + 1)) / 2 ** m) if m else 1.0
+    return dict(pairs=len(d), mean_diff=float(d.mean()),
+                ci95_low=float(np.percentile(boots, 2.5)),
+                ci95_high=float(np.percentile(boots, 97.5)),
+                wins=pos, losses=neg, ties=int(len(d) - m), p_sign=float(p_sign))
+
+
+def components(pairs_with_objects):
+    """Connected components of pairs that share a source relief or a target mesh: the units a
+    held-out split has to respect so that no object appears on both sides.
+    pairs_with_objects: list of (pair, source, target)."""
+    parent = {}
+
+    def find(x):
+        while parent.setdefault(x, x) != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    for name, src, tgt in pairs_with_objects:
+        for key in ("s:" + src, "t:" + tgt):
+            parent[find("p:" + name)] = find(key)
+    groups = {}
+    for name, _s, _t in pairs_with_objects:
+        groups.setdefault(find("p:" + name), []).append(name)
+    return sorted((sorted(g) for g in groups.values()), key=lambda g: (-len(g), g[0]))
+
+
 def summarise(rows, split, name):
     """Rows of one CSV -> summary rows per method, split half and group ('all' included)."""
     out = []
@@ -89,6 +134,8 @@ def main():
     ap.add_argument("csvs", nargs="+", help="keypoint-accuracy CSVs")
     ap.add_argument("--split", default=SPLIT_PATH)
     ap.add_argument("--csv", help="write the summary rows here")
+    ap.add_argument("--paired", nargs=2, metavar=("A", "B"),
+                    help="paired per-pair comparison of two methods of each CSV")
     args = ap.parse_args()
     if os.path.exists(args.split):
         with open(args.split) as f:
@@ -105,11 +152,26 @@ def main():
             json.dump(split, f, indent=1)
         print(f"split written to {args.split}: tune {split['tune']}, held out "
               f"{split['held_out']}")
+    if "components" not in split:
+        objs = [(name, s_, t_) for _g, name, s_, _m, t_, _tr, _e in ef.pair_table(["same", "cross"])
+                if name in split["tune"] + split["held_out"]]
+        split["components"] = components(objs)
+        with open(args.split, "w") as f:
+            json.dump(split, f, indent=1)
+        print("object components (pairs sharing a relief or a target):",
+              split["components"])
     out = []
     for path in args.csvs:
         with open(path) as f:
             rows = list(csv.DictReader(f))
         out += summarise(rows, split, os.path.basename(path))
+        if args.paired:
+            for col in ("pck_2", "pck_5", "mean"):
+                r = paired_difference(rows, args.paired[0], args.paired[1], col)
+                print(f"{os.path.basename(path):36s} {args.paired[0]} - {args.paired[1]} "
+                      f"[{col}]: {r['mean_diff']:+.3f} [{r['ci95_low']:+.3f}, "
+                      f"{r['ci95_high']:+.3f}] over {r['pairs']} pairs; wins {r['wins']}, "
+                      f"losses {r['losses']}, ties {r['ties']}, sign test p {r['p_sign']:.3f}")
     for r in out:
         if r["group"] == "all":
             print(f"{r['file']:36s} {r['method']:20s} {r['split']:9s} pairs {r['pairs']:2d} "

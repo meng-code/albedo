@@ -20,3 +20,14 @@ def test_landmark_errors_and_summary():
     assert np.allclose(err[:2], 0.0) and abs(err[2] - 0.05) < 1e-9
     s = ek.summary(err)
     assert s["pck_2"] == round(2 / 3, 4) and s["pck_10"] == 1.0 and len(s["per_landmark"]) == 3
+
+
+def test_plane_error_ignores_depth():
+    landmark_errors = ek.landmark_errors
+    Vd = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]])
+    P = np.array([[0.0, 0.0, 0.5], [1.0, 0.0, 0.0]])  # the first vertex left the relief in z
+    lm_t = Vd.copy()
+    lm_s = Vd.copy()
+    e3 = landmark_errors(P, Vd, lm_s, lm_t, 1.0)
+    e2 = landmark_errors(P, Vd, lm_s, lm_t, 1.0, plane=True)
+    assert np.isclose(e3[0], 0.5) and np.isclose(e2[0], 0.0) and e3[1] == e2[1] == 0.0

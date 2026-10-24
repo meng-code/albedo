@@ -38,6 +38,8 @@ def main():
     ap.add_argument("--keypoints", default="results/diff3f/keypoints")
     ap.add_argument("--landmarks", default="results/diff3f/landmarks")
     ap.add_argument("--csv", required=True)
+    ap.add_argument("--plane", action="store_true",
+                    help="also report every method's error in the relief's image plane (_xy)")
     args = ap.parse_args()
 
     rows = []
@@ -61,15 +63,21 @@ def main():
         S = rp.load_features(src_npz)
         _, _, fd, _ = mesh_features(dst_npz, ef.TARGET_MESH[target])
         nn = S["idx"][nearest_in_features(fd, S["feat"])]
-        results = {"nearest_neighbour": landmark_errors(Vs[nn], Vd, lm_s, lm_t, diag_s)}
+        positions = {"nearest_neighbour": Vs[nn]}
         for item in args.result:
             rname, out_dir = item.split("=", 1)
             path = os.path.join(out_dir, group, name, "refined.npz")
             if not os.path.exists(path):
                 continue
             z = np.load(path)
-            P = z["src_pos"].astype(np.float64) if "src_pos" in z.files else Vs[z["t2s"]]
+            positions[rname] = z["src_pos"].astype(np.float64) if "src_pos" in z.files \
+                else Vs[z["t2s"]]
+        results = {}
+        for rname, P in positions.items():
             results[rname] = landmark_errors(P, Vd, lm_s, lm_t, diag_s)
+            if args.plane:
+                # the same error in the relief's image plane (x, y only)
+                results[rname + "_xy"] = landmark_errors(P, Vd, lm_s, lm_t, diag_s, plane=True)
         for rname, err in results.items():
             s = summary(err)
             rows.append(dict(group=group, pair=name, method=rname, n=len(err), mean=s["mean"],
