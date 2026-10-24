@@ -718,3 +718,25 @@ The repository will be used beyond the original course, so the owner rewrote `AG
 - Decision: zoom 2 is the standard feature extraction from now on; the six meshes still at zoom 1
   only (the chair pairs' meshes and the two depth-scaled synthetic cows) are queued. The pipeline
   still loses 20 points of PCK@2 against the nearest neighbour; that is the next thing to change.
+
+## 2026-10-24 — Generate-then-match, step 1: full meshes from the photos and their alignment
+
+- Supervisor (23 Oct, evening): try single-image-to-3D generation (TRELLIS.2, Hunyuan3D) and
+  "generate the full 3D first, then match". Server: Hunyuan3D-2.1 (shape 56 s + paint 52–71 s,
+  14 GB; keeps the photo's frame approximately) and TRELLIS.2 at its 512 setting (22–35 s, 12 GB;
+  canonical pose, photo camera fitted by silhouette IoU) on the 14 photos that have a relief
+  (`results/diff3f/gen3d/`, meshes on the temporary branch gen3d-tmp and in
+  `outputs/diff3f/gen3d/`). All 28 meshes are plausible with sensible backs; known flaws: the
+  dragon's flame as a flat card (Hunyuan3D), colour shifts on the chairs (TRELLIS.2). Hunyuan3D's
+  licence forbids training other models on its outputs; TRELLIS.2 is MIT.
+- `align_generated.py` registers the relief (the photo's frame) to the generated mesh: camera
+  rotation from the fitted view, similarity in x, y from the silhouettes, depth offset from the
+  generated front surface under each relief pixel, ICP with the relief's depth factor. Over the
+  28 meshes (`results/diff3f/gen3d/alignment.csv`): relief vertices within 2 % of the diagonal
+  of the generated front surface 80–98 % (Hunyuan3D fire_dragon and superman 61–62 %), ICP rms
+  1–6 % of the diagonal (TRELLIS.2 1–2 %), rotations mostly below 10° (okapi 40–57°: the fitted
+  camera was off and ICP recovered it). The relief's keypoints land on the generated mesh with
+  snap distances below 0.11 of the diagonal (median about 0.05), and the photo's albedo is
+  projected onto the visible side (58–100 % of the front faces). So the generated mesh can take
+  the relief's place as the source with the keypoint benchmark intact; its zoom-2 Diff3F features
+  are being computed on the server (28 meshes, 7–9 h) for the full-to-full matching.
