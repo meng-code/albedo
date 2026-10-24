@@ -8,8 +8,8 @@ For each pair "partial:full" (both names without .npz) and each feature set:
     rough measure of how distinctive and consistent the features are; no ground truth needed.
   - for synthetic partials cut from the full mesh (results/diff3f/synthetic/<name>_gt.npz holds the
     full-mesh vertex of every partial vertex): the distance between the matched full point and the
-    true one, as a fraction of the full mesh's bounding-box diagonal (median, share under 5 % and
-    under 10 %).
+    true one, as a fraction of the full mesh's bounding-box diagonal (median, share under 1 %, 5 %
+    and 10 %).
   - --pca_dir: a joint PCA of both meshes' features (fitted on the two point sets together, so equal
     colours mean similar features), first three components as RGB, written as coloured .ply point
     clouds and a .png with three axis-aligned views of each mesh.
@@ -90,6 +90,7 @@ def main():
                 diag = np.linalg.norm(xb.max(0) - xb.min(0))
                 err = np.linalg.norm(xb[ab[keep]] - xb[gt_row], axis=1) / diag
                 r.update(gt_points=int(keep.sum()), median_err=round(float(np.median(err)), 4),
+                         within_1pct=round(float((err < 0.01).mean()), 4),
                          within_5pct=round(float((err < 0.05).mean()), 4),
                          within_10pct=round(float((err < 0.10).mean()), 4))
             report[pair][name] = r

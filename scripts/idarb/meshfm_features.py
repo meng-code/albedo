@@ -15,9 +15,13 @@ For every input .npz written by diff3f_features.py the script reads the mesh nam
 normalises the mesh the way MeshFM does (bounding-box centre at the origin, farthest vertex on the
 unit sphere), samples --num_sample_points surface points (MeshFM's own torch sampler, seed --seed),
 runs the encoder once, and reads the feature field at the npz's xyz points, transformed into the
-same normalised frame. The output .npz has the same idx, xyz and colors; only feat changes
-(float16, N x 1536, unit length), and meta is a JSON string with model, checkpoint, repo commit,
-command, source mesh, number of input points and git commit.
+same normalised frame. --close_mirror closes a one-sided relief before encoding by adding a copy
+mirrored through the plane z = (z_min + z_max) / 2 ("mid": front and copy interpenetrate, a thin
+closed shell) or z = z_min ("zmin": the copy sits behind the front, twice the depth); only the
+original points are queried. On the synthetic partials "mid" gained a little and "zmin" lost (see
+the commit message), so the default is "none". The output .npz has the same idx, xyz and colors;
+only feat changes (float16, N x 1536, unit length), and meta is a JSON string with model,
+checkpoint, repo commit, command, source mesh, number of input points and git commit.
 
 Usage (repository root, meshfm environment):
     python scripts/idarb/meshfm_features.py --src outputs/diff3f/cat_full.npz \
@@ -65,6 +69,8 @@ def main():
                     help="default: <meshfm_dir>/configs/meshfm_1536d.yaml")
     ap.add_argument("--num_sample_points", type=int, default=100000, help="encoder input points")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--close_mirror", default="none", choices=["none", "mid", "zmin"],
+                    help="close the shape with a mirrored copy before encoding (see above)")
     args = ap.parse_args()
 
     sys.path.insert(0, args.meshfm_dir)
@@ -83,7 +89,7 @@ def main():
     command = " ".join(["scripts/idarb/meshfm_features.py"] + sys.argv[1:])
     info = dict(model="MeshFM 1536-d", checkpoint=os.path.relpath(ckpt, args.meshfm_dir),
                 repo="threedle/MeshFM", repo_commit=git_commit(args.meshfm_dir), command=command,
-                git_commit=git_commit(ROOT), seed=args.seed)
+                git_commit=git_commit(ROOT), seed=args.seed, close_mirror=args.close_mirror)
 
     for src in srcs:
         d = np.load(src, allow_pickle=True)
@@ -91,6 +97,13 @@ def main():
         mesh = trimesh.load(mesh_path, process=False, force="mesh")
         verts = np.asarray(mesh.vertices, dtype=np.float64)
         faces = np.asarray(mesh.faces, dtype=np.int64)
+        if args.close_mirror != "none":
+            z0, z1 = verts[:, 2].min(), verts[:, 2].max()
+            c = (z0 + z1) / 2 if args.close_mirror == "mid" else z0
+            back = verts.copy()
+            back[:, 2] = 2 * c - back[:, 2]
+            faces = np.vstack([faces, faces[:, ::-1] + len(verts)])
+            verts = np.vstack([verts, back])
         centre, scale = normalization_transform(verts)
         queries = (d["xyz"].astype(np.float64) - centre) / scale
 
