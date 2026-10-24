@@ -1108,8 +1108,13 @@ instead of weighting it; `--hard_radius r` pins only those within r of a first s
 `--final_rematch r` gives every vertex its most similar candidate within r of its field position
 (the field position where none is that close), raises those vertices' weight to
 `--rematch_weight` (default `--keep_weight`) and solves once more, `--rematch_rounds` times. On the
-keypoint benchmark at zoom 2 the re-match at 0.05 lifts the chain from 43 % to 54 % PCK@2
-(`results/diff3f/hard_sweep/`); details in `docs/decisions.md`, 2026-10-25.
+keypoint benchmark at zoom 2 the re-match at 0.05 lifts the chain from 43 % to 54 % PCK@2 with one
+round and to 61 % with three (`results/diff3f/hard_sweep/`, `hard_sweep2/`), equal to the nearest
+neighbour's 63 % within noise and with a lower mean error, while the texture stays coherent. The
+standing settings: keypoint-oriented `--w_view 0.3 --anchor_filter rigid:0.1 --view_from_anchors
+--final_rematch 0.05 --rematch_rounds 3`; texture-oriented the same with `--coarse_to_fine 3
+--coarse_factor 4` and one round (within 2 % 73 %, mirrored area 9.7 %, keypoints 57 %). Details
+in `docs/decisions.md`, 2026-10-25.
 
 ### Matching on the 2D side (`match2d.py`; 2026-10-25)
 

@@ -1014,3 +1014,32 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   two-sided texture: `merge_sides.py --back_identity --back_glb <painted target>` reads it at
   the target's own positions. TRELLIS.2's texturing mode (photo frame and canonical frame) and
   the GPU-lift test follow on the server.
+
+## 2026-10-25 — Re-match sweep 2: the chain reaches the nearest neighbour's fine accuracy
+
+- Windows laptop, zoom-2 features, anchor camera, all 28 pairs
+  (`results/diff3f/hard_sweep2/`). Keypoints on the 13 same-category pairs, PCK@2 (3D / image
+  plane) and mean error: nearest neighbour 63 / 64 %, 0.048; re-match 0.05 three rounds
+  (`rm5x3`) 61 / 62 %, 0.038; re-match 0.08 two rounds (`rm8x2`) 60 / 63 %, 0.037; two
+  rounds at 0.05 59 / 61 %; one round at 0.08 59 / 61 %; with three coarse-to-fine levels
+  (`c2f_rm5`) 57 / 60 %, 0.041. Paired against the nearest neighbour over the 15 pairs:
+  rm5x3 −2.4 points [−6.2, +1.2], 10 ties (p 0.38); rm8x2 −2.7 [−6.9, +1.6]; and the mean
+  error is lower (rm8x2 −0.011 [−0.023, −0.001]). So the 20-point loss of the old chain is
+  gone: the refined map now keeps the nearest neighbour's fine accuracy within noise while
+  removing its gross errors. Texture (16 same-category pairs, within 2 % / within 5 % /
+  mirrored area): rm5x3 68.3 / 96.8 / 11.3 %; rm8x2 66.4 / 94.6 / 12.8 %; c2f_rm5 73.0 / 98.7 /
+  9.7 % (the best texture, 57 % keypoints); the old chain 71.6 / 98.0 / 10.7 %. A higher
+  re-match weight (10) hurts both, no-ARAP hurts texture badly (distortion 6.2), the hard
+  constraints add nothing on top of the re-match. Synthetic within 1 %: 54–56 %, c2f_rm5 55.7 %.
+- Standing settings from now on: keypoint-oriented = `--w_view 0.3 --anchor_filter rigid:0.1
+  --view_from_anchors --final_rematch 0.05 --rematch_rounds 3`; texture-oriented = the same
+  with `--coarse_to_fine 3 --coarse_factor 4` and one re-match round. The remaining gap to
+  "eye to eye" is the nearest neighbour's own 63 %, which only better features move.
+- DINOv3 and DistillDIFT inside Diff3F, five test meshes, four pairs (`results/diff3f/dinov3/`,
+  `results/diff3f/distilldift/`): nearest-neighbour PCK@2 with DINOv3 cat 57 % (DINOv2 71 %),
+  cat_lion 27 % (45 %), labubu_camel 0 (0), labubu_lion 20 % (20 %); through the chain 57 / 36 /
+  10 / 40 % against 71 / 55 / 0 / 10 %. DistillDIFT (768-d) nearest neighbour cat 43 %,
+  cat_lion 45 %, the cross pairs 0 and 20 %; chain 57 / 45 / 0 / 10 %. Neither beats DINOv2 on
+  the same-category pairs; DINOv3 looks better on the two cross pairs; with 2 + 2 pairs this is
+  at noise level. Not adopted; a full run on the 23 benchmark meshes would be the test, queued
+  on the server at low priority with the painted views cached.
