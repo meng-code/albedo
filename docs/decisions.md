@@ -809,9 +809,19 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   side) through the generated-mesh correspondence; both images packed into one texture, one
   OBJ. Cat pair (Mac, before the rule): 4 401 front faces from the photo, 10 009 from the
   generated mesh, no grey face left; the far flank continues the stripes plausibly, the seam
-  along the silhouette shows colour and pattern jumps on the face and chest. The 15 pairs run
-  on the Windows laptop (`results/diff3f/generated_hunyuan3d_merge.csv`, previews under
-  `results/diff3f/generated_merge/`, pending).
+  along the silhouette shows colour and pattern jumps on the face and chest. All 15 pairs
+  (Windows laptop, 621 s; `results/diff3f/generated_hunyuan3d_merge.csv`, contact sheet
+  `results/diff3f/generated_merge/hunyuan3d_merged_sheet.png`): every face is textured (same-
+  category pairs: on average 10 053 faces from the generated mesh against 6 892 from the photo),
+  the seen side keeps the relief's keypoint accuracy (43.2 % PCK@2 on the 13 same-category
+  pairs, the generated source 15.5 %). The unseen side is only as good as the generated-mesh
+  correspondence: plausible where the texture is uniform or random (cat flanks, bird, dragon),
+  a patchwork where parts matter (superman's cape and belt on the man's back, the chair's
+  back, the okapi stripes on the camel), and the seam along the photo's silhouette is visible
+  on every pair (head-on views of the cats and the panda are split down the middle). So the
+  two-sided texture is complete but the unseen side is not usable as it stands; the next
+  candidate for that side is the Hunyuan3D-Paint of the target itself (item 3), which needs no
+  correspondence.
 - (2) `keypoint_split.py`: a seeded split of the 15 annotated pairs, stored in
   `results/diff3f/keypoints/split.json`: tuning = cat, cat_lion, dragon_lizard, labubu_lion,
   okapi1_camel, okapi_camel, superman_man; held out = bird_bird, cat5_cat, chair1_armchair,
