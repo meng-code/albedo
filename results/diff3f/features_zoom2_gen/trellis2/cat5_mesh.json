@@ -1,0 +1,9 @@
+{
+ "source": "textured_vc.ply",
+ "vertices_in": 123639,
+ "faces_in": 199004,
+ "vertices_after_merge": 99319,
+ "faces_out": 100000,
+ "vertices_out": 49870,
+ "method": "open3d 0.20 merge_close_vertices(1e-6) + simplify_quadric_decimation(100000)"
+}
