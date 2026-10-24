@@ -106,10 +106,16 @@ def main():
     ap.add_argument("--front_source", required=True, help="features of the relief (.npz)")
     ap.add_argument("--front_mesh", required=True, help="the relief with its albedo colours")
     ap.add_argument("--front_correspondence", required=True)
-    ap.add_argument("--back_source", required=True, help="features of the generated mesh")
-    ap.add_argument("--back_mesh", required=True, help="the mesh those features index")
-    ap.add_argument("--back_correspondence", required=True)
-    ap.add_argument("--back_glb", required=True, help="baked.glb of the generated mesh")
+    ap.add_argument("--back_source", help="features of the generated mesh (unused with "
+                    "--back_identity)")
+    ap.add_argument("--back_mesh", help="the mesh the back correspondence indexes")
+    ap.add_argument("--back_correspondence", help="npz with src_pos / t2s into --back_mesh")
+    ap.add_argument("--back_glb", required=True, help="the textured GLB the unseen side is "
+                    "read from: the generated mesh's baked.glb, or a painted copy of the "
+                    "target itself with --back_identity")
+    ap.add_argument("--back_identity", action="store_true",
+                    help="the back GLB is the target itself (a painted copy, own vertices and "
+                    "atlas): every target vertex takes the texture at its own position")
     ap.add_argument("--view", type=float, nargs=3, help="texture camera; default: the front "
                     "correspondence's stored view")
     ap.add_argument("--size", type=int, default=640)
@@ -129,8 +135,13 @@ def main():
     uv_f = tt.relief_uv_of_points(P_f, Vf, img_f.shape)
     # back: the generated mesh's atlas, looked up by position on the GLB surface
     img_b, uv_b_src, _blank_b, V_glb, F_glb = tt.atlas_texture(args.back_glb, blank_rows=0)
-    Vb = np.asarray(load_mesh(args.back_mesh).vertices, dtype=np.float64)
-    P_b, _ = source_positions(args.back_correspondence, Vb)
+    if args.back_identity:
+        P_b = Vd  # the painted copy lies on the target: look its atlas up at the vertex itself
+    else:
+        if not (args.back_mesh and args.back_correspondence):
+            sys.exit("give --back_mesh and --back_correspondence, or --back_identity")
+        Vb = np.asarray(load_mesh(args.back_mesh).vertices, dtype=np.float64)
+        P_b, _ = source_positions(args.back_correspondence, Vb)
     uv_b = tt.uv_of_points_on_mesh(P_b, V_glb, F_glb, uv_b_src)
     if args.view is not None:
         view = np.asarray(args.view, dtype=np.float64)
@@ -148,7 +159,7 @@ def main():
 
     span_b = tt.uv_span(uv_b[Fd], img_b.shape)[~front]
     stats = dict(faces=int(len(Fd)), front_faces=int(front.sum()),
-                 back_faces=int((~front).sum()),
+                 back_faces=int((~front).sum()), back_identity=bool(args.back_identity),
                  back_within_5pct=round(float((span_b < 0.05).mean()), 4) if len(span_b) else None,
                  view=[round(float(v), 6) for v in view])
     print(json.dumps(stats))

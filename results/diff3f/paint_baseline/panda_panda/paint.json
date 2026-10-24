@@ -1,0 +1,22 @@
+{
+ "pair": "panda_panda",
+ "painter": "hunyuan3d",
+ "frame": "photo",
+ "frame_azimuth": 0.0,
+ "source_photo": "/home/24/23010524/IDArb/mydata/my_single/panda.png",
+ "target": "panda",
+ "target_mesh": "results/diff3f/targets/panda.ply",
+ "frame_from": "results/diff3f/panda_panda/transform.json",
+ "seed": 0,
+ "seconds": 39.3,
+ "peak_gpu_mib": 14179,
+ "n_vertices": 23038,
+ "n_faces": 40000,
+ "surface_distance_median": 0.0,
+ "surface_distance_max": 0.0,
+ "git_commit": "cce55de",
+ "command": "scripts/idarb/gen3d_paint_baseline.py",
+ "max_num_view": 6,
+ "resolution": 512,
+ "repo_commit": "82920d6"
+}

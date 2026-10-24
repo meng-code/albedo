@@ -998,3 +998,19 @@ The repository will be used beyond the original course, so the owner rewrote `AG
 - DINOv3 inside Diff3F: the five test meshes are computed (`features_zoom2_dinov3/`, 8.2 GB
   peak), with the painted views cached for the DistillDIFT run; keypoint evaluation on the
   four pairs they cover is running on the laptop.
+
+## 2026-10-25 — Hunyuan3D-Paint baseline: the target painted from the photo with no correspondence
+
+- Server (`gen3d_paint_baseline.py`, paint-baseline-tmp ca9986d): for each of the 15 annotated
+  pairs the target white mesh, turned into the photo's frame with the pair's registration
+  rotation, is painted by Hunyuan3D-2.1's paint model with the photo as the reference image
+  (38–47 s per pair, 14 GB), then turned back; the painted mesh is remeshed by the painter but
+  lies on the target (surface distance 0–1e-6 of the diagonal). Renders and timings in
+  `results/diff3f/paint_baseline/<pair>/`, meshes on the branch. Same-category pairs look
+  convincing (the cat's stripes on the lion, the okapi's coat and striped legs on the camel,
+  panda, superman, cow); dragon → lizard plain orange; the cross pairs fail as expected
+  (jeans and a shirt on the lion, a wrong face on the man). It is a texture-only baseline (no
+  correspondence, so no keypoint number) and the natural source for the unseen side of the
+  two-sided texture: `merge_sides.py --back_identity --back_glb <painted target>` reads it at
+  the target's own positions. TRELLIS.2's texturing mode (photo frame and canonical frame) and
+  the GPU-lift test follow on the server.
