@@ -1061,3 +1061,16 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   per-texel baking onto one target atlas with chart dilation, a visibility margin at the
   silhouette and Waechter-style colour levelling. Of the three sources for the unseen side
   tried today, this is the usable one; the generated-mesh correspondence is not.
+
+## 2026-10-25 — The 2D route, version 2: resolution is the lever
+
+- `match2d.py` with a white background and square crops around the object on both sides,
+  mutual matches only, DINOv2 ViT-B/14 on the CPU, three views
+  (`results/diff3f/match2d_v2/keypoint_accuracy.csv`): keypoints on the 13 same-category
+  pairs, PCK@2 (3D / image plane): 518 px 28 / 30 %, 840 px 47 / 49 % (version 1 at 518 px with
+  the filled background: 23 %); mean error 0.051 and 0.056 against the nearest neighbour's
+  0.048; the two cross pairs 15 % and 10 %. Every match is on the object now. 840 px takes
+  18–27 s per pair on the laptop's CPU. So the photo matched directly against the target's
+  renders already beats the old refinement chain (43 %) and the resolution of the 2D features
+  is what moves it; next: 1120 px, five views (turned and tilted), DINOv3 once the owner's
+  token is on the laptop, and the matches as a second opinion next to the Diff3F field.
