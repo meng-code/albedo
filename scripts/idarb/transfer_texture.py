@@ -402,9 +402,9 @@ def main():
     )
     ap.add_argument(
         "--source_glb",
-        help="a source that is a full mesh with its own texture atlas (textured.glb of a "
-        "generated mesh, same vertices as --source_mesh): its uv and image are used instead of "
-        "the relief's pixel grid",
+        help="a source that is a full mesh with its own texture atlas (textured.glb or the "
+        "baked.glb of a generated mesh; --source_mesh may be a welded or decimated copy): its "
+        "uv and image are used instead of the relief's pixel grid",
     )
     ap.add_argument("--out_dir", required=True)
     args = ap.parse_args()
@@ -414,10 +414,11 @@ def main():
     Vd, Fd, fd, _ = mesh_features(args.target, args.target_mesh, args.feature)
     atlas = None
     if args.source_glb:
+        # the source mesh of the features may be a welded or decimated copy of the GLB, so
+        # texture coordinates are always looked up by position on the GLB's own surface
         image, uv_s, blank_uv, V_glb, F_glb = atlas_texture(args.source_glb)
-        if len(V_glb) != len(Vs) or not np.allclose(V_glb, Vs, atol=1e-5):
-            sys.exit("--source_glb must have the same vertices as --source_mesh")
         atlas = (V_glb, F_glb, uv_s)
+        uv_s = uv_of_points_on_mesh(Vs, V_glb, F_glb, uv_s)  # per source-mesh vertex
     elif cs is None:
         sys.exit("the source mesh has no colours; texture transfer needs the relief with albedo")
     scale = 1

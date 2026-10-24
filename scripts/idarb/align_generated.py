@@ -68,6 +68,23 @@ def front_depth(V, F, xy, direction=(0.0, 0.0, -1.0)):
     return depth
 
 
+def carry_points(points, tr, Vg, normals_g):
+    """Relief points (the photo's frame) onto the generated mesh with a stored transform.json:
+    the transformed point's nearest camera-facing vertex. Returns the vertex indices, the
+    vertices' positions in the generated mesh's own frame and the snap distances (fraction of
+    the generated mesh's diagonal in the photo frame)."""
+    Rc = np.array(tr["camera_rotation"])
+    s, a = tr["scale"], tr["depth_factor"]
+    R, t = np.array(tr["rotation"]), np.array(tr["translation"])
+    Vg_cam = Vg @ Rc.T
+    front = (normals_g @ Rc.T)[:, 2] > 0.2
+    diag = float(np.linalg.norm(Vg_cam.max(axis=0) - Vg_cam.min(axis=0)))
+    moved = rp.transform(rp.apply_depth(np.asarray(points, dtype=np.float64), a), s, R, t)
+    idx = np.nonzero(front)[0][cKDTree(Vg_cam[front]).query(moved)[1]]
+    snap = np.linalg.norm(Vg_cam[idx] - moved, axis=1) / diag
+    return idx, Vg[idx], snap
+
+
 def initial_fit(Vr, Vg_cam, Fg):
     """Similarity relief -> generated (in the photo frame) from the xy bounding boxes, with the
     depth offset from the generated front surface under the relief's pixels. Returns s, t."""
