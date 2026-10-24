@@ -737,7 +737,9 @@ writes them to a JSON and draws them numbered on the image for checking; `--zoom
 with a finer `--grid` shows one region of the render for small features such as a nose or an eye,
 and the picked image is the check that the same feature was picked on both meshes. `--merge`
 joins the source and target files into the `--landmarks` JSON of `refine_correspondence.py`. Landmark vertices keep their
-pair exactly; `--add_mutual` uses the mutual anchors as well. Eleven landmarks were picked this
+pair exactly in the discrete stage and are re-pinned in every `--final_rematch` round; in the field they
+carry data weight 10, or with `--landmarks_hard` they are Dirichlet constraints that the field and the
+re-match rounds pass through exactly. `--add_mutual` uses the mutual anchors as well. Eleven landmarks were picked this
 way on the cat relief and the lion (nose, ear tip, eye, chin, a front and a hind paw, tail tip,
 rump, back, belly, chest; `results/diff3f/landmarks/`). Cat → lion, textured side only:
 

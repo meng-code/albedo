@@ -1118,3 +1118,27 @@ The repository will be used beyond the original course, so the owner rewrote `AG
 - Standing: Hunyuan3D-Paint remains the painter for the unseen side of the two-sided texture;
   TRELLIS.2 texturing is the second painting-baseline row (faster, half the memory, blurrier,
   loses fine patterns).
+
+## 2026-10-25 — 2D matches as anchors of the 3D chain (laptop run): overridden, not wrong
+
+- `refine_correspondence.py --landmarks <match2d v3, 840 px, five views> --add_mutual` on top
+  of the standing re-match settings, 400 landmarks per pair (307 for labubu → camel) and a
+  farthest-point thinning to 100 (`results/diff3f/lm2d/keypoint_accuracy.csv`, 30 runs in
+  356 s on the laptop). Keypoints on the 13 same-category pairs, PCK@2 (3D / image plane) and
+  mean error: the chain without landmarks 61 / 62 %, 0.038; with 400 landmarks 60 / 62 %,
+  0.039; with 100 landmarks 60 / 61 %, 0.042; nearest neighbour 63 / 64 %, 0.048. Cross pairs
+  5 → 10 % with a higher mean error. Per pair the only changes are one keypoint up or down on
+  okapi, okapi1, cat5 → cat, cat → lion and the two cross pairs.
+- Why nothing moved: the landmarks were pinned only in the discrete stage; in the field they
+  had data weight 10 among thousands of vertices, the ARAP solve smoothed over them, and the
+  three re-match rounds re-pinned only the mutual anchors. Measured on the final map, 75 % of
+  the 400 landmark vertices sit more than 2 % of the diagonal from their 2D source point
+  (median 3.6 %), and the chain run without landmarks puts the same vertices at the same
+  distances (cat 0.0336 both ways). So the 2D matches and the 3D chain disagree by about 3 % at
+  the median, and the chain simply wins.
+- Change for the next run: landmarks are now re-pinned in every re-match round like the
+  anchors, and `--landmarks_hard` makes them Dirichlet constraints of the final field and the
+  re-match solves (the same mechanism as `--hard_confident`). This separates "the 2D matches
+  are overridden" from "the 2D matches are wrong": if pinning them exactly lowers PCK@2 toward
+  the 2D route's 50 %, the 2D matches are worse than the chain at the keypoints and the 2D
+  route is closed as an anchor source.
