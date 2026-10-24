@@ -1,0 +1,22 @@
+{
+ "pair": "cat",
+ "painter": "trellis2",
+ "frame": "canonical",
+ "frame_azimuth": 270.0,
+ "source_photo": "/home/24/23010524/IDArb/mydata/my_single/cat.png",
+ "target": "cat",
+ "target_mesh": "third_party/Diff3F/meshes/cat.off",
+ "frame_from": "results/diff3f/cat/transform.json",
+ "seed": 0,
+ "seconds": 12.9,
+ "peak_gpu_mib": 6367,
+ "n_vertices": 10318,
+ "n_faces": 14410,
+ "surface_distance_median": 0.0,
+ "surface_distance_max": 0.0,
+ "git_commit": "ca9986d",
+ "command": "scripts/idarb/gen3d_paint_baseline.py --painter trellis2 --frame canonical --out_dir results/diff3f/paint_baseline_trellis2_canonical --mesh_dir /home/24/23010524/semtex/paint_baseline_trellis2_canonical",
+ "trellis_resolution": 1024,
+ "texture_size": 2048,
+ "repo_commit": "75fbf01"
+}

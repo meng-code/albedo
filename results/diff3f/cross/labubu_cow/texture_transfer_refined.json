@@ -1,0 +1,13 @@
+{
+ "faces": 5500,
+ "textured_faces": 2525,
+ "span_median": 0.0249,
+ "within_2pct": 0.4162,
+ "within_5pct": 0.6816,
+ "source_used": 0.4254,
+ "all_within_2pct": 0.3684,
+ "all_within_5pct": 0.6247,
+ "all_source_used": 0.5798,
+ "source": "outputs/diff3f/labubu_partial.npz",
+ "target": "outputs/diff3f/cow_full.npz"
+}

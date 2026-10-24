@@ -1,0 +1,22 @@
+{
+ "pair": "bird_bird",
+ "painter": "trellis2",
+ "frame": "canonical",
+ "frame_azimuth": 10.0,
+ "source_photo": "/home/24/23010524/IDArb/mydata/my_single/bird.png",
+ "target": "bird",
+ "target_mesh": "results/diff3f/targets/bird.ply",
+ "frame_from": "results/diff3f/bird_bird/transform.json",
+ "seed": 0,
+ "seconds": 32.0,
+ "peak_gpu_mib": 10135,
+ "n_vertices": 24257,
+ "n_faces": 40000,
+ "surface_distance_median": 0.0,
+ "surface_distance_max": 0.0,
+ "git_commit": "ca9986d",
+ "command": "scripts/idarb/gen3d_paint_baseline.py --painter trellis2 --frame canonical --out_dir results/diff3f/paint_baseline_trellis2_canonical --mesh_dir /home/24/23010524/semtex/paint_baseline_trellis2_canonical",
+ "trellis_resolution": 1024,
+ "texture_size": 2048,
+ "repo_commit": "75fbf01"
+}

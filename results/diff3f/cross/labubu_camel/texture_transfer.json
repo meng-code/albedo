@@ -1,0 +1,13 @@
+{
+ "faces": 3576,
+ "textured_faces": 1629,
+ "span_median": 0.0437,
+ "within_2pct": 0.3131,
+ "within_5pct": 0.5255,
+ "source_used": 0.2931,
+ "all_within_2pct": 0.3191,
+ "all_within_5pct": 0.5576,
+ "all_source_used": 0.406,
+ "source": "outputs/diff3f/labubu_partial.npz",
+ "target": "outputs/diff3f/camel_full.npz"
+}

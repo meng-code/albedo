@@ -1,0 +1,9 @@
+{
+ "mesh": "/home/24/23010524/semtex/gen3d/trellis2/chair10/textured_vc.ply",
+ "image": "/home/24/23010524/IDArb/mydata/my_single/chair10.png",
+ "iou_best": 0.644,
+ "iou_best_opposite_half": 0.5782,
+ "azimuth": 20.0,
+ "elevation": 20.0,
+ "iou": 0.644
+}

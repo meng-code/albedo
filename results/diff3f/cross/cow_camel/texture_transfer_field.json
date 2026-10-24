@@ -1,0 +1,13 @@
+{
+ "faces": 3576,
+ "textured_faces": 1628,
+ "span_median": 0.0245,
+ "within_2pct": 0.3385,
+ "within_5pct": 0.9717,
+ "source_used": 0.5415,
+ "all_within_2pct": 0.3174,
+ "all_within_5pct": 0.932,
+ "all_source_used": 0.6246,
+ "source": "outputs/diff3f/features/cow_partial.npz",
+ "target": "outputs/diff3f/features/camel_full.npz"
+}

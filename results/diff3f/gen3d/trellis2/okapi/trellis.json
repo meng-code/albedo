@@ -1,0 +1,13 @@
+{
+ "input": "/home/24/23010524/IDArb/mydata/my_single/okapi.png",
+ "model": "microsoft/TRELLIS.2-4B",
+ "pipeline_type": "512",
+ "seed": 42,
+ "seconds": 34.9,
+ "peak_gpu_mib": 11661,
+ "n_vertices": 119221,
+ "n_faces": 193460,
+ "repo_commit": "75fbf01",
+ "git_commit": "f5d8e8e",
+ "command": "scripts/idarb/gen3d_trellis.py --inputs /home/24/23010524/IDArb/mydata/my_single/bird.png /home/24/23010524/IDArb/mydata/my_single/cat.png /home/24/23010524/IDArb/mydata/my_single/cat5.png /home/24/23010524/IDArb/mydata/my_single/chair.png /home/24/23010524/IDArb/mydata/my_single/chair1.png /home/24/23010524/IDArb/mydata/my_single/chair10.png /home/24/23010524/IDArb/mydata/my_single/cow.png /home/24/23010524/IDArb/mydata/my_single/fire_dragon.png /home/24/23010524/IDArb/mydata/my_single/ipadapter_result_00_chair.png /home/24/23010524/IDArb/mydata/my_single/labubu.png /home/24/23010524/IDArb/mydata/my_single/okapi.png /home/24/23010524/IDArb/mydata/my_single/okapi1.png /home/24/23010524/IDArb/mydata/my_single/panda.png /home/24/23010524/IDArb/mydata/my_single/superman.png --out_root /home/24/23010524/semtex/gen3d/trellis2"
+}

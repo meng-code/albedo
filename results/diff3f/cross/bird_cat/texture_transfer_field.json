@@ -1,0 +1,13 @@
+{
+ "faces": 14410,
+ "textured_faces": 4339,
+ "span_median": 0.02,
+ "within_2pct": 0.5006,
+ "within_5pct": 0.7043,
+ "source_used": 0.6224,
+ "all_within_2pct": 0.6571,
+ "all_within_5pct": 0.8311,
+ "all_source_used": 0.7994,
+ "source": "outputs/diff3f/features/bird_partial.npz",
+ "target": "outputs/diff3f/features/cat_full.npz"
+}

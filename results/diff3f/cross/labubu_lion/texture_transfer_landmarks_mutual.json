@@ -1,0 +1,13 @@
+{
+ "faces": 9996,
+ "textured_faces": 3666,
+ "span_median": 0.02,
+ "within_2pct": 0.5,
+ "within_5pct": 0.7204,
+ "source_used": 0.4086,
+ "all_within_2pct": 0.535,
+ "all_within_5pct": 0.7333,
+ "all_source_used": 0.5888,
+ "source": "outputs/diff3f/features/labubu_partial.npz",
+ "target": "outputs/diff3f/features/lion_full.npz"
+}
