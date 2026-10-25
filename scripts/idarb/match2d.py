@@ -15,6 +15,13 @@ of unmatched vertices are filled from the nearest matched vertex. Optionally a l
 (--landmarks_out, the most similar mutual matches spread over the target) that
 refine_correspondence.py --landmarks accepts, and a preview image.
 
+Local mode (--prior): instead of a global match, every render cell looks for its photo cell
+only within --window (fraction of the photo crop's side) of where a prior correspondence (a
+refine_correspondence.py npz, src_pos per target vertex) already puts its target vertex, and
+the vertices the renders do not reach keep the prior. This is the fine step of a coarse-to-fine
+localisation: the 3D chain says roughly where, the photo's own high-resolution patch features
+say exactly where.
+
 Usage (repository root; needs torch, and the model weights on first use):
     python scripts/idarb/match2d.py --relief outputs/mesh_depth/cat/relief.ply \
         --target_mesh third_party/Diff3F/meshes/lion.off \
@@ -205,6 +212,79 @@ def match_grids(fp, mp, fr, mr, temperature=0.05):
     return np.stack([rr, rc], axis=1), photo, sim[np.arange(len(rr)), best], mutual
 
 
+def match_grids_local(fp, mp, fr, mr, prior_rc, radius, temperature=0.05):
+    """Render cells against the photo cells within `radius` cells of their prior position.
+    prior_rc (hr, wr, 2): the prior photo cell (row, col, float, cell units) of every render
+    cell, NaN where there is none. For every render cell on the object with a prior: the best
+    photo cell on the object inside the window, refined by the 3x3 soft-argmax, its similarity
+    and how far it moved from the prior (cells). Returns render (r,c), photo (y,x), sim, moved."""
+    hp, wp = mp.shape
+    rr, rc = np.nonzero(mr & np.isfinite(prior_rc[..., 0]))
+    out_rc = np.stack([rr, rc], axis=1)
+    photo = np.zeros((len(rr), 2))
+    sims = np.full(len(rr), -np.inf)
+    moved = np.zeros(len(rr))
+    keep = np.zeros(len(rr), dtype=bool)
+    r = int(np.ceil(radius))
+    for i, (a, b) in enumerate(zip(rr, rc)):
+        pr, pc = prior_rc[a, b]
+        r0, r1 = max(int(np.floor(pr - r)), 0), min(int(np.ceil(pr + r)) + 1, hp)
+        c0, c1 = max(int(np.floor(pc - r)), 0), min(int(np.ceil(pc + r)) + 1, wp)
+        if r1 <= r0 or c1 <= c0:
+            continue
+        gy, gx = np.mgrid[r0:r1, c0:c1]
+        inside = mp[r0:r1, c0:c1] & (np.hypot(gy - pr, gx - pc) <= radius)
+        if not inside.any():
+            continue
+        win = np.full(inside.shape, -np.inf)
+        win[inside] = fp[r0:r1, c0:c1][inside] @ fr[a, b]
+        k = np.unravel_index(win.argmax(), win.shape)
+        rs = slice(max(k[0] - 1, 0), min(k[0] + 2, win.shape[0]))
+        cs = slice(max(k[1] - 1, 0), min(k[1] + 2, win.shape[1]))
+        sub = win[rs, cs]
+        w = np.exp((sub - sub.max()) / temperature)
+        w[~np.isfinite(sub)] = 0.0
+        w /= w.sum()
+        photo[i] = [(w * gy[rs, cs]).sum() + 0.5, (w * gx[rs, cs]).sum() + 0.5]
+        sims[i] = win[k]
+        moved[i] = float(np.hypot(photo[i, 0] - 0.5 - pr, photo[i, 1] - 0.5 - pc))
+        keep[i] = True
+    return out_rc[keep], photo[keep], sims[keep], moved[keep]
+
+
+def render_cell_vertices(grid_render, box_render, fid, w0, w1, Vd, Fd, tree_d):
+    """The target vertex under every render cell's centre (-1 where the cell is off the mesh)."""
+    hr, wr = grid_render
+    size = fid.shape[0]
+    ry, rx = cell_pixels((hr, wr), box_render)
+    ry = ry.astype(np.int64).clip(0, size - 1)
+    rx = rx.astype(np.int64).clip(0, size - 1)
+    k = fid[ry][:, rx]
+    out = -np.ones((hr, wr), dtype=np.int64)
+    hit = k >= 0
+    kk = k[hit]
+    a, b = w0[ry][:, rx][hit], w1[ry][:, rx][hit]
+    pts = (a[:, None] * Vd[Fd[kk, 0]] + b[:, None] * Vd[Fd[kk, 1]]
+           + (1 - a - b)[:, None] * Vd[Fd[kk, 2]])
+    out[hit] = tree_d.query(pts)[1]
+    return out
+
+
+def prior_photo_cells(cell_vertex, prior_pos, Vs, vert, grid_photo, box_photo):
+    """Where the prior puts every render cell's target vertex in the photo's feature grid: the
+    prior source position -> nearest relief vertex -> its pixel -> crop cell (row, col, float).
+    NaN where the cell is off the mesh."""
+    hp, wp = grid_photo
+    oy, ox, side = box_photo
+    col, row = tt.relief_grid(Vs)
+    out = np.full(cell_vertex.shape + (2,), np.nan)
+    hit = cell_vertex >= 0
+    sv = cKDTree(Vs).query(prior_pos[cell_vertex[hit]])[1]
+    out[hit, 0] = (row[sv] - oy) * hp / side - 0.5
+    out[hit, 1] = (col[sv] - ox) * wp / side - 0.5
+    return out
+
+
 def lift_matches(render_rc, photo_yx, grid_render, box_render, grid_photo, box_photo, fid, w0,
                  w1, Vd, Fd, vert, tree_d=None):
     """Render cells -> target vertices (through the face and barycentric buffers at the cell
@@ -273,6 +353,10 @@ def main():
     ap.add_argument("--min_sim", type=float, default=0.0)
     ap.add_argument("--landmarks", type=int, default=400, help="matches in --landmarks_out")
     ap.add_argument("--landmarks_out")
+    ap.add_argument("--prior", help="refine_correspondence.py npz: local mode, each render cell "
+                    "searches only within --window of the prior's position for its vertex")
+    ap.add_argument("--window", type=float, default=0.06,
+                    help="with --prior: search radius as a fraction of the photo crop's side")
     ap.add_argument("--preview")
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
@@ -290,6 +374,12 @@ def main():
         if len(colors) != len(Vd):
             colors = colors[cKDTree(np.asarray(cm.vertices)).query(Vd)[1]]
     view = np.asarray(args.view, dtype=np.float64) if args.view else None
+    prior = None
+    if args.prior:
+        z = np.load(args.prior)
+        prior = z["src_pos"].astype(np.float64)
+        if view is None and not args.view_from and "view" in z.files:
+            view = z["view"].astype(np.float64)
     if view is None and args.view_from:
         view = np.load(args.view_from)["view"].astype(np.float64)
     if view is None:
@@ -311,7 +401,7 @@ def main():
     mp = vert[cy][:, cx] >= 0
 
     tree_d = cKDTree(Vd)
-    all_t, all_s, all_sim, all_view, all_mut = [], [], [], [], []
+    all_t, all_s, all_sim, all_view, all_mut, all_moved = [], [], [], [], [], []
     views = turned_views(view, args.turn, args.elev)
     renders = []
     for vi, v in enumerate(views):
@@ -324,11 +414,19 @@ def main():
         ry = ry.astype(np.int64).clip(0, args.size - 1)
         rx = rx.astype(np.int64).clip(0, args.size - 1)
         mr = fid[ry][:, rx] >= 0
-        rc, yx, sim, mutual = match_grids(fp, mp, fr, mr)
+        if prior is not None:
+            cell_vertex = render_cell_vertices((hr, wr), box_r, fid, w0, w1, Vd, Fd, tree_d)
+            prior_rc = prior_photo_cells(cell_vertex, prior, Vs, vert, (hp, wp), box_p)
+            rc, yx, sim, moved = match_grids_local(fp, mp, fr, mr, prior_rc,
+                                                   args.window * min(hp, wp))
+            mutual = np.ones(len(rc), dtype=bool)
+            all_moved.append(moved)
+        else:
+            rc, yx, sim, mutual = match_grids(fp, mp, fr, mr)
         t_idx, s_idx, ok = lift_matches(rc, yx, (hr, wr), box_r, (hp, wp), box_p, fid, w0, w1,
                                         Vd, Fd, vert, tree_d)
         keep = ok & (sim >= args.min_sim)
-        if not args.include_nonmutual:
+        if not args.include_nonmutual and prior is None:
             keep &= mutual
         all_t.append(t_idx[keep])
         all_s.append(s_idx[keep])
@@ -354,13 +452,29 @@ def main():
             best_s[t_idx[i]] = s_idx[i]
     matched = best_s >= 0
     t2s = best_s.copy()
-    if matched.any() and not matched.all():
-        near = cKDTree(Vd[matched]).query(Vd[~matched])[1]
-        t2s[~matched] = best_s[matched][near]
-    src_pos = Vs[np.maximum(t2s, 0)]
+    if prior is not None:
+        # the vertices no render reached keep the prior's position (and its nearest relief vertex)
+        src_pos = prior.copy()
+        src_pos[matched] = Vs[best_s[matched]]
+        if not matched.all():
+            t2s[~matched] = cKDTree(Vs).query(prior[~matched])[1]
+    else:
+        if matched.any() and not matched.all():
+            near = cKDTree(Vd[matched]).query(Vd[~matched])[1]
+            t2s[~matched] = best_s[matched][near]
+        src_pos = Vs[np.maximum(t2s, 0)]
     stats = dict(views=len(views), matches=int(len(t_idx)), mutual=int(mutual.sum()),
                  target_vertices_matched=round(float(matched.mean()), 4),
                  relief_vertices_used=int(len(np.unique(best_s[matched]))))
+    if prior is not None:
+        moved = np.concatenate(all_moved) if all_moved else np.zeros(0)
+        diag_s = float(np.linalg.norm(Vs.max(axis=0) - Vs.min(axis=0)))
+        shift = np.linalg.norm(src_pos[matched] - prior[matched], axis=1) / diag_s
+        any_m = bool(matched.any())
+        stats.update(window_cells=round(float(args.window * min(hp, wp)), 2),
+                     moved_cells_median=round(float(np.median(moved)), 2) if len(moved) else None,
+                     shift_median=round(float(np.median(shift)), 4) if any_m else None,
+                     shift_over_2pct=round(float((shift > 0.02).mean()), 4) if any_m else None)
     print(json.dumps(stats), flush=True)
     os.makedirs(os.path.dirname(os.path.abspath(args.out)) or ".", exist_ok=True)
     np.savez_compressed(args.out, t2s=t2s, src_pos=src_pos.astype(np.float32), view=view,
