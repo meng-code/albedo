@@ -1351,3 +1351,19 @@ The repository will be used beyond the original course, so the owner rewrote `AG
 - Caveat: still one vertex per render cell, so 14 of 89 keypoints are touched and the gain is
   +4 keypoints net on six pairs. Next: every visible vertex searches (`--per_vertex`, its feature
   interpolated from the render grid), evaluated on all 28 pairs with the texture numbers.
+
+## 2026-10-26 — Every visible vertex searching on its own (laptop run): noise, not localisation
+
+- `match2d.py --prior --per_vertex` at 1120 px, 4 % window, front view, on the 26 real pairs
+  (`results/diff3f/local2d3/`, 19–27 s per pair plus the texture step; the two synthetic pairs
+  cannot run, their partials are not pixel grids): keypoints on the 13 same-category pairs
+  PCK@2 54 % against the chain's 61 % and the per-cell 65 %; 66 of 89 keypoints move, 21
+  better and 45 worse, inside 2 % 41 → 35. Texture, same-category means: within 2 % 0.51
+  against 0.68, within 5 % 0.86 against 0.97, flipped area 0.29 against 0.11, conformal
+  distortion median 7.2 against 3.2; every one of the 26 pairs is worse.
+- Reading: each vertex moves by about one cell (median shift 2 % of the diagonal) in its own
+  direction, which breaks the smooth map; the per-cell gain of batch 21 came from the strongest
+  match per cell, and densifying the search adds mostly noise. The standing setting stays the
+  re-match chain. Next: the local matches as soft data of one more field solve inside the chain
+  (`refine_correspondence.py --local_npz`, the confident half by similarity at weight 3), so the
+  field keeps what agrees with its neighbours and smooths the rest away.
