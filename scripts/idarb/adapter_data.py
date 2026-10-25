@@ -21,20 +21,28 @@ def load_features(path):
     return z["idx"].astype(np.int64), z["xyz"].astype(np.float64), z["feat"].astype(np.float32)
 
 
-def pair_arrays(partial_npz, full_npz, gt_npz, full_vertices, tol=0.005):
-    """Returns dict(fp, ff, pos, ff_all, pos_all, keep_fraction): the partial features fp (n,D),
-    their target full features ff (n,D), the targets' full-mesh positions pos (n,3), every sampled
-    full feature ff_all (m,D) with positions pos_all (m,3), and the fraction of partial samples
-    whose true vertex had a sampled full vertex within tol of the diagonal."""
+def pair_arrays(partial_npz, full_npz, gt_npz, full_vertices, tol=0.005, targets_npy=None):
+    """Returns dict(fp, ff, pos, target_row, ff_all, pos_all, keep_fraction): the partial
+    features fp (n,D), their target full features ff (n,D), the TRUE full-mesh positions pos
+    (n,3) of those partial samples, the row of the target in the full file target_row (n,),
+    every sampled full feature ff_all (m,D) with positions pos_all (m,3), and the fraction of
+    partial samples whose true vertex had a sampled full vertex within tol of the diagonal (or a
+    sidecar target)."""
     idx_p, _, fp = load_features(partial_npz)
     idx_f, xyz_f, ff = load_features(full_npz)
+    diag = float(np.linalg.norm(xyz_f.max(axis=0) - xyz_f.min(axis=0)))
     orig = np.load(gt_npz)["orig_idx"].astype(np.int64)
     true_pos = np.asarray(full_vertices, dtype=np.float64)[orig[idx_p]]
-    d, j = cKDTree(xyz_f).query(true_pos)
-    diag = float(np.linalg.norm(xyz_f.max(axis=0) - xyz_f.min(axis=0)))
-    ok = d <= tol * diag
-    return dict(fp=fp[ok], ff=ff[j[ok]], pos=xyz_f[j[ok]], ff_all=ff, pos_all=xyz_f,
-                keep_fraction=float(ok.mean()) if len(ok) else 0.0)
+    if targets_npy is not None and os.path.exists(targets_npy):
+        # the extraction sampled the partial at vertices whose true full vertex is a full
+        # sample: the sidecar gives that row directly (-1 where none)
+        j = np.load(targets_npy).astype(np.int64)
+        ok = j >= 0
+    else:
+        d, j = cKDTree(xyz_f).query(true_pos)
+        ok = d <= tol * diag
+    return dict(fp=fp[ok], ff=ff[j[ok]], pos=true_pos[ok], target_row=j[ok], ff_all=ff,
+                pos_all=xyz_f, keep_fraction=float(ok.mean()) if len(ok) else 0.0)
 
 
 def dataset_pairs(root, feature_dir, split=None):
@@ -52,6 +60,7 @@ def dataset_pairs(root, feature_dir, split=None):
         if os.path.exists(p_npz) and os.path.exists(f_npz):
             out.append(dict(uid=m["uid"], stem=stem, category=m.get("category"),
                             partial_npz=p_npz, full_npz=f_npz,
+                            targets_npy=os.path.join(feature_dir, stem + "_targets.npy"),
                             gt_npz=os.path.join(root, m["gt"]) if not os.path.isabs(m["gt"])
                             else m["gt"],
                             full_ply=os.path.join(root, m["full"]) if not os.path.isabs(m["full"])

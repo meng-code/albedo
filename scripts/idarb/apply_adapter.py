@@ -42,8 +42,8 @@ def main():
     w = dict(np.load(args.adapter, allow_pickle=False))
     weights = {k: w[k] for k in ("ln_w", "ln_b", "w1", "b1", "w2", "b2")}
     try:
-        commit = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"],
-                                         text=True).strip()
+        commit = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], text=True,
+                                         cwd=os.path.dirname(os.path.abspath(__file__))).strip()
     except Exception:  # noqa: BLE001
         commit = None
     os.makedirs(args.out_dir, exist_ok=True)
@@ -55,6 +55,10 @@ def main():
             done.append((os.path.basename(path), "copied"))
             continue
         z = dict(np.load(path, allow_pickle=False))
+        if z["feat"].shape[1] != weights["w1"].shape[1]:  # another feature set (dino, siglip2)
+            shutil.copyfile(path, out)
+            done.append((os.path.basename(path), "copied (dimension mismatch)"))
+            continue
         feat = mlp_forward(z["feat"].astype(np.float32), weights).astype(np.float16)
         meta = {}
         if "meta" in z:
@@ -67,6 +71,8 @@ def main():
         z["meta"] = json.dumps(meta)
         np.savez_compressed(out, **z)
         done.append((os.path.basename(path), "adapted"))
+    for name, status in done:
+        print(f"{status:30s} {name}")
     print(json.dumps(dict(files=len(done), adapted=sum(1 for _, s in done if s == "adapted"),
                           out_dir=args.out_dir)))
 

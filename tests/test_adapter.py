@@ -24,7 +24,13 @@ def test_pair_arrays_match_true_vertices(tmp_path):
                        tol=1e-9)
     assert a["keep_fraction"] == 0.75  # vertex 7 has no sampled full vertex at its position
     assert np.allclose(a["ff"], ff[[2, 3, 5]])  # full samples 4, 6, 10 are rows 2, 3, 5
-    assert np.allclose(a["pos"], full_v[[4, 6, 10]])
+    assert a["target_row"].tolist() == [2, 3, 5]
+    assert np.allclose(a["pos"], full_v[[4, 6, 10]])  # the true positions
+    # a targets sidecar replaces the nearest-sample search
+    np.save(tmp_path / "p_targets.npy", np.array([2, -1, 3, 5]))
+    b = ad.pair_arrays(tmp_path / "p.npz", tmp_path / "f.npz", tmp_path / "gt.npz", full_v,
+                       targets_npy=str(tmp_path / "p_targets.npy"))
+    assert b["target_row"].tolist() == [2, 3, 5] and b["keep_fraction"] == 0.75
 
 
 def test_mlp_forward_is_identity_with_zero_second_layer_and_unit_length():
