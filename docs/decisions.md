@@ -1386,3 +1386,24 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   bird and dragon → lizard lose one each, panda gains one); the chain stays the
   standing setting for keypoints. What remains of the line: the per-cell 1120 px mode's texture
   effect, and the per-cell matches (few, strong) as the field's soft data.
+
+## 2026-10-26 — Coarse-to-fine localisation closed: the 65 % comes with uncoupled vertex moves
+
+- Per-cell 1120 px, 4 % window on the 26 real pairs with the texture numbers
+  (`results/diff3f/local2d5/`): keypoints reproduce batch 21 exactly (65 % PCK@2 on the 13
+  same-category pairs, 10 of 14 moved keypoints better), but the texture pays for every moved
+  vertex folding its neighbours around it: same-category within 2 % 0.68 → 0.48, within 5 %
+  0.97 → 0.89, conformal median 3.2 → 5.5, flipped area 0.11 → 0.33 (cross pairs the same way),
+  almost the per-vertex damage of batch 22.
+- The per-cell matches as the field's soft data (`--local_npz` with the per-cell file, all
+  matches, weight 3 or 10): texture at the chain's level (weight 3: 0.686 / 0.976 / 3.08 / 0.124)
+  or slightly worse (weight 10), keypoints 59 % and 62 % against 61 %, with 72–73 keypoints
+  moved and the balance even (37–38 better against 35 worse); cat → lion and panda keep their
+  gains, posed superman and bird lose. The two cross keypoint pairs go 5 → 20 % in every local
+  variant, on 2 pairs.
+- Standing: the re-match chain stays the single correspondence for keypoints and texture. The
+  photo-window refinement gives +4 keypoints only as an uncoupled, keypoint-only map, and
+  through the field it comes out at the baseline; two different maps for one pair would be a
+  reporting trick, not a method. The line is closed with the code kept (`match2d.py --prior`,
+  `--per_vertex`, `refine_correspondence.py --local_npz`) and the top-quarter field variant
+  noted as the smoothest texture setting (at three keypoints' cost).
