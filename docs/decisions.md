@@ -1318,3 +1318,20 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   with geometry (that is where the mirrored texture area went from 24 to 7 % on 2026-10-23); a
   Telling-Left-from-Right-style pose alignment has no headroom here. The remaining misses are
   mostly near and medium misses of localisation, not swaps. `--w_side` stays as an option.
+
+## 2026-10-26 — Coarse-to-fine localisation in the photo (laptop run): the patch grid is too coarse to sharpen the chain
+
+- `match2d.py --prior` (41fd57b): each render cell searches the photo only within a window
+  around the cell where the chain's correspondence puts its target vertex, DINOv2 at 840 px,
+  the vertices no render reaches keep the chain's answer. Three variants on the 15 keypoint
+  pairs (`results/diff3f/local2d/keypoint_accuracy.csv`, 30–43 s per pair, 53–90 s with three
+  views): front view with a 4 % or 8 % window, three views with 6 %. Keypoints on the 13
+  same-category pairs: PCK@2 61 / 61 / 58 % against the chain's 61 % and mean error 0.038
+  unchanged, but only 5–25 % of the vertices are touched (one per render cell, 400–1300 cells
+  against 15 000 vertices), and the annotated keypoints are almost never among them.
+- Measured on the keypoints that did move: 4 at 840 px with one view (2 better, 2 worse;
+  bad ones 0.040–0.045 → 0.012–0.028, good ones 0.007–0.010 → 0.014–0.039), 13 with three
+  views (6 better, 7 worse, inside 2 % 9 → 6). The matches spread over the whole window (median
+  move about half the window, 46–95 % of touched vertices shifted by more than 2 %): the patch
+  features, one cell per 14 px, cannot localise finer than the chain already does. A run at
+  1120 px with 2.5 % and 4 % windows (batch 21) decides whether a finer grid changes that.
