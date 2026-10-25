@@ -210,3 +210,17 @@ def test_symmetry_plane_and_side_penalty():
     cand = np.array([[0, 1, 2], [3, 1, 0]])
     pen = rc.side_penalty(cand, side_s, side_t, band=0.03)
     assert pen.tolist() == [[1.0, 0.0, 0.0], [0.0, 0.0, 0.0]]
+
+
+def test_local_data_takes_the_confident_local_positions():
+    P = np.zeros((6, 3))
+    w = np.ones(6)
+    local_pos = np.ones((6, 3))
+    matched = np.array([True, True, True, True, False, False])
+    sim = np.array([0.9, 0.5, 0.7, 0.3, 0.99, 0.99])  # unmatched vertices' sims do not count
+    S, w2, sel = rc.local_data(P, w, local_pos, matched, sim, top=0.5, weight=3.0)
+    assert sel.tolist() == [True, False, True, False, False, False]
+    assert np.allclose(S[sel], 1.0) and np.allclose(S[~sel], 0.0)
+    assert w2[sel].tolist() == [3.0, 3.0] and w2[~sel].tolist() == [1.0] * 4
+    S, w3, sel = rc.local_data(P, w, local_pos, matched, sim, top=1.0, weight=0.5)
+    assert sel.tolist() == matched.tolist() and w3[sel].tolist() == [1.0] * 4  # never lowered

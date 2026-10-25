@@ -450,6 +450,21 @@ def solve_fixed(M, rhs, hard=None):
     return P
 
 
+def local_data(P, w, local_pos, matched, local_sim, top, weight):
+    """Data for one more field solve with a local (photo-window) refinement folded in: the
+    matched vertices whose local similarity is in the top `top` fraction take their local
+    position with data weight at least `weight`, every other vertex keeps the field position P
+    with its weight. Returns S, w and the mask of vertices that took the local position."""
+    S, w = P.copy(), np.asarray(w, dtype=np.float64).copy()
+    sel = matched.copy()
+    if sel.any() and top < 1.0:
+        thr = np.quantile(local_sim[matched], 1.0 - top)
+        sel &= local_sim >= thr
+    S[sel] = local_pos[sel]
+    w[sel] = np.maximum(w[sel], weight)
+    return S, w, sel
+
+
 def rematch_within(P, cand_xyz, sims, radius):
     """For every vertex, the most similar candidate (cand_xyz (n,k,3), sims (n,k)) within
     `radius` of its field position P (n,3); -1 where no candidate is that close."""
@@ -731,6 +746,13 @@ def main():
         help="pin the landmark vertices exactly in the final field and the re-match rounds "
         "(Dirichlet constraints) instead of giving them data weight 10",
     )
+    ap.add_argument("--local_npz", help="match2d.py --prior --per_vertex output of this pair: "
+                    "after the re-match rounds the field is solved once more with the confident "
+                    "local matches as soft data (coarse-to-fine localisation)")
+    ap.add_argument("--local_top", type=float, default=0.5,
+                    help="with --local_npz: the fraction of matched vertices used, by similarity")
+    ap.add_argument("--local_weight", type=float, default=3.0,
+                    help="with --local_npz: data weight of the local positions")
     ap.add_argument("--rematch_rounds", type=int, default=1, help="repeat --final_rematch")
     ap.add_argument("--rematch_weight", type=float, default=None,
                     help="field weight of the re-matched vertices (default --keep_weight)")
@@ -1038,6 +1060,32 @@ def main():
                         Vd, Fd, S2, w2, P, lam, args.arap, view=args.target_view,
                         w_view=args.w_view, hard=hard,
                     )
+        if args.local_npz:
+            # the photo-window refinement (match2d.py --prior --per_vertex) searched every
+            # visible vertex on its own, which breaks the smooth map when taken as is; here its
+            # confident matches enter as soft data of one more field solve, so the field keeps
+            # what agrees with its neighbours and smooths the rest away
+            loc = np.load(args.local_npz)
+            local_pos = loc["src_pos"].astype(np.float64)
+            matched = loc["matched"].astype(bool)
+            local_sim = np.full(len(Vd), -np.inf)
+            np.maximum.at(local_sim, loc["t_idx"], loc["sim"].astype(np.float64))
+            w_now = w2 if args.final_rematch > 0 else w
+            S3, w3, sel = local_data(P, w_now, local_pos, matched, local_sim,
+                                     args.local_top, args.local_weight)
+            if mutual is not None:
+                S3[cKDTree(Vd).query(mutual[0])[1]] = mutual[1]
+            if lm is not None:
+                S3[t_lm] = Vs[s_lm]
+            shift = np.linalg.norm(local_pos[sel] - P[sel], axis=1) / diag_src
+            stats["local_used"] = round(float(sel.mean()), 4)
+            stats["local_shift_median"] = round(float(np.median(shift)), 4) if sel.any() else None
+            P = smooth_field(Vd, Fd, S3, w3, args.field, args.field_order, hard=hard)
+            if args.arap:
+                P = arap_field(
+                    Vd, Fd, S3, w3, P, lam, args.arap, view=args.target_view,
+                    w_view=args.w_view, hard=hard,
+                )
         if args.field_iters and args.target_view is not None:
             # flipped or over-stretched triangles: take the data weight away from their vertices
             # (and the ring around them) and let the field, rigid if --arap, fill them in from
