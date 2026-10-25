@@ -213,21 +213,31 @@ def match_grids(fp, mp, fr, mr, temperature=0.05):
 
 
 def match_grids_local(fp, mp, fr, mr, prior_rc, radius, temperature=0.05):
-    """Render cells against the photo cells within `radius` cells of their prior position.
-    prior_rc (hr, wr, 2): the prior photo cell (row, col, float, cell units) of every render
-    cell, NaN where there is none. For every render cell on the object with a prior: the best
-    photo cell on the object inside the window, refined by the 3x3 soft-argmax, its similarity
-    and how far it moved from the prior (cells). Returns render (r,c), photo (y,x), sim, moved."""
-    hp, wp = mp.shape
+    """Render cells against the photo cells within `radius` cells of their prior position
+    (prior_rc (hr, wr, 2): the prior photo cell of every render cell, NaN where none). Returns
+    render (r,c), photo (y,x), sim and the move from the prior for the cells that matched."""
     rr, rc = np.nonzero(mr & np.isfinite(prior_rc[..., 0]))
-    out_rc = np.stack([rr, rc], axis=1)
-    photo = np.zeros((len(rr), 2))
-    sims = np.full(len(rr), -np.inf)
-    moved = np.zeros(len(rr))
-    keep = np.zeros(len(rr), dtype=bool)
+    photo, sims, moved, keep = search_window(fp, mp, fr[rr, rc], prior_rc[rr, rc], radius,
+                                             temperature)
+    return np.stack([rr, rc], axis=1)[keep], photo[keep], sims[keep], moved[keep]
+
+
+def search_window(fp, mp, feats, prior_rc, radius, temperature=0.05):
+    """For every query feature (M,D) with a prior photo cell (M,2: row, col, float), the best
+    photo cell on the object within `radius` cells, refined by the 3x3 soft-argmax. Returns the
+    photo positions (M,2), similarities (M,), moves from the prior in cells (M,) and a mask of
+    the queries that found a cell."""
+    hp, wp = mp.shape
+    m = len(feats)
+    photo = np.zeros((m, 2))
+    sims = np.full(m, -np.inf)
+    moved = np.zeros(m)
+    keep = np.zeros(m, dtype=bool)
     r = int(np.ceil(radius))
-    for i, (a, b) in enumerate(zip(rr, rc)):
-        pr, pc = prior_rc[a, b]
+    for i in range(m):
+        pr, pc = prior_rc[i]
+        if not np.isfinite(pr):
+            continue
         r0, r1 = max(int(np.floor(pr - r)), 0), min(int(np.ceil(pr + r)) + 1, hp)
         c0, c1 = max(int(np.floor(pc - r)), 0), min(int(np.ceil(pc + r)) + 1, wp)
         if r1 <= r0 or c1 <= c0:
@@ -237,7 +247,7 @@ def match_grids_local(fp, mp, fr, mr, prior_rc, radius, temperature=0.05):
         if not inside.any():
             continue
         win = np.full(inside.shape, -np.inf)
-        win[inside] = fp[r0:r1, c0:c1][inside] @ fr[a, b]
+        win[inside] = fp[r0:r1, c0:c1][inside] @ feats[i]
         k = np.unravel_index(win.argmax(), win.shape)
         rs = slice(max(k[0] - 1, 0), min(k[0] + 2, win.shape[0]))
         cs = slice(max(k[1] - 1, 0), min(k[1] + 2, win.shape[1]))
@@ -249,7 +259,47 @@ def match_grids_local(fp, mp, fr, mr, prior_rc, radius, temperature=0.05):
         sims[i] = win[k]
         moved[i] = float(np.hypot(photo[i, 0] - 0.5 - pr, photo[i, 1] - 0.5 - pc))
         keep[i] = True
-    return out_rc[keep], photo[keep], sims[keep], moved[keep]
+    return photo, sims, moved, keep
+
+
+def visible_vertices(Vd, Fd, buf, size, depth_tol=0.01):
+    """Target vertices seen in a render: their projected pixel holds one of their faces, or
+    their depth is within depth_tol of the depth range from the buffer's front there."""
+    xy, zv, fid, zbuf = buf["xy"], buf["zv"], buf["fid"], buf["z"]
+    px = np.clip(xy[:, 0].astype(np.int64), 0, size - 1)
+    py = np.clip(xy[:, 1].astype(np.int64), 0, size - 1)
+    front = fid[py, px]
+    own = np.zeros(len(Vd), dtype=bool)
+    hit = front >= 0
+    own[hit] = (Fd[front[hit]] == np.arange(len(Vd))[hit, None]).any(axis=1)
+    zr = float(zv.max() - zv.min()) if len(zv) else 1.0
+    near = hit & (zv >= zbuf[py, px] - depth_tol * zr)
+    return own | near, py, px
+
+
+def bilinear_features(fr, rc):
+    """Unit features of the render grid interpolated at fractional cell positions rc (M,2)."""
+    hr, wr = fr.shape[:2]
+    r = np.clip(rc[:, 0], 0, hr - 1)
+    c = np.clip(rc[:, 1], 0, wr - 1)
+    r0, c0 = np.floor(r).astype(np.int64), np.floor(c).astype(np.int64)
+    r1, c1 = np.minimum(r0 + 1, hr - 1), np.minimum(c0 + 1, wr - 1)
+    fr_, fc = (r - r0)[:, None], (c - c0)[:, None]
+    f = ((1 - fr_) * (1 - fc) * fr[r0, c0] + (1 - fr_) * fc * fr[r0, c1]
+         + fr_ * (1 - fc) * fr[r1, c0] + fr_ * fc * fr[r1, c1])
+    return f / np.maximum(np.linalg.norm(f, axis=1, keepdims=True), 1e-12)
+
+
+def photo_to_relief(photo_yx, grid_photo, box_photo, vert):
+    """Photo grid positions (row, col in cells) -> the relief vertex of the nearest pixel that
+    holds one, and whether that pixel lies within one cell."""
+    hp, wp = grid_photo
+    oy, ox, side = box_photo
+    qy = oy + photo_yx[:, 0] * side / hp
+    qx = ox + photo_yx[:, 1] * side / wp
+    rows, cols = np.nonzero(vert >= 0)
+    d, j = cKDTree(np.stack([rows, cols], axis=1)).query(np.stack([qy, qx], axis=1))
+    return vert[rows[j], cols[j]], d <= side / min(hp, wp)
 
 
 def render_cell_vertices(grid_render, box_render, fid, w0, w1, Vd, Fd, tree_d):
@@ -357,6 +407,9 @@ def main():
                     "searches only within --window of the prior's position for its vertex")
     ap.add_argument("--window", type=float, default=0.06,
                     help="with --prior: search radius as a fraction of the photo crop's side")
+    ap.add_argument("--per_vertex", action="store_true",
+                    help="with --prior: every target vertex visible in the render searches "
+                    "(its feature interpolated from the render grid), not one vertex per cell")
     ap.add_argument("--preview")
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
@@ -415,7 +468,22 @@ def main():
         ry = ry.astype(np.int64).clip(0, args.size - 1)
         rx = rx.astype(np.int64).clip(0, args.size - 1)
         mr = fid[ry][:, rx] >= 0
-        if prior is not None:
+        if prior is not None and args.per_vertex:
+            buf = tt.raster_buffers(Vd, Fd, v, args.size)
+            vis, py, px = visible_vertices(Vd, Fd, buf, args.size)
+            idx = np.nonzero(vis)[0]
+            oy_r, ox_r, side_r = box_r
+            cell_rc = np.stack([(py[idx] + 0.5 - oy_r) * hr / side_r - 0.5,
+                                (px[idx] + 0.5 - ox_r) * wr / side_r - 0.5], axis=1)
+            feats = bilinear_features(fr, cell_rc)
+            prior_rc = prior_photo_cells(idx[None, :], prior, Vs, vert, (hp, wp), box_p)[0]
+            yx, sim, moved, keep_v = search_window(fp, mp, feats, prior_rc,
+                                                   args.window * min(hp, wp))
+            s_idx, near_px = photo_to_relief(yx, (hp, wp), box_p, vert)
+            t_idx, ok = idx, keep_v & near_px
+            mutual = np.ones(len(idx), dtype=bool)
+            all_moved.append(moved[ok])
+        elif prior is not None:
             cell_vertex = render_cell_vertices((hr, wr), box_r, fid, w0, w1, Vd, Fd, tree_d)
             prior_rc = prior_photo_cells(cell_vertex, prior, Vs, vert, (hp, wp), box_p)
             rc, yx, sim, moved = match_grids_local(fp, mp, fr, mr, prior_rc,
@@ -424,8 +492,9 @@ def main():
             all_moved.append(moved)
         else:
             rc, yx, sim, mutual = match_grids(fp, mp, fr, mr)
-        t_idx, s_idx, ok = lift_matches(rc, yx, (hr, wr), box_r, (hp, wp), box_p, fid, w0, w1,
-                                        Vd, Fd, vert, tree_d)
+        if not (prior is not None and args.per_vertex):
+            t_idx, s_idx, ok = lift_matches(rc, yx, (hr, wr), box_r, (hp, wp), box_p, fid, w0,
+                                            w1, Vd, Fd, vert, tree_d)
         keep = ok & (sim >= args.min_sim)
         if not args.include_nonmutual and prior is None:
             keep &= mutual
