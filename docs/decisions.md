@@ -1273,3 +1273,24 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   number so far but within two keypoints of Diff3F and not carried through the chain. The
   five-mesh test of 2026-10-24 is confirmed on the full set. DistillDIFT on the same 23 meshes is
   next.
+
+## 2026-10-25 — DistillDIFT on the full keypoint set (laptop run): below Diff3F and DINOv3; the drop-in feature search is closed
+
+- DistillDIFT features for all 23 keypoint-benchmark meshes (server, 768-d, `--lift gpu`,
+  features-3d-tmp d502bcf, 23 min for all), alone and concatenated with Diff3F at equal weight
+  (`results/diff3f/distilldift_full/`). Keypoints on the 13 same-category pairs, PCK@2 (3D) and
+  mean error: Diff3F 63 % / 0.048 (nearest neighbour), 61 % / 0.038 (chain); DistillDIFT 56 % /
+  0.049, 56 % / 0.039; concatenation 58 % / 0.054, 59 % / 0.040. Synthetic GT within 1 %: cat
+  44.5 / 53.8 (DistillDIFT), 53.7 / 58.8 (concatenation) against Diff3F's 57.2 / 62.1; cow 35.2 /
+  42.6 and 40.5 / 47.2 against 41.7 / 48.3. Texture measures within noise. Per pair it helps cow
+  and okapi1 → camel and hurts cat, both superman pairs, chair1 and dragon → lizard.
+- Standing after this and the DINOv3 run: Diff3F at zoom 2 with the re-match chain stays the
+  feature and the setting. Every drop-in replacement or addition tried since 2026-10-22 (MeshFM,
+  SigLIP2, SAM anti-aliasing, albedo render, DINOv3, DistillDIFT, fusions and concatenations)
+  is at or below Diff3F on the keypoints; the only gains came from the extraction itself (zoom
+  2: nearest neighbour 54 → 63 %) and the chain (re-match: 43 → 61 %). Concatenating DINOv3
+  gives the best nearest-neighbour number (65 %) but the chain does not keep it. The remaining
+  ideas are structural, not drop-in features: left-right disambiguation of the symmetric
+  matches (the 20–30 % mirrored area on real pairs), part-level constraints, and an adapter
+  trained on the partial-to-full dataset (phase B), which need the owner's and supervisor's
+  decision.
