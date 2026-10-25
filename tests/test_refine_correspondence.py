@@ -195,3 +195,18 @@ def test_rematch_within_picks_the_most_similar_near_candidate():
     sims = np.array([[0.9, 0.95, 0.8], [0.9, 0.9, 0.9]])
     best = rc.rematch_within(P, cand_xyz, sims, radius=0.2)
     assert best.tolist() == [0, -1]  # the 0.95 candidate is too far; nothing near for vertex 2
+
+
+def test_symmetry_plane_and_side_penalty():
+    rng = np.random.default_rng(0)
+    # a mesh symmetric about x = 1 (a mirrored point cloud shifted off the origin)
+    half = rng.normal(size=(300, 3)) * [0.5, 1.0, 2.0] + [0.7, 0.0, 0.0]
+    V = np.concatenate([half, half * [-1, 1, 1]]) + [1.0, 0.0, 0.0]
+    ax, c, resid = rc.symmetry_plane(V)
+    assert ax == 0 and abs(c[0] - 1.0) < 1e-6 and resid < 1e-9
+    # candidates on the other side of the plane cost 1, same side or inside the band cost 0
+    side_s = np.array([-0.5, 0.5, 0.01, -0.5])
+    side_t = np.array([0.5, -0.02])
+    cand = np.array([[0, 1, 2], [3, 1, 0]])
+    pen = rc.side_penalty(cand, side_s, side_t, band=0.03)
+    assert pen.tolist() == [[1.0, 0.0, 0.0], [0.0, 0.0, 0.0]]

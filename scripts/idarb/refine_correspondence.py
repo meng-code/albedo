@@ -125,6 +125,53 @@ def fit_prior(X, Y, sigma, ridge=1e-3):
     return predict
 
 
+def symmetry_plane(V):
+    """The coordinate plane through the centroid that mirrors the mesh best: returns the axis
+    (0, 1 or 2), the centroid and the mirror residual (mean nearest distance of the mirrored
+    vertices, as a fraction of the bounding-box diagonal; small for a left-right symmetric
+    animal, large for a chair seen from the side)."""
+    V = np.asarray(V, dtype=np.float64)
+    c = V.mean(axis=0)
+    diag = float(np.linalg.norm(V.max(axis=0) - V.min(axis=0)))
+    tree = cKDTree(V)
+    best = None
+    for ax in range(3):
+        M = V.copy()
+        M[:, ax] = 2 * c[ax] - M[:, ax]
+        r = float(tree.query(M)[0].mean()) / diag
+        if best is None or r < best[2]:
+            best = (ax, c, r)
+    return best
+
+
+def side_coordinates(Vd, src_xyz, anchors_t, anchors_s, axis=None):
+    """Signed distance of every target vertex and every source sample to the target's
+    symmetry plane, as fractions of the target diagonal. The source samples are put into the
+    target's frame by the similarity transform fitted on the anchors (target -> source,
+    inverted), so a relief point's side is where the registration says it lies. Returns
+    (side_s, side_t, axis, residual)."""
+    if axis is None:
+        ax, c, resid = symmetry_plane(Vd)
+    else:
+        ax, c, resid = axis, np.asarray(Vd).mean(axis=0), None
+    diag_d = float(np.linalg.norm(Vd.max(axis=0) - Vd.min(axis=0)))
+    s, R, t = rp.umeyama(
+        np.asarray(anchors_t, dtype=np.float64), np.asarray(anchors_s, dtype=np.float64)
+    )
+    in_target = ((np.asarray(src_xyz, dtype=np.float64) - t) @ R) / s  # inverse of s R p + t
+    side_s = (in_target[:, ax] - c[ax]) / diag_d
+    side_t = (np.asarray(Vd, dtype=np.float64)[:, ax] - c[ax]) / diag_d
+    return side_s, side_t, ax, resid
+
+
+def side_penalty(cand, side_s, side_t, band):
+    """1 for every (vertex, candidate) pair whose source candidate lies on the other side of the
+    target's symmetry plane than the vertex, both farther from the plane than band; 0 else."""
+    cs = side_s[cand]
+    other = np.sign(cs) != np.sign(side_t)[:, None]
+    return (other & (np.abs(cs) > band) & (np.abs(side_t) > band)[:, None]).astype(np.float64)
+
+
 def filter_anchors(T, S, mode, thr, seed=0):
     """Keep the anchors that agree with the others. mode "rigid": a similarity transform fitted
     by RANSAC on 4-anchor samples, anchors farther than thr (fraction of the source diagonal)
@@ -291,6 +338,8 @@ def refine(
     tview=None,
     w_flip=0.0,
     fixed=None,
+    side=None,
+    w_side=0.0,
 ):
     """Target vertex -> source sample. fd: a feature per target vertex; fs, src_xyz: the source
     samples. anchors: (target positions, source positions) or None; pred: a predicted source
@@ -305,7 +354,9 @@ def refine(
     facing fan that a candidate would mirror on the relief image (the two other corners at their
     current matches), so a left-right symmetric choice that reverses the texture is avoided.
     fixed: (mask, source sample per vertex) of matches kept as they are, outside the window and
-    the smoothing."""
+    the smoothing. side: (side_s, side_t, band) from side_coordinates(); w_side > 0 adds w_side
+    to candidates on the other side of the target's symmetry plane than the vertex (both beyond
+    the band), the left-right disambiguation that the features alone cannot give."""
     diag_s = float(np.linalg.norm(src_xyz.max(axis=0) - src_xyz.min(axis=0)))
     diag_d = float(np.linalg.norm(Vd.max(axis=0) - Vd.min(axis=0)))
     cand, sim = topk_candidates(fd, fs, k)
@@ -323,6 +374,8 @@ def refine(
     if pred is not None:
         d = np.linalg.norm(C - pred[:, None], axis=2) / (radius * diag_s)
         cost = cost + w_prior * d**2
+    if side is not None and w_side > 0:
+        cost = cost + w_side * side_penalty(cand, side[0], side[1], side[2])
     rows = np.arange(len(fd))
     if fixed is not None:
         # the fixed vertices' own match replaces their first candidate and costs nothing
@@ -336,6 +389,8 @@ def refine(
         if pred is not None:
             d = np.linalg.norm(C - pred[:, None], axis=2) / (radius * diag_s)
             cost = cost + w_prior * d**2
+        if side is not None and w_side > 0:
+            cost = cost + w_side * side_penalty(cand, side[0], side[1], side[2])
         cost[mask] = 1e9
         cost[mask, 0] = 0.0
     choice = cost.argmin(axis=1)
@@ -661,6 +716,16 @@ def main():
         "source diagonal of a first, soft solution of the field (0: all confident matches)",
     )
     ap.add_argument(
+        "--w_side",
+        type=float,
+        default=0.0,
+        help="left-right disambiguation: penalty for a candidate on the other side of the "
+        "target's symmetry plane than the vertex (0: off; the plane is the coordinate plane "
+        "that mirrors the target best, the relief's side comes from the anchors' transform)",
+    )
+    ap.add_argument("--side_band", type=float, default=0.03,
+                    help="no side penalty within this fraction of the target diagonal of the plane")
+    ap.add_argument(
         "--landmarks_hard",
         action="store_true",
         help="pin the landmark vertices exactly in the final field and the re-match rounds "
@@ -810,6 +875,16 @@ def main():
             )
         kind += f" + {len(mutual[0])} mutual anchors (of {len(t)} mutual pairs{dropped})"
 
+    side = None
+    if args.w_side > 0:
+        if mutual is None or len(mutual[0]) < 4:
+            raise ValueError("--w_side needs the mutual anchors (at least 4)")
+        side_s, side_t, ax, resid = side_coordinates(Vd, src["xyz"], mutual[0], mutual[1])
+        side = (side_s, side_t, args.side_band)
+        nn1 = topk_candidates(fd, src["feat"], 1)[0]
+        other = float(side_penalty(nn1, side_s, side_t, args.side_band).mean())
+        kind += (f", side plane {'xyz'[ax]} (mirror residual {resid:.4f}, "
+                 f"{other:.3f} of nearest neighbours on the other side)")
     fixed = None
     if args.keep_confident > 0:
         keep_mask, nn_all = confident_matches(
@@ -844,7 +919,7 @@ def main():
         parts=parts,
         w_part=args.w_part,
         tview=args.target_view,
-        w_flip=args.w_flip,
+        w_flip=args.w_flip, side=side, w_side=args.w_side,
         fixed=fixed,
     )
     t2s = src["idx"][t2s_sample].astype(np.int64)
@@ -880,6 +955,7 @@ def main():
                 radius_s=args.radius_s, w_smooth=args.w_smooth, pred=P,
                 k_prior=max(args.k_prior, args.coarse_k_prior), parts=parts, w_part=args.w_part,
                 tview=args.target_view, w_flip=args.w_flip, fixed=fixed,
+                side=side, w_side=args.w_side,
             )
             t2s = src["idx"][t2s_sample].astype(np.int64)
             if lm is not None:

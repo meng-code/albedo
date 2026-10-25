@@ -1294,3 +1294,27 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   matches (the 20–30 % mirrored area on real pairs), part-level constraints, and an adapter
   trained on the partial-to-full dataset (phase B), which need the owner's and supervisor's
   decision.
+
+## 2026-10-26 — Left-right disambiguation (owner's choice 1): mirroring is not what the chain gets wrong
+
+- Mechanism added to `refine_correspondence.py`: the target's symmetry plane (the coordinate
+  plane through the centroid that mirrors the mesh best, `symmetry_plane`; residual 0.0000–0.007
+  of the diagonal on the animals and the man, 0.05 on the posed human), the relief's side of it
+  from the filtered mutual anchors' similarity transform (`side_coordinates`), and `--w_side`,
+  a penalty on candidates on the other side than the vertex beyond `--side_band` (0.03).
+  Unit-tested (`test_symmetry_plane_and_side_penalty`).
+- Diagnostic (`scripts/idarb/mirror_diagnostic.py`, `results/diff3f/mirror_diagnostic.csv`, 13
+  same-category pairs, 89 keypoints, chain = the standing re-match settings run on the Mac):
+  the plain nearest neighbour sends 18–39 % of the target samples (mean 30 %) to the other side
+  of the plane, so the features do confuse left and right; a side-constrained nearest neighbour
+  removes the gross errors (mean error 0.081 → 0.070 on the samples; cow 0.119 → 0.058, superman
+  0.054 → 0.017, chair 0.099 → 0.044) but moves PCK@2 only 46 → 47 % (sample-level numbers, not
+  the 63 % of the vertex-level table). In the chain, `--w_side 1` on cat → lion changes not a
+  single vertex: the anchor filter and the position prior already exclude the other-side
+  candidates. Of the chain's 35 misses, 2 land on a left-right partner's position (only 15
+  keypoints have an annotated partner, so the test is weak); by distance the misses are 15 near
+  (2–5 %), 12 medium (5–10 %) and 8 gross (over 10 %).
+- Reading: the left-right problem of the 2D features is real but the 3D chain already solves it
+  with geometry (that is where the mirrored texture area went from 24 to 7 % on 2026-10-23); a
+  Telling-Left-from-Right-style pose alignment has no headroom here. The remaining misses are
+  mostly near and medium misses of localisation, not swaps. `--w_side` stays as an option.
