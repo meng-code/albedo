@@ -1382,6 +1382,7 @@ The repository will be used beyond the original course, so the owner rewrote `AG
 - Reading: the field takes the noise out of the per-vertex matches (flips and distortion back
   at or below the chain's), but the local data still pulls most keypoints slightly the wrong
   way; the per-cell gain of batch 21 (65 %) is not reproduced through the field. The top-quarter
-  variant is the smoothest texture so far at a cost of about one keypoint; the chain stays the
+  variant is the smoothest texture so far at a cost of three keypoints net (cow, posed superman,
+  bird and dragon → lizard lose one each, panda gains one); the chain stays the
   standing setting for keypoints. What remains of the line: the per-cell 1120 px mode's texture
   effect, and the per-cell matches (few, strong) as the field's soft data.
