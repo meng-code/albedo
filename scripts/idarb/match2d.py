@@ -374,10 +374,11 @@ def main():
         if len(colors) != len(Vd):
             colors = colors[cKDTree(np.asarray(cm.vertices)).query(Vd)[1]]
     view = np.asarray(args.view, dtype=np.float64) if args.view else None
-    prior = None
+    prior, prior_t2s = None, None
     if args.prior:
         z = np.load(args.prior)
         prior = z["src_pos"].astype(np.float64)
+        prior_t2s = z["t2s"].astype(np.int64) if "t2s" in z.files else None
         if view is None and not args.view_from and "view" in z.files:
             view = z["view"].astype(np.float64)
     if view is None and args.view_from:
@@ -456,8 +457,11 @@ def main():
         # the vertices no render reached keep the prior's position (and its nearest relief vertex)
         src_pos = prior.copy()
         src_pos[matched] = Vs[best_s[matched]]
-        if not matched.all():
-            t2s[~matched] = cKDTree(Vs).query(prior[~matched])[1]
+        if not matched.all():  # unmatched vertices keep the prior's own discrete map too
+            if prior_t2s is not None and len(prior_t2s) == n:
+                t2s[~matched] = prior_t2s[~matched]
+            else:
+                t2s[~matched] = cKDTree(Vs).query(prior[~matched])[1]
     else:
         if matched.any() and not matched.all():
             near = cKDTree(Vd[matched]).query(Vd[~matched])[1]
