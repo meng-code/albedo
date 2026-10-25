@@ -12,6 +12,9 @@ of object can be matched by comparing vectors.
 
 Features are computed for at most --max_vertices vertices, chosen at random with --seed, so a
 90k-vertex relief mesh from normal_to_mesh.py stays tractable (the whole mesh is still rendered).
+--vertex_list <npy> gives the sample explicitly instead: features are computed at exactly those
+vertex indices, in that order (idx in the output is the list), e.g. the partial vertices whose
+true full vertex is among the full mesh's samples, so that every training target is exact.
 --front_only limits the cameras to the hemisphere in front of the mesh (+z, the camera side of a
 relief mesh), so a one-sided partial mesh is never rendered from behind.
 
@@ -571,6 +574,22 @@ def last_pair_per_vertex(q):
     return vert[keep], pix[keep]
 
 
+def select_vertices(n_vertices, max_vertices, seed, vertex_list=None):
+    """The sampled vertex indices: vertex_list as given (checked: unique, in range), else a
+    sorted random subset of max_vertices (seed), else all vertices."""
+    if vertex_list is not None:
+        idx = np.asarray(vertex_list).astype(np.int64).reshape(-1)
+        if len(idx) == 0 or idx.min() < 0 or idx.max() >= n_vertices:
+            raise ValueError(f"vertex_list indices must lie in [0, {n_vertices})")
+        if len(np.unique(idx)) != len(idx):
+            raise ValueError("vertex_list indices must be unique")
+        return idx
+    if n_vertices > max_vertices:
+        rng = np.random.default_rng(seed)
+        return np.sort(rng.choice(n_vertices, max_vertices, replace=False))
+    return np.arange(n_vertices)
+
+
 def front_hemisphere_angles(num_views, max_elev=45.0, max_azim=75.0):
     """A steps x steps grid of (elevation, azimuth) in front of the mesh. azim=0, elev=0 is the
     camera on the +z axis, which is where normal_to_mesh.py's camera is."""
@@ -590,6 +609,12 @@ def main():
     ap.add_argument("--num_views", type=int, default=100, help="rendered views (a square number)")
     ap.add_argument(
         "--max_vertices", type=int, default=15000, help="features for at most this many vertices"
+    )
+    ap.add_argument(
+        "--vertex_list",
+        default=None,
+        help="npy of vertex indices: features exactly at these, in this order (overrides "
+        "--max_vertices)",
     )
     ap.add_argument(
         "--front_only", action="store_true", help="cameras only in front of the mesh (+z)"
@@ -698,11 +723,8 @@ def main():
     t0 = time.time()
 
     verts, faces, colors = load_mesh(args.mesh)
-    rng = np.random.default_rng(args.seed)
-    if len(verts) > args.max_vertices:
-        idx = np.sort(rng.choice(len(verts), args.max_vertices, replace=False))
-    else:
-        idx = np.arange(len(verts))
+    vertex_list = np.load(args.vertex_list) if args.vertex_list is not None else None
+    idx = select_vertices(len(verts), args.max_vertices, args.seed, vertex_list)
     print(f"{args.mesh}: {len(verts)} vertices, {len(faces)} faces, features for {len(idx)}")
 
     if args.appearance == "vertex_colors" and colors is None:
@@ -825,6 +847,7 @@ def main():
                                 if args.features == "distilldift" else None),
         n_vertices=int(len(verts)),
         n_features=int(len(idx)),
+        vertex_list=os.path.abspath(args.vertex_list) if args.vertex_list else None,
         seconds=round(time.time() - t0, 1),
         peak_gpu_mib=round(torch.cuda.max_memory_allocated() / 2 ** 20),
     )
