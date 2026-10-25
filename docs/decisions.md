@@ -1367,3 +1367,21 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   re-match chain. Next: the local matches as soft data of one more field solve inside the chain
   (`refine_correspondence.py --local_npz`, the confident half by similarity at weight 3), so the
   field keeps what agrees with its neighbours and smooths the rest away.
+
+## 2026-10-26 — Photo-window matches as soft data of the field (laptop run): the texture holds, the keypoint gain does not
+
+- `refine_correspondence.py --local_npz` (3532b57) on the 26 real pairs with the per-vertex
+  1120 px matches of batch 22 (`results/diff3f/local2d4/`; a base run at this commit
+  reproduces batch 7 exactly). Texture, same-category means (within 2 % / within 5 % /
+  conformal median / flipped area): chain 0.683 / 0.968 / 3.22 / 0.113; top half at weight 3
+  0.685 / 0.978 / 3.19 / 0.114; top quarter at weight 3 0.693 / 0.981 / 2.98 / 0.106 (better on
+  every measure, cross pairs too: 0.576 / 0.951 / 3.08 / 0.142 against 0.552 / 0.930 / 3.44 /
+  0.165); top half at weight 10 worse. Keypoints on the 13 same-category pairs: PCK@2 55 / 57 /
+  57 % against the chain's 61 %; 73–80 of 89 keypoints move by 1–2 %, more often for the worse
+  (42–52 worse against 28–31 better).
+- Reading: the field takes the noise out of the per-vertex matches (flips and distortion back
+  at or below the chain's), but the local data still pulls most keypoints slightly the wrong
+  way; the per-cell gain of batch 21 (65 %) is not reproduced through the field. The top-quarter
+  variant is the smoothest texture so far at a cost of about one keypoint; the chain stays the
+  standing setting for keypoints. What remains of the line: the per-cell 1120 px mode's texture
+  effect, and the per-cell matches (few, strong) as the field's soft data.
