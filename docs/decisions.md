@@ -1335,3 +1335,19 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   move about half the window, 46–95 % of touched vertices shifted by more than 2 %): the patch
   features, one cell per 14 px, cannot localise finer than the chain already does. A run at
   1120 px with 2.5 % and 4 % windows (batch 21) decides whether a finer grid changes that.
+
+## 2026-10-26 — Coarse-to-fine localisation at 1120 px (laptop run): the first setting above the nearest neighbour
+
+- Batch 20 corrected with all 89 keypoints (cat → lion's are in `results/diff3f/landmarks/`):
+  at 840 px the moved keypoints are 5 (2 better, 3 worse) with a 4 % window, 5 (3 / 2) with 8 %,
+  16 (9 / 7, inside 2 % 10 → 8) with three views: a coin toss, as read.
+- `match2d.py --prior` at 1120 px, front view only (`results/diff3f/local2d2/keypoint_accuracy.csv`,
+  59–71 s per pair): with a 4 % window 14 keypoints move, 10 better and 4 worse, inside 2 %
+  5 → 9, median error of the moved ones 0.025 → 0.017; PCK@2 on the 13 same-category pairs
+  65 % (image plane 67 %), against the chain's 61 % and the nearest neighbour's 63 %, mean error
+  0.038 → 0.037; +1 keypoint on okapi1 → camel, labubu → man and panda, +2 on cat → lion, −1 on
+  okapi → camel (0.010 → 0.021). A 2.5 % window is weaker (8 / 6, 63 %). The 80 × 80 cell grid
+  is what changes it against 840 px (60 × 60): finer cells and more vertices reached.
+- Caveat: still one vertex per render cell, so 14 of 89 keypoints are touched and the gain is
+  +4 keypoints net on six pairs. Next: every visible vertex searches (`--per_vertex`, its feature
+  interpolated from the render grid), evaluated on all 28 pairs with the texture numbers.
