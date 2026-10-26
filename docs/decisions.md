@@ -1407,3 +1407,31 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   reporting trick, not a method. The line is closed with the code kept (`match2d.py --prior`,
   `--per_vertex`, `refine_correspondence.py --local_npz`) and the top-quarter field variant
   noted as the smoothest texture setting (at three keypoints' cost).
+
+## 2026-10-27 — Candidate upper bound: the right answer is usually among the candidates
+
+- `scripts/idarb/candidate_bound.py` (`results/diff3f/candidate_bound.csv`), 89 keypoints on
+  the 13 same-category pairs, Diff3F zoom-2 features: the share of keypoints for which some
+  relief sample within 2 % of the annotation is among the k most similar samples of the
+  target keypoint's sample: k = 1 63 %, 4 67 %, 16 70 %, 64 81 %, 256 91 %, 1024 97 %; the
+  first correct candidate has median rank 1 and 75th percentile 34; every keypoint has one
+  somewhere (the correct region holds 21–55 samples per keypoint).
+- Reading: at the chain's k = 64 the correct region is in the candidate set for 81 % of the
+  keypoints, yet the chain's choice (prior + smoothing + re-match) ends at 61 %, the nearest
+  neighbour's level. A chooser that used context (the neighbours' candidates, the part, the
+  relief's layout) has up to 20 points of headroom on this set; smoothing alone does not
+  convert it. This is the measurement behind the outside review's advice (an external model
+  consulted by the owner on 2026-10-27) to compare re-ranking against feature replacement.
+- The same review's other points, applied to `train_adapter.py` before any training: an
+  InfoNCE in the evaluation's direction (full → partial within the batch); the near-copy
+  negative mask restricted to far-away copies (symmetric counterparts, beyond 15 % of the
+  diagonal) so that near copies at 2–10 % stay as the hard negatives of localisation, with the
+  masked share in that band logged; an optional soft-label cross-entropy over the candidates
+  (Gaussian in the distance to the true vertex); an optional residual penalty; validation also
+  at 2 % of the partial's diagonal (the real task's threshold) with the share of points correct
+  before the adapter and wrong after it; identity weights saved when no epoch beats the
+  unadapted features. Validation tiers agreed: A = dataset cuts (the pilot), B = reliefs made by
+  the real decomposition pipeline from renders of the full mesh (ground truth through the
+  render), C = the real pairs. GeoLoRA (arXiv 2610.21802, DINOv3 LoRA trained on partial
+  cuts with a geodesic PointInfoNCE) is the closest published method and a drop-in test for
+  the server after the pilot.
