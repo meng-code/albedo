@@ -1435,3 +1435,18 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   render), C = the real pairs. GeoLoRA (arXiv 2610.21802, DINOv3 LoRA trained on partial
   cuts with a geodesic PointInfoNCE) is the closest published method and a drop-in test for
   the server after the pilot.
+
+## 2026-10-27 — Neighbour voting over the candidates (Mac run): consistency alone cannot take the headroom
+
+- `scripts/idarb/vote_chooser.py` (`results/diff3f/vote_chooser.csv`): every candidate of a
+  target sample scores its similarity plus λ times the mean support its 12 nearest target
+  samples' candidate lists give to a relief position near it (Gaussian, σ = 3 % of the relief
+  diagonal), then optional rounds where the neighbours' chosen positions vote. Keypoint PCK@2
+  on the 13 same-category pairs: λ = 0 (nearest neighbour) 62.9 %; λ = 0.5 / 1 / 2 / 4 one
+  shot 60.7 / 60.7 / 59.6 / 58.4 %, after two rounds 56.2 % for every λ.
+- Reading: the correct region sits among the top 64 candidates for 81 % of the keypoints
+  (candidate_bound.py), but neither the chain's smooth field nor this softer vote over the
+  candidate distributions picks it: local consistency carries no information about which
+  candidate is right, and the more of it is used the more the choice drifts. Taking the headroom
+  needs information about correctness itself, that is better features (the adapter) or a chooser
+  trained with ground truth; geometry-only post-processing is exhausted on this benchmark.

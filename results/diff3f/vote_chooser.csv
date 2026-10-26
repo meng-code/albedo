@@ -1,0 +1,14 @@
+pair,n,lam0_round0,lam0_round1,lam0_round2,lam0.5_round0,lam0.5_round1,lam0.5_round2,lam1_round0,lam1_round1,lam1_round2,lam2_round0,lam2_round1,lam2_round2,lam4_round0,lam4_round1,lam4_round2
+cow,7,4,4,4,4,4,3,4,3,3,4,3,3,3,2,3
+cat,7,5,5,5,6,6,6,6,6,6,6,6,6,6,6,6
+superman_man,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7
+superman_posed,6,6,6,6,6,6,5,6,5,5,6,5,5,6,5,5
+okapi_camel,7,5,5,5,5,5,6,5,6,6,6,6,6,6,6,6
+okapi1_camel,7,5,5,5,4,4,3,4,3,3,3,3,3,3,3,3
+cat5_cat,7,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6
+cat_lion,11,5,5,5,6,4,4,6,4,4,5,4,4,5,4,4
+labubu_man,7,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2
+chair1_armchair,6,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4
+panda_panda,6,3,3,3,2,2,2,2,2,2,2,2,2,2,2,2
+bird_bird,5,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0
+dragon_lizard,6,3,3,3,2,3,2,2,2,2,2,2,2,2,2,2
