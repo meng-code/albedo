@@ -62,3 +62,59 @@ def test_torch_adapter_matches_numpy_forward():
         y_torch = net(x).numpy()
     y_np = ad.mlp_forward(x.numpy(), net.weights())
     assert np.allclose(y_torch, y_np, atol=1e-5)
+
+
+def test_train_adapter_runs_on_a_tiny_fake_dataset(tmp_path):
+    """One epoch on the CPU over a fabricated dataset: exercises the whole training loop
+    (streaming pairs, every loss term, both evaluation directions, saving)."""
+    pytest = __import__("pytest")
+    pytest.importorskip("torch")
+    import json
+    import subprocess
+
+    rng = np.random.default_rng(0)
+    root, feat = tmp_path / "ds", tmp_path / "feat"
+    (root / "full").mkdir(parents=True)
+    (root / "partial").mkdir()
+    feat.mkdir()
+    pairs = []
+    for u, uid in enumerate(["aaa", "bbb", "ccc", "ddd"]):
+        n_full = 60
+        V = rng.random((n_full, 3))
+        # a PLY the trimesh loader reads
+        with open(root / "full" / f"{uid}.ply", "w") as f:
+            f.write("ply\nformat ascii 1.0\nelement vertex %d\nproperty float x\nproperty float y\n"
+                    "property float z\nelement face 1\nproperty list uchar int vertex_indices\n"
+                    "end_header\n" % n_full)
+            f.writelines("%f %f %f\n" % tuple(v) for v in V)
+            f.write("3 0 1 2\n")
+        idx_f = np.arange(n_full)
+        ff = rng.normal(size=(n_full, 16)).astype(np.float32)
+        ff /= np.linalg.norm(ff, axis=1, keepdims=True)
+        np.savez(feat / f"{uid}_full.npz", idx=idx_f, xyz=V.astype(np.float32), feat=ff,
+                 meta="{}")
+        for k in range(2):
+            orig = rng.choice(n_full, 30, replace=False)
+            np.savez(root / "partial" / f"{uid}_v{k}_gt.npz", orig_idx=orig, s=1.0,
+                     R=np.eye(3), t=np.zeros(3), meta="{}")
+            fp = ff[orig] + 0.1 * rng.normal(size=(30, 16)).astype(np.float32)
+            np.savez(feat / f"{uid}_v{k}.npz", idx=np.arange(30), xyz=V[orig].astype(np.float32),
+                     feat=fp / np.linalg.norm(fp, axis=1, keepdims=True), meta="{}")
+            pairs.append(dict(uid=uid, group="g", category="c", partial=f"partial/{uid}_v{k}.ply",
+                              gt=f"partial/{uid}_v{k}_gt.npz", full=f"full/{uid}.ply",
+                              split="val" if u >= 3 else "train"))
+    json.dump(dict(pairs=pairs), open(root / "manifest.json", "w"))
+    out = tmp_path / "adapter.npz"
+    script = os.path.join(os.path.dirname(__file__), "..", "scripts", "idarb", "train_adapter.py")
+    res = subprocess.run([sys.executable, script, "--root", str(root), "--feature_dir", str(feat),
+                          "--out", str(out), "--epochs", "2", "--device", "cpu", "--hidden", "8",
+                          "--batch_vertices", "16", "--negatives", "32", "--val_samples", "16",
+                          "--w_soft", "0.5", "--w_resid", "0.01"],
+                         capture_output=True, text=True)
+    assert res.returncode == 0, res.stderr[-2000:]
+    lines = [json.loads(line) for line in res.stdout.splitlines() if line.startswith("{")]
+    assert lines[-1]["saved"] == str(out) and out.exists()
+    epoch_lines = [ln for ln in lines if "val" in ln and "epoch" in ln and ln["epoch"] > 0]
+    assert len(epoch_lines) == 2 and "f2p" in epoch_lines[0]["val"]
+    w = dict(np.load(out))
+    assert w["w1"].shape == (8, 16) and w["w2"].shape == (16, 8)

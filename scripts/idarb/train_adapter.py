@@ -14,8 +14,15 @@ pair): nearest-neighbour accuracy of the true full vertex within 1 % / 5 % of th
 (the GT measure of refine_correspondence.py), before and after the adapter. Pairs are read from
 disk as they are used (the dataset's features do not fit in RAM), 4 pairs mixed per step; full
 samples within 1 % of the true vertex, or whose feature is a near copy of the positive's
-(cosine above --near_cos: the symmetric parts), are not negatives. Weights are saved as an
-npz that adapter_data.mlp_forward and apply_adapter.py read without torch.
+(cosine above --near_cos) while lying far away (--sym_dist: the symmetric counterpart), are
+not negatives; near copies close by stay as hard negatives. Besides the partial -> full InfoNCE
+there is one in the evaluation's direction (--w_nce_rev, full -> partial within the batch), an
+optional soft-label cross-entropy over the candidates (--w_soft, Gaussian in the distance to the
+true vertex, --sigma) and an optional residual penalty (--w_resid). The validation also reports
+accuracy at 2 % of the PARTIAL's diagonal (the real task's threshold) and the share of points
+correct before the adapter and wrong after it. If no epoch beats the unadapted features the
+saved weights are the identity. Weights are saved as an npz that adapter_data.mlp_forward and
+apply_adapter.py read without torch.
 
 Usage (server, an environment with torch):
     python scripts/idarb/train_adapter.py --root ~/semtex/dataset \
@@ -84,8 +91,22 @@ def main():
                     help="partial samples per pair per step")
     ap.add_argument("--pairs_per_step", type=int, default=4, help="pairs mixed in one step")
     ap.add_argument("--near_cos", type=float, default=0.95,
-                    help="full samples whose feature is this close to the positive's are "
-                    "not negatives (the symmetric parts Diff3F cannot tell apart)")
+                    help="full samples whose feature is this close to the positive's AND lie "
+                    "farther than --sym_dist from it are not negatives (the symmetric parts "
+                    "Diff3F cannot tell apart); near copies close by stay hard negatives")
+    ap.add_argument("--sym_dist", type=float, default=0.15,
+                    help="fraction of the full diagonal beyond which a near copy counts as a "
+                    "symmetric counterpart")
+    ap.add_argument("--w_nce_rev", type=float, default=1.0,
+                    help="InfoNCE in the evaluation's direction: a full sample against the "
+                    "partial samples of the batch")
+    ap.add_argument("--w_soft", type=float, default=0.0,
+                    help="cross-entropy to a soft label over the full samples, Gaussian in the "
+                    "distance to the true vertex (--sigma), instead of the one-hot InfoNCE")
+    ap.add_argument("--sigma", type=float, default=0.01,
+                    help="width of the soft label, fraction of the full diagonal")
+    ap.add_argument("--w_resid", type=float, default=0.0,
+                    help="penalty on the squared norm of the residual the adapter adds")
     ap.add_argument("--val_samples", type=int, default=4096,
                     help="partial samples per validation pair")
     ap.add_argument("--both", action="store_true", help="adapt the full side too (shared net, "
@@ -138,6 +159,8 @@ def main():
             pos_p_all=torch.from_numpy(a["pos"]).to(dev),
             ff_all=torch.from_numpy(a["ff_all"]).half().to(dev),
             pos_all=torch.from_numpy(a["pos_all"]).to(dev), diag=a["diag"],
+            diag_p=float(np.linalg.norm(a["pos"].max(axis=0) - a["pos"].min(axis=0)))
+            if len(a["pos"]) else a["diag"],
             keep=a["keep_fraction"]))
     print(json.dumps(dict(val_loaded_seconds=round(time.time() - t0, 1),
                           val_keep_fraction_mean=round(float(np.mean(
@@ -146,6 +169,8 @@ def main():
     dim = int(np.load(train[0]["full_npz"])["feat"].shape[1])
     net = Adapter(dim, args.hidden, dev)
     opt = torch.optim.Adam(net.parameters(), lr=args.lr)
+
+    correct_before = {}
 
     @torch.no_grad()
     def evaluate(adapt):
@@ -157,8 +182,8 @@ def main():
         Errors as fractions of the full diagonal."""
         out = {}
         for key in ("p2f", "f2p"):
-            acc1, acc5 = [], []
-            for v in val_data:
+            acc1, acc5, acc2p, lost = [], [], [], []
+            for vi, v in enumerate(val_data):
                 if len(v["fp"]) == 0:
                     continue
                 ff = v["ff_all"].float()
@@ -184,8 +209,18 @@ def main():
                     err = err / v["diag"]
                 acc1.append(float((err < 0.01).float().mean()))
                 acc5.append(float((err < 0.05).float().mean()))
+                # the real task's threshold: 2 % of the PARTIAL's diagonal
+                ok2 = err * v["diag"] / v["diag_p"] < 0.02
+                acc2p.append(float(ok2.float().mean()))
+                if not adapt:
+                    correct_before[(key, vi)] = ok2
+                elif (key, vi) in correct_before:
+                    before = correct_before[(key, vi)]
+                    lost.append(float((before & ~ok2).float().sum() / max(float(before.sum()), 1)))
             out[key] = dict(acc_1pct=round(float(np.mean(acc1)), 4) if acc1 else None,
-                            acc_5pct=round(float(np.mean(acc5)), 4) if acc5 else None)
+                            acc_5pct=round(float(np.mean(acc5)), 4) if acc5 else None,
+                            acc_2pct_partial=round(float(np.mean(acc2p)), 4) if acc2p else None,
+                            lost_share=round(float(np.mean(lost)), 4) if lost else None)
         out["acc_1pct"] = out["f2p"]["acc_1pct"]  # the headline, as in the GT tables
         return out
 
@@ -195,7 +230,7 @@ def main():
     steps_per_epoch = int(np.ceil(len(train) / args.pairs_per_step))
     for epoch in range(1, args.epochs + 1):
         order = rng.permutation(len(train))
-        losses = []
+        losses, masked_band = [], []
         for step in range(steps_per_epoch):
             group = order[step * args.pairs_per_step:(step + 1) * args.pairs_per_step]
             loss = None
@@ -217,16 +252,44 @@ def main():
                     with torch.no_grad():
                         ff, ff_all = net(ff), net(ff_all)
                 term = args.w_regress * (1.0 - (g * ff).sum(dim=1)).mean()
+                if args.w_resid > 0:
+                    term = term + args.w_resid * ((g - fp) ** 2).sum(dim=1).mean()
+                dist_t = torch.cdist(pos_t, pos_all)  # (b, neg) true vertex to full samples
+                # not negatives: full samples within 1 % of the true vertex, and far-away
+                # near copies of the positive's feature (the symmetric counterpart); near
+                # copies close by (2-10 %) stay as the hard negatives of localisation
+                near = dist_t < 0.01 * a["diag"]
+                sym = ((ff @ ff_all.T) > args.near_cos) & (dist_t > args.sym_dist * a["diag"])
+                masked = near | sym
+                pos_logit = (g * ff).sum(dim=1, keepdim=True) / args.temperature
+                logits = g @ ff_all.T / args.temperature  # (b, neg)
                 if args.w_nce > 0:
-                    logits = g @ ff_all.T / args.temperature  # (b, neg)
-                    # not negatives: full samples within 1 % of the true vertex, and samples
-                    # whose feature is a near copy of the positive's (symmetric parts)
-                    near = torch.cdist(pos_t, pos_all) < 0.01 * a["diag"]
-                    near |= (ff @ ff_all.T) > args.near_cos
-                    pos_logit = (g * ff).sum(dim=1, keepdim=True) / args.temperature
-                    logits = torch.where(near, torch.full_like(logits, -1e4), logits)
-                    full = torch.cat([pos_logit, logits], dim=1)
+                    lg = torch.where(masked, torch.full_like(logits, -1e4), logits)
+                    full = torch.cat([pos_logit, lg], dim=1)
                     term = term + args.w_nce * (-torch.log_softmax(full, dim=1)[:, 0]).mean()
+                if args.w_soft > 0:
+                    # a soft label over (positive, negatives): Gaussian in the distance to the
+                    # true vertex, so the loss rewards candidates by how close they are
+                    d = torch.cat([torch.zeros_like(pos_logit), dist_t / a["diag"]], dim=1)
+                    q = torch.exp(-(d ** 2) / (2 * args.sigma ** 2))
+                    q = torch.where(torch.cat([torch.zeros_like(pos_logit, dtype=torch.bool),
+                                               sym], dim=1), torch.zeros_like(q), q)
+                    q = q / q.sum(dim=1, keepdim=True)
+                    full = torch.cat([pos_logit, logits], dim=1)
+                    term = term + args.w_soft * (-(q * torch.log_softmax(full, dim=1))
+                                                 .sum(dim=1)).mean()
+                if args.w_nce_rev > 0:
+                    # the evaluation's direction: every full target against the partial
+                    # samples of the batch (its own partial sample is the positive; partial
+                    # samples whose true vertex is within 1 % are not negatives)
+                    rev = ff @ g.T / args.temperature  # (b, b)
+                    near_p = torch.cdist(pos_t, pos_t) < 0.01 * a["diag"]
+                    eye = torch.eye(len(g), dtype=torch.bool, device=dev)
+                    rev = torch.where(near_p & ~eye, torch.full_like(rev, -1e4), rev)
+                    term = term + args.w_nce_rev * (
+                        -torch.log_softmax(rev, dim=1).diagonal()).mean()
+                masked_band.append(float((masked & (dist_t > 0.02 * a["diag"])
+                                          & (dist_t < 0.10 * a["diag"])).float().mean()))
                 loss = term if loss is None else loss + term
             if loss is None:
                 continue
@@ -237,6 +300,7 @@ def main():
             losses.append(float(loss))
         val_acc = evaluate(True)
         print(json.dumps(dict(epoch=epoch, loss=round(float(np.mean(losses)), 4), val=val_acc,
+                              masked_in_2_10pct_band=round(float(np.mean(masked_band)), 5),
                               seconds=round(time.time() - t0, 1))), flush=True)
         score = val_acc["acc_1pct"] if val_acc["acc_1pct"] is not None else -float(np.mean(losses))
         if best is None or score > best[0]:
@@ -247,9 +311,15 @@ def main():
                                           val_before=val_before, dim=dim)))
     beats = (best[0] is not None and val_before["acc_1pct"] is not None
              and best[0] > val_before["acc_1pct"])
+    if not beats:  # the identity map is the selected model, so nothing downstream gets worse
+        ident = Adapter(dim, args.hidden, dev)
+        np.savez(args.out, **ident.weights(),
+                 meta=json.dumps(dict(args=vars(args), epoch=0, val=val_before,
+                                      val_before=val_before, dim=dim, identity=True)))
     print(json.dumps(dict(best_val_acc_1pct=best[0], best_epoch=best[1], saved=args.out,
                           beats_identity=bool(beats),
-                          warning=None if beats else "no epoch beat the unadapted features")))
+                          warning=None if beats else "no epoch beat the unadapted features; "
+                          "identity weights saved")))
 
 
 if __name__ == "__main__":
