@@ -83,10 +83,10 @@ def test_train_adapter_runs_on_a_tiny_fake_dataset(tmp_path):
         V = rng.random((n_full, 3))
         # a PLY the trimesh loader reads
         with open(root / "full" / f"{uid}.ply", "w") as f:
-            f.write("ply\nformat ascii 1.0\nelement vertex %d\nproperty float x\nproperty float y\n"
-                    "property float z\nelement face 1\nproperty list uchar int vertex_indices\n"
-                    "end_header\n" % n_full)
-            f.writelines("%f %f %f\n" % tuple(v) for v in V)
+            f.write(f"ply\nformat ascii 1.0\nelement vertex {n_full}\nproperty float x\n"
+                    "property float y\nproperty float z\nelement face 1\n"
+                    "property list uchar int vertex_indices\nend_header\n")
+            f.writelines(f"{v[0]:f} {v[1]:f} {v[2]:f}\n" for v in V)
             f.write("3 0 1 2\n")
         idx_f = np.arange(n_full)
         ff = rng.normal(size=(n_full, 16)).astype(np.float32)
