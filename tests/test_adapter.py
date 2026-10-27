@@ -118,3 +118,14 @@ def test_train_adapter_runs_on_a_tiny_fake_dataset(tmp_path):
     assert len(epoch_lines) == 2 and "f2p" in epoch_lines[0]["val"]
     w = dict(np.load(out))
     assert w["w1"].shape == (8, 16) and w["w2"].shape == (16, 8)
+
+
+def test_resolve_path_falls_back_to_the_root(tmp_path):
+    (tmp_path / "partial").mkdir()
+    (tmp_path / "partial" / "u_v0_gt.npz").write_bytes(b"x")
+    server = "/home/someone/semtex/dataset/partial/u_v0_gt.npz"  # absent here
+    assert ad.resolve_path(str(tmp_path), server) == str(tmp_path / "partial" / "u_v0_gt.npz")
+    assert ad.resolve_path(str(tmp_path), "partial/u_v0_gt.npz") == str(
+        tmp_path / "partial" / "u_v0_gt.npz")
+    here = str(tmp_path / "partial" / "u_v0_gt.npz")
+    assert ad.resolve_path("/elsewhere", here) == here  # an absolute path that exists stays

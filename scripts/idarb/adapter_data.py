@@ -45,6 +45,17 @@ def pair_arrays(partial_npz, full_npz, gt_npz, full_vertices, tol=0.005, targets
                 pos_all=xyz_f, keep_fraction=float(ok.mean()) if len(ok) else 0.0)
 
 
+def resolve_path(root, path):
+    """A manifest path under the dataset root. make_partial_dataset.py wrote absolute paths of
+    the machine that built the dataset; on another machine they do not exist, so the last two
+    components (partial/<file>, full/<file>) are taken under `root`."""
+    if os.path.isabs(path) and os.path.exists(path):
+        return path
+    parts = os.path.normpath(path).split(os.sep)
+    rel = os.path.join(*parts[-2:]) if len(parts) >= 2 else parts[-1]
+    return os.path.join(root, rel)
+
+
 def dataset_pairs(root, feature_dir, split=None):
     """The dataset's pairs (manifest.json) that have both feature files, as dicts with the paths
     needed by pair_arrays, optionally one split ("train" or "val")."""
@@ -61,10 +72,8 @@ def dataset_pairs(root, feature_dir, split=None):
             out.append(dict(uid=m["uid"], stem=stem, category=m.get("category"),
                             partial_npz=p_npz, full_npz=f_npz,
                             targets_npy=os.path.join(feature_dir, stem + "_targets.npy"),
-                            gt_npz=os.path.join(root, m["gt"]) if not os.path.isabs(m["gt"])
-                            else m["gt"],
-                            full_ply=os.path.join(root, m["full"]) if not os.path.isabs(m["full"])
-                            else m["full"]))
+                            gt_npz=resolve_path(root, m["gt"]),
+                            full_ply=resolve_path(root, m["full"])))
     return out
 
 
