@@ -109,6 +109,9 @@ def main():
                     help="penalty on the squared norm of the residual the adapter adds")
     ap.add_argument("--val_samples", type=int, default=4096,
                     help="partial samples per validation pair")
+    ap.add_argument("--val_max_pairs", type=int, default=0,
+                    help="validation pairs kept in RAM, a seeded choice across the manifest "
+                    "(0: all; about 120 MB of RAM per pair at 4096 samples)")
     ap.add_argument("--both", action="store_true", help="adapt the full side too (shared net, "
                     "the regression target detached)")
     ap.add_argument("--max_pairs", type=int, default=0, help="limit for quick runs (0: all)")
@@ -126,6 +129,8 @@ def main():
     if args.max_pairs:  # a quick run: a shuffle first, the manifest is grouped by category
         train = [train[i] for i in rng.permutation(len(train))[:args.max_pairs]]
         val = [val[i] for i in rng.permutation(len(val))[:max(args.max_pairs // 4, 1)]]
+    if args.val_max_pairs and len(val) > args.val_max_pairs:
+        val = [val[i] for i in rng.permutation(len(val))[:args.val_max_pairs]]
     print(json.dumps(dict(train_pairs=len(train), val_pairs=len(val))), flush=True)
     if not train:
         sys.exit("no training pairs with features")
@@ -144,7 +149,9 @@ def main():
         a["diag"] = float(np.linalg.norm(a["pos_all"].max(axis=0) - a["pos_all"].min(axis=0)))
         return a
 
-    # the validation pairs, subsampled once and kept (float16 on the device)
+    # the validation pairs, subsampled once and kept in RAM (the big feature arrays in
+    # float16); evaluate() moves one pair at a time to the device, so the validation set
+    # costs no device memory next to a running extraction (it did cost ~120 MB per pair)
     t0 = time.time()
     val_data = []
     for m in val:
@@ -154,11 +161,11 @@ def main():
         # the partial side keeps every sample's feature (float16) for the full -> partial
         # direction, and the subsample for the partial -> full direction
         val_data.append(dict(
-            fp=torch.from_numpy(a["fp"][sel]).to(dev), pos=torch.from_numpy(a["pos"][sel]).to(dev),
-            fp_all=torch.from_numpy(a["fp"]).half().to(dev),
-            pos_p_all=torch.from_numpy(a["pos"]).to(dev),
-            ff_all=torch.from_numpy(a["ff_all"]).half().to(dev),
-            pos_all=torch.from_numpy(a["pos_all"]).to(dev), diag=a["diag"],
+            fp=torch.from_numpy(a["fp"][sel]), pos=torch.from_numpy(a["pos"][sel]),
+            fp_all=torch.from_numpy(a["fp"]).half(),
+            pos_p_all=torch.from_numpy(a["pos"]),
+            ff_all=torch.from_numpy(a["ff_all"]).half(),
+            pos_all=torch.from_numpy(a["pos_all"]), diag=a["diag"],
             diag_p=float(np.linalg.norm(a["pos"].max(axis=0) - a["pos"].min(axis=0)))
             if len(a["pos"]) else a["diag"],
             keep=a["keep_fraction"]))
@@ -186,27 +193,33 @@ def main():
             for vi, v in enumerate(val_data):
                 if len(v["fp"]) == 0:
                     continue
-                ff = v["ff_all"].float()
+                # one pair on the device at a time
+                ff = v["ff_all"].to(dev).float()
+                pos_all = v["pos_all"].to(dev)
                 if adapt and args.both:
                     ff = net(ff)
                 if key == "p2f":
-                    fp = net(v["fp"]) if adapt else v["fp"]
+                    fp = v["fp"].to(dev)
+                    if adapt:
+                        fp = net(fp)
                     nn = (fp @ ff.T).argmax(dim=1)
-                    err = torch.linalg.norm(v["pos_all"][nn] - v["pos"], dim=1) / v["diag"]
+                    err = torch.linalg.norm(pos_all[nn] - v["pos"].to(dev), dim=1) / v["diag"]
                 else:
-                    fp_all = v["fp_all"].float()
+                    fp_all = v["fp_all"].to(dev).float()
                     if adapt:
                         fp_all = net(fp_all)
+                    pos_p_all = v["pos_p_all"].to(dev)
                     # full samples with a counterpart: those within 1 % of some partial
                     # sample's true position
-                    d_full = torch.cdist(v["pos_all"], v["pos_p_all"])
+                    d_full = torch.cdist(pos_all, pos_p_all)
                     dmin, _ = d_full.min(dim=1)
                     has = dmin < 0.01 * v["diag"]
                     if not bool(has.any()):
                         continue
                     nn = (ff[has] @ fp_all.T).argmax(dim=1)
-                    err = torch.linalg.norm(v["pos_p_all"][nn] - v["pos_all"][has], dim=1)
+                    err = torch.linalg.norm(pos_p_all[nn] - pos_all[has], dim=1)
                     err = err / v["diag"]
+                err = err.cpu()
                 acc1.append(float((err < 0.01).float().mean()))
                 acc5.append(float((err < 0.05).float().mean()))
                 # the real task's threshold: 2 % of the PARTIAL's diagonal
