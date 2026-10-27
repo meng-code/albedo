@@ -15,3 +15,8 @@ Pilot objects: the 40 val objects and the first 100 train objects of objects.csv
 
 SHA256SUMS lists every file (sha256sum -c SHA256SUMS in results/diff3f/features_dataset/). Pushed
 in commits under 1 GB as the files accumulate.
+
+Added 10-27: `vertex_lists/<uid>_v<k>.npy` for all 275 pilot partials (the --vertex_list of each
+partial; the 45 the runner had written by then are byte-identical, the rest computed ahead with
+the same code, ~/semtex/zoom/make_queue_and_lists.py) and `pilot_queue.txt` (the runner's order,
+split, prompt, done or todo at the time of writing).
