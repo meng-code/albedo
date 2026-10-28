@@ -1450,3 +1450,31 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   candidate is right, and the more of it is used the more the choice drifts. Taking the headroom
   needs information about correctness itself, that is better features (the adapter) or a chooser
   trained with ground truth; geometry-only post-processing is exhausted on this benchmark.
+
+## 2026-10-28 — Early adapters on the real pairs (Mac run): the dataset gain does not carry to the reliefs
+
+- Early pilot training on hpc02 (`train_adapter.py` at c94c442, 20 epochs, 40 validation pairs):
+  run A with the defaults (regression + InfoNCE both ways) on the first 80 train pairs, run B
+  with the soft-label loss (`--w_soft 1 --w_nce 0`) on 82. Dataset validation (full → partial,
+  within 1 % of the full diagonal): identity 0.307, A 0.355 (epoch 16), B 0.361 (epoch 12);
+  partial → full 0.326 → 0.359 / 0.370; 22–26 % of the points correct before the adapter are
+  wrong after it (lost_share). Weights, logs and memory samples: features-dataset-tmp 44b54b4,
+  `results/diff3f/adapter/`.
+- Real pairs on the Mac: `apply_adapter.py` on the relief side of the zoom-2 features, then the
+  standing keypoint-oriented chain (`eval_features.py --groups same --variants nn arap --view
+  anchors --refine_args "--w_view 0.3 --anchor_filter rigid:0.1 --final_rematch 0.05
+  --rematch_rounds 3"`, `outputs/diff3f/18_adapter_early/{A,B}`) and `keypoint_table.py`
+  (`results/diff3f/adapter_early/`). Keypoints, 13 same-category pairs, 89 keypoints, PCK@2 as
+  the per-pair mean with the keypoint count in brackets: nearest neighbour 63 % (56) → A 55 %
+  (49), B 57 % (51), mean error 0.048 → 0.072 / 0.079; chain 61 % (54) → A 58 % (50), B 60 %
+  (53), mean error 0.038 → 0.039 / 0.041. Per pair the changes are one keypoint either way;
+  cat → lion loses two in A's chain (4 → 2), okapi1 → camel gains two in B's (4 → 6). Texture
+  (16 same-category pairs, chain, within 2 % / within 5 % / conformal median / mirrored area /
+  mutual anchors): 68.3 / 96.8 / 3.22 / 11.3 % / 123 → A 68.4 / 96.5 / 3.24 / 7.3 % / 152,
+  B 68.8 / 96.7 / 3.27 / 7.9 % / 156.
+- Reading: the +4–5 points on the dataset cuts do not carry to the real reliefs. The nearest
+  neighbour loses 6–8 points, the chain loses 1–3 (inside the one-keypoint-per-pair noise), the
+  texture is unchanged, with a smaller mirrored area and a quarter more mutual anchors. The
+  criterion for keeping an adapter (+3 points PCK@2 over 63 / 61 %, texture not worse) is not
+  met by either run. B is at or above A on every measure. These adapters saw 80 training pairs;
+  the full pilot training on all 196 train pairs follows once the 275 partials are extracted.
