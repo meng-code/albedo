@@ -2,7 +2,7 @@
 
 The laptop's share of the phase-B pilot: the last 70 train rows of pilot_queue.txt (from
 features-dataset-tmp at a05aa8c), listed in `results/diff3f/features_dataset/share.txt`, walked from the last row upward.
-The server's runner skips exactly these stems. Files here: 27 partials so far.
+The server's runner skips exactly these stems. Files here: 33 partials so far.
 
 - `<stem>.npz`: Diff3F features of the partial, code diff3f-registration 3a127e8 (the server's
   commit), the server's command: `python scripts/idarb/diff3f_features.py --mesh
