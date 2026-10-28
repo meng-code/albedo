@@ -1,0 +1,7 @@
+10-27 22:52 waiting for 80 train partials (now 0), code c94c442
+10-28 16:27 80 train partials present; nvidia-smi: 11190 MiB, 24576 MiB
+10-28 16:43 run A exit 0 933 s trainer GPU peak 3187 MiB, RAM available min 8182 MiB
+10-28 16:43 run A: {"best_val_acc_1pct": 0.3547, "best_epoch": 16, "saved": "/home/24/23010524/semtex/wt_train/outputs/adapter/pilot_early_A.npz", "beats_identity": true, "warning": null}
+10-28 16:56 run B exit 0 812 s trainer GPU peak 3187 MiB, RAM available min 8039 MiB
+10-28 16:56 run B: {"best_val_acc_1pct": 0.3614, "best_epoch": 12, "saved": "/home/24/23010524/semtex/wt_train/outputs/adapter/pilot_early_B.npz", "beats_identity": true, "warning": null}
+10-28 16:56 EARLY TRAINING DONE
