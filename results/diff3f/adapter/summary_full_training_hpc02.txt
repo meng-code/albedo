@@ -1,0 +1,7 @@
+10-28 17:30 waiting for 275 partials (now 200), code c94c442
+10-29 05:13 features_train: 140 fulls, 275 partials, 275 targets, 0 dangling links, 0 manifest pairs missing a file
+10-29 05:26 run_full_training.sh (pid 690854) stopped with SIGSTOP during run B; C and A run on hpc01; B monitored by monitor_full_B.sh
+10-29 05:27 SIGSTOP had no effect (tmux continues stopped panes); monitor_full_B.sh ended, and the lines 'run C' and 'run A' of run_full_training.sh were turned into comments in place (same length, same inode), so the running script ends after B; C and A run on hpc01 (owner's decision via the Mac)
+10-29 05:58 run B exit 0 2739 s trainer GPU peak 3187 MiB, RAM available min 5448 MiB
+10-29 05:58 run B: {"best_val_acc_1pct": 0.3718, "best_epoch": 20, "saved": "/home/24/23010524/semtex/wt_train/outputs/adapter/pilot_full_B.npz", "beats_identity": true, "warning": null}
+10-29 05:58 FULL TRAINING DONE
