@@ -1478,3 +1478,37 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   criterion for keeping an adapter (+3 points PCK@2 over 63 / 61 %, texture not worse) is not
   met by either run. B is at or above A on every measure. These adapters saw 80 training pairs;
   the full pilot training on all 196 train pairs follows once the 275 partials are extracted.
+
+## 2026-10-29 — Full pilot training of the adapter (B, C, A): C matches the baseline chain, none beats it
+
+- Training on all 196 train pairs of the pilot (140 objects, 275 partials; the last Diff3F
+  features finished at 05:09 on hpc02 and hpc01 with the laptop's 33 stems), `train_adapter.py`
+  at c94c442, 20 epochs, the same 40 validation pairs as the early runs (val_before identical):
+  run B (`--w_soft 1 --w_nce 0`) on hpc02, 2739 s; runs C (`--w_soft 1 --w_nce 0 --w_resid 1`)
+  and A (defaults) in parallel on hpc01 with the training features copied over (10.8 GB), 7259 s
+  each. Dataset validation (full → partial within 1 %): identity 0.307 → B 0.372 (epoch 20),
+  C 0.381 (epoch 5; epoch 20 0.374), A 0.368 (epoch 15); the early runs reached 0.361 / 0.355 on
+  80–82 pairs, so doubling the training pairs adds about one point. C's residual penalty lowers
+  lost_share a little (0.19–0.23 against 0.21–0.25). Weights, logs, samples, run scripts and
+  SHA256SUMS: features-dataset-tmp 92bc439 (B) and 6fd1333 (C, A), `results/diff3f/adapter/`.
+- Real pairs on the Mac, the same test as on 10-28 (`apply_adapter.py` on the relief side of
+  the zoom-2 features, the standing keypoint-oriented chain into
+  `outputs/diff3f/18_adapter_full/{B,C,A}`, `keypoint_table.py`; CSVs in
+  `results/diff3f/adapter_full/`). 13 same-category pairs, 89 keypoints, PCK@2 as the per-pair
+  mean with the pooled count in brackets, then the mean error:
+  nearest neighbour 63 % (56) 0.048 → B 59 % (51) 0.057, C 62 % (54) 0.055, A 57 % (50) 0.066;
+  chain 61 % (54) 0.038 → B 58 % (50) 0.036, C 61 % (54) 0.038, A 58 % (50) 0.037.
+  Texture (16 same-category pairs, chain, within 2 % / within 5 % / mirrored area):
+  68.3 / 96.8 / 11.3 % → B 70.2 / 96.5 / 7.6 %, C 68.0 / 96.6 / 7.8 %, A 69.9 / 96.5 / 7.5 %.
+- Reading: no full run meets the criterion (+3 points PCK@2 over 63 / 61 %, texture not worse).
+  C, the run kept closest to the identity by the residual penalty, is the only one that does
+  not hurt the chain (54 of 89 either way) and loses the least on the nearest neighbour; A, the
+  run farthest from the identity, loses the most. The damage orders with the distance from the
+  identity, which says the shift the adapter learns on the dataset cuts is not the shift of the
+  real reliefs: the cuts are clean geometry seen from the front, the reliefs are normal
+  integrations with depth error, and the gain on the cuts (+6.5 points) buys nothing on the
+  reliefs with twice the data. What is left of this line is tier B (the 40 reliefs made by the
+  real pipeline from renders of full meshes, features extracting on hpc02, about 17 h): it
+  measures the loss the real pipeline itself causes with ground truth, and is the first
+  training material of the reliefs' kind. The three full adapters are kept as the record of
+  the adapter line; the standing chain stays unadapted.
