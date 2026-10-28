@@ -1,0 +1,13 @@
+10-29 05:39 run A start, code c94c442, args: 
+10-29 05:39 run C start, code c94c442, args: --w_soft 1 --w_nce 0 --w_resid 1
+10-29 06:45 run C: wrapper 307459 paused, guard_5h.sh watches trainer 307478 (limit 5 h, RAM 1.2 GB)
+10-29 06:45 run A: wrapper 307462 paused, guard_5h.sh watches trainer 307472 (limit 5 h, RAM 1.2 GB)
+10-29 06:46 guard v1 (SIGSTOP) removed: tmux resumed the wrappers at once, so it had no effect; replaced by the FIFO guard
+10-29 06:46 run C: wrapper blocked on a FIFO at /home/24/23010524/semtex/adapter/samples_full_C.txt; guard_5h.sh watches trainer 307478 (limit 5 h, RAM 1.2 GB)
+10-29 06:46 run A: wrapper blocked on a FIFO at /home/24/23010524/semtex/adapter/samples_full_A.txt; guard_5h.sh watches trainer 307472 (limit 5 h, RAM 1.2 GB)
+10-29 07:39 run A: trainer 307472 exited, wrapper released (its 'over 3 h' note, if any, is moot: the trainer had already exited)
+10-29 07:39 run C: trainer 307478 exited, wrapper released (its 'over 3 h' note, if any, is moot: the trainer had already exited)
+10-29 07:40 run A exit 0 7259 s trainer GPU peak 3187 MiB, RAM available min 4714 MiB
+10-29 07:40 run C exit 0 7259 s trainer GPU peak 3187 MiB, RAM available min 4640 MiB
+10-29 07:40 run A: {"best_val_acc_1pct": 0.3677, "best_epoch": 15, "saved": "/home/24/23010524/semtex/wt_train/outputs/adapter/pilot_full_A.npz", "beats_identity": true, "warning": null}
+10-29 07:40 run C: {"best_val_acc_1pct": 0.381, "best_epoch": 5, "saved": "/home/24/23010524/semtex/wt_train/outputs/adapter/pilot_full_C.npz", "beats_identity": true, "warning": null}
