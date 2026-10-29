@@ -1,0 +1,1 @@
+{"relief_vertices": 69568, "with_gt": 69568, "without": 0}

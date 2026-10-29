@@ -1,0 +1,9 @@
+14:49:50 start: 1 val objects, code 27b87ab
+14:49:54 render f7afba1d4e91459e8c60237df5aa1a70 4 s {"name": "f7afba1d4e91459e8c60237df5aa1a70", "view": [0.5458, 0.4495, 0.7071], "foreground": 102136, "colours": true}
+14:49:54 step render done 4 s
+14:49:56 step prepare 2 s, 1 inputs
+14:50:37 step IDArb 41 s, 1 decompositions
+14:50:44 step depth 7 s, 1 depth maps
+14:50:55 mesh f7afba1d4e91459e8c60237df5aa1a70 11 s
+14:50:56 attach f7afba1d4e91459e8c60237df5aa1a70 1 s {"relief_vertices": 99457, "with_gt": 99457, "without": 0}
+14:50:56 STEPS 1-3 DONE

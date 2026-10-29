@@ -1,0 +1,88 @@
+14:51:25 start: 40 val objects, code 27b87ab
+14:51:27 render 11c751284a3f470b95336598bfbc8755 2 s {"name": "11c751284a3f470b95336598bfbc8755", "view": [-0.6402, 0.1971, 0.7425], "foreground": 107302, "colours": true}
+14:51:30 render 52c9e26b0ad943c7a1d190d4cf3a2903 3 s {"name": "52c9e26b0ad943c7a1d190d4cf3a2903", "view": [-0.3091, 0.0894, 0.9468], "foreground": 74545, "colours": true}
+14:51:37 render b312c05ff88640f383c4133981f659c5 7 s {"name": "b312c05ff88640f383c4133981f659c5", "view": [0.6647, 0.3601, 0.6546], "foreground": 124781, "colours": true}
+14:51:51 render 9cf0d4d9c380433e9ae04b05d2397368 14 s {"name": "9cf0d4d9c380433e9ae04b05d2397368", "view": [0.2206, 0.3971, 0.8909], "foreground": 119421, "colours": true}
+14:51:55 render a647bc9f973e46178bd672c7211b6a2e 4 s {"name": "a647bc9f973e46178bd672c7211b6a2e", "view": [-0.7105, 0.0049, 0.7036], "foreground": 76058, "colours": true}
+14:51:56 render 90f00bd20ed44437a03acb0a129e81a0 1 s {"name": "90f00bd20ed44437a03acb0a129e81a0", "view": [-0.2093, 0.261, 0.9424], "foreground": 85891, "colours": true}
+14:52:00 render 0a5f52a298864b20a290fae141c2791b 4 s {"name": "0a5f52a298864b20a290fae141c2791b", "view": [0.4886, 0.3079, 0.8164], "foreground": 120861, "colours": true}
+14:52:04 render c0154b11b3774588b2d0c32c8776a0cf 4 s {"name": "c0154b11b3774588b2d0c32c8776a0cf", "view": [-0.8381, 0.1471, 0.5253], "foreground": 73152, "colours": true}
+14:52:14 render 9bfa5bd092bf4d84a4e5a563e235ddc3 10 s {"name": "9bfa5bd092bf4d84a4e5a563e235ddc3", "view": [-0.4124, 0.4868, 0.7701], "foreground": 52313, "colours": true}
+14:52:16 render fac31ebbca974f3597f12ca083ececb9 2 s {"name": "fac31ebbca974f3597f12ca083ececb9", "view": [0.4117, -0.0204, 0.9111], "foreground": 50852, "colours": true}
+14:52:19 render b52c66419c3b4091835cd72bc17c60d5 3 s {"name": "b52c66419c3b4091835cd72bc17c60d5", "view": [0.2877, 0.2543, 0.9233], "foreground": 124993, "colours": true}
+14:52:25 render 698909fb744b4ed6b708b36606cb7e98 6 s {"name": "698909fb744b4ed6b708b36606cb7e98", "view": [0.7399, 0.1723, 0.6503], "foreground": 127860, "colours": true}
+14:52:27 render f39c6c7bf3454a50877ca0f2c7f07cb9 2 s {"name": "f39c6c7bf3454a50877ca0f2c7f07cb9", "view": [-0.7627, 0.4359, 0.4777], "foreground": 120732, "colours": true}
+14:52:29 render 3532d56ca306437f8460700695172ee7 2 s {"name": "3532d56ca306437f8460700695172ee7", "view": [-0.1805, 0.213, 0.9602], "foreground": 42245, "colours": true}
+14:52:39 render 921fa0069be74b1d967ee57b828ef4d6 10 s {"name": "921fa0069be74b1d967ee57b828ef4d6", "view": [-0.6198, 0.0505, 0.7832], "foreground": 29101, "colours": true}
+14:52:40 render 5b1bbcb42f4544c892381acdcb57c0de 1 s {"name": "5b1bbcb42f4544c892381acdcb57c0de", "view": [0.2352, 0.327, 0.9153], "foreground": 57831, "colours": true}
+14:52:42 render bc6f833fe3b440058b967375c25f28c1 2 s {"name": "bc6f833fe3b440058b967375c25f28c1", "view": [0.2933, 0.201, 0.9347], "foreground": 69307, "colours": true}
+14:52:45 render 843a674e45c84003b6c616c6a2bef715 3 s {"name": "843a674e45c84003b6c616c6a2bef715", "view": [0.0553, 0.04, 0.9977], "foreground": 119322, "colours": true}
+14:52:46 render 0f45a8874b234efcb59e3a3268f750b5 1 s {"name": "0f45a8874b234efcb59e3a3268f750b5", "view": [-0.6684, 0.3491, 0.6568], "foreground": 112401, "colours": true}
+14:52:49 render e8b32da76b8444c59aa13b749db5fc56 3 s {"name": "e8b32da76b8444c59aa13b749db5fc56", "view": [-0.1971, 0.2449, 0.9493], "foreground": 127479, "colours": true}
+14:52:51 render 62897c52e967469c85df9c6abdd09d16 2 s {"name": "62897c52e967469c85df9c6abdd09d16", "view": [-0.2833, 0.3334, 0.8992], "foreground": 76479, "colours": true}
+14:52:55 render 4e9f8bfcb1df4e268d567a33cdd90e07 4 s {"name": "4e9f8bfcb1df4e268d567a33cdd90e07", "view": [-0.0558, 0.095, 0.9939], "foreground": 68653, "colours": true}
+14:52:56 render d4026f4bbc384c5f9307d9b066a21d93 1 s {"name": "d4026f4bbc384c5f9307d9b066a21d93", "view": [-0.0459, 0.0065, 0.9989], "foreground": 31464, "colours": true}
+14:52:59 render 11d6b28cc5504c95bce893f1cadc316c 3 s {"name": "11d6b28cc5504c95bce893f1cadc316c", "view": [-0.7519, 0.456, 0.4762], "foreground": 99590, "colours": true}
+14:53:00 render afaa0d29b2b54dc3b7f97b353e6313fd 1 s {"name": "afaa0d29b2b54dc3b7f97b353e6313fd", "view": [-0.1406, 0.4053, 0.9033], "foreground": 32702, "colours": true}
+14:53:03 render 2db24687155348c4827c750fb67b28c4 3 s {"name": "2db24687155348c4827c750fb67b28c4", "view": [0.3457, 0.4766, 0.8083], "foreground": 119218, "colours": true}
+14:53:07 render 45cfb8b422984d7a8db0451d74022a22 4 s {"name": "45cfb8b422984d7a8db0451d74022a22", "view": [0.402, -0.1458, 0.904], "foreground": 47238, "colours": true}
+14:53:09 render 1f95b6d17b074bccbd3f9236039288c9 2 s {"name": "1f95b6d17b074bccbd3f9236039288c9", "view": [0.4217, 0.4296, 0.7985], "foreground": 46547, "colours": true}
+14:53:11 render 343915fbdd0c46aabee09257e724095b 2 s {"name": "343915fbdd0c46aabee09257e724095b", "view": [-0.1785, 0.4575, 0.8711], "foreground": 103319, "colours": true}
+14:53:12 render c6f69c82912b4961a6b5b7df2fa37747 1 s {"name": "c6f69c82912b4961a6b5b7df2fa37747", "view": [0.4342, 0.2378, 0.8689], "foreground": 130170, "colours": true}
+14:53:14 render 8a8ecd1fdb1d41b9aa9d7da1c75f0d95 2 s {"name": "8a8ecd1fdb1d41b9aa9d7da1c75f0d95", "view": [0.2531, 0.2297, 0.9398], "foreground": 75625, "colours": true}
+14:53:17 render bbe1d47c0d714884a66c53d6c1e5d177 3 s {"name": "bbe1d47c0d714884a66c53d6c1e5d177", "view": [0.461, 0.347, 0.8167], "foreground": 99967, "colours": true}
+14:53:26 render e272c70c23864949b234885ebfe4e804 9 s {"name": "e272c70c23864949b234885ebfe4e804", "view": [-0.6059, 0.0292, 0.795], "foreground": 151947, "colours": true}
+14:53:30 render a6cf4b8f85274a929b3e63f260492391 4 s {"name": "a6cf4b8f85274a929b3e63f260492391", "view": [-0.6294, 0.0804, 0.7729], "foreground": 43811, "colours": true}
+14:53:32 render 79fbc9501aff4538bf077197d2502016 2 s {"name": "79fbc9501aff4538bf077197d2502016", "view": [0.7108, 0.4779, 0.5161], "foreground": 56638, "colours": true}
+14:53:34 render a4c4e43e911e4a7fa0cc2617a0697eef 2 s {"name": "a4c4e43e911e4a7fa0cc2617a0697eef", "view": [0.788, -0.1456, 0.5982], "foreground": 80549, "colours": true}
+14:53:36 render feb365045ac341f488e985e81aacfe6f 2 s {"name": "feb365045ac341f488e985e81aacfe6f", "view": [-0.7008, 0.3222, 0.6365], "foreground": 50371, "colours": true}
+14:53:42 render 06afd2b44b0f4523a85a5824b91a965b 6 s {"name": "06afd2b44b0f4523a85a5824b91a965b", "view": [0.1807, 0.2897, 0.9399], "foreground": 106330, "colours": true}
+14:53:47 render 95867cc0e7744d4bbba31c39814a67d5 5 s {"name": "95867cc0e7744d4bbba31c39814a67d5", "view": [-0.1007, -0.1406, 0.9849], "foreground": 51127, "colours": true}
+14:53:47 step render done 142 s
+14:53:51 step prepare 4 s, 40 inputs
+14:54:34 IDArb FAILED (log_idarb.txt)
+14:54:34 step IDArb 43 s, 2 decompositions
+14:54:42 step depth 8 s, 40 depth maps
+14:54:44 mesh f7afba1d4e91459e8c60237df5aa1a70 2 s
+14:54:45 attach f7afba1d4e91459e8c60237df5aa1a70 1 s {"relief_vertices": 99457, "with_gt": 99457, "without": 0}
+14:54:45 mesh 11c751284a3f470b95336598bfbc8755 SKIPPED: no IDArb result
+14:54:45 mesh 52c9e26b0ad943c7a1d190d4cf3a2903 SKIPPED: no IDArb result
+14:54:45 mesh b312c05ff88640f383c4133981f659c5 SKIPPED: no IDArb result
+14:54:45 mesh 9cf0d4d9c380433e9ae04b05d2397368 SKIPPED: no IDArb result
+14:54:45 mesh a647bc9f973e46178bd672c7211b6a2e SKIPPED: no IDArb result
+14:54:45 mesh 90f00bd20ed44437a03acb0a129e81a0 SKIPPED: no IDArb result
+14:54:45 mesh 0a5f52a298864b20a290fae141c2791b SKIPPED: no IDArb result
+14:54:45 mesh c0154b11b3774588b2d0c32c8776a0cf SKIPPED: no IDArb result
+14:54:45 mesh 9bfa5bd092bf4d84a4e5a563e235ddc3 SKIPPED: no IDArb result
+14:54:45 mesh fac31ebbca974f3597f12ca083ececb9 SKIPPED: no IDArb result
+14:54:45 mesh b52c66419c3b4091835cd72bc17c60d5 SKIPPED: no IDArb result
+14:54:45 mesh 698909fb744b4ed6b708b36606cb7e98 SKIPPED: no IDArb result
+14:54:45 mesh f39c6c7bf3454a50877ca0f2c7f07cb9 SKIPPED: no IDArb result
+14:54:45 mesh 3532d56ca306437f8460700695172ee7 SKIPPED: no IDArb result
+14:54:45 mesh 921fa0069be74b1d967ee57b828ef4d6 SKIPPED: no IDArb result
+14:54:45 mesh 5b1bbcb42f4544c892381acdcb57c0de SKIPPED: no IDArb result
+14:54:45 mesh bc6f833fe3b440058b967375c25f28c1 SKIPPED: no IDArb result
+14:54:45 mesh 843a674e45c84003b6c616c6a2bef715 SKIPPED: no IDArb result
+14:54:45 mesh 0f45a8874b234efcb59e3a3268f750b5 SKIPPED: no IDArb result
+14:54:45 mesh e8b32da76b8444c59aa13b749db5fc56 SKIPPED: no IDArb result
+14:54:45 mesh 62897c52e967469c85df9c6abdd09d16 SKIPPED: no IDArb result
+14:54:45 mesh 4e9f8bfcb1df4e268d567a33cdd90e07 SKIPPED: no IDArb result
+14:54:45 mesh d4026f4bbc384c5f9307d9b066a21d93 SKIPPED: no IDArb result
+14:54:45 mesh 11d6b28cc5504c95bce893f1cadc316c SKIPPED: no IDArb result
+14:54:45 mesh afaa0d29b2b54dc3b7f97b353e6313fd SKIPPED: no IDArb result
+14:54:45 mesh 2db24687155348c4827c750fb67b28c4 SKIPPED: no IDArb result
+14:54:45 mesh 45cfb8b422984d7a8db0451d74022a22 SKIPPED: no IDArb result
+14:54:45 mesh 1f95b6d17b074bccbd3f9236039288c9 SKIPPED: no IDArb result
+14:54:45 mesh 343915fbdd0c46aabee09257e724095b SKIPPED: no IDArb result
+14:54:45 mesh c6f69c82912b4961a6b5b7df2fa37747 SKIPPED: no IDArb result
+14:54:45 mesh 8a8ecd1fdb1d41b9aa9d7da1c75f0d95 SKIPPED: no IDArb result
+14:54:45 mesh bbe1d47c0d714884a66c53d6c1e5d177 SKIPPED: no IDArb result
+14:54:45 mesh e272c70c23864949b234885ebfe4e804 SKIPPED: no IDArb result
+14:54:45 mesh a6cf4b8f85274a929b3e63f260492391 SKIPPED: no IDArb result
+14:54:45 mesh 79fbc9501aff4538bf077197d2502016 SKIPPED: no IDArb result
+14:54:46 mesh a4c4e43e911e4a7fa0cc2617a0697eef 1 s
+14:54:47 attach a4c4e43e911e4a7fa0cc2617a0697eef 1 s {"relief_vertices": 77965, "with_gt": 77965, "without": 0}
+14:54:47 mesh feb365045ac341f488e985e81aacfe6f SKIPPED: no IDArb result
+14:54:47 mesh 06afd2b44b0f4523a85a5824b91a965b SKIPPED: no IDArb result
+14:54:47 mesh 95867cc0e7744d4bbba31c39814a67d5 SKIPPED: no IDArb result
+14:54:47 STEPS 1-3 DONE

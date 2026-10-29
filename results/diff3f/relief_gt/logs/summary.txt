@@ -1,0 +1,86 @@
+05:09:59 start: 40 val objects, code 27b87ab
+05:09:59 step render done 0 s
+05:10:05 step prepare 6 s, 40 inputs
+05:16:36 step IDArb 391 s, 40 decompositions
+05:16:46 step depth 10 s, 40 depth maps
+05:16:49 mesh f7afba1d4e91459e8c60237df5aa1a70 3 s
+05:16:51 attach f7afba1d4e91459e8c60237df5aa1a70 2 s {"relief_vertices": 99457, "with_gt": 99457, "without": 0}
+05:16:53 mesh 11c751284a3f470b95336598bfbc8755 2 s
+05:16:55 attach 11c751284a3f470b95336598bfbc8755 2 s {"relief_vertices": 104294, "with_gt": 104294, "without": 0}
+05:16:57 mesh 52c9e26b0ad943c7a1d190d4cf3a2903 2 s
+05:16:58 attach 52c9e26b0ad943c7a1d190d4cf3a2903 1 s {"relief_vertices": 69568, "with_gt": 69568, "without": 0}
+05:17:01 mesh b312c05ff88640f383c4133981f659c5 3 s
+05:17:02 attach b312c05ff88640f383c4133981f659c5 1 s {"relief_vertices": 121538, "with_gt": 121538, "without": 0}
+05:17:05 mesh 9cf0d4d9c380433e9ae04b05d2397368 3 s
+05:17:06 attach 9cf0d4d9c380433e9ae04b05d2397368 1 s {"relief_vertices": 116070, "with_gt": 116070, "without": 0}
+05:17:08 mesh a647bc9f973e46178bd672c7211b6a2e 2 s
+05:17:10 attach a647bc9f973e46178bd672c7211b6a2e 2 s {"relief_vertices": 73258, "with_gt": 73258, "without": 0}
+05:17:12 mesh 90f00bd20ed44437a03acb0a129e81a0 2 s
+05:17:13 attach 90f00bd20ed44437a03acb0a129e81a0 1 s {"relief_vertices": 82877, "with_gt": 82877, "without": 0}
+05:17:16 mesh 0a5f52a298864b20a290fae141c2791b 3 s
+05:17:17 attach 0a5f52a298864b20a290fae141c2791b 1 s {"relief_vertices": 117804, "with_gt": 117804, "without": 0}
+05:17:19 mesh c0154b11b3774588b2d0c32c8776a0cf 2 s
+05:17:20 attach c0154b11b3774588b2d0c32c8776a0cf 1 s {"relief_vertices": 70467, "with_gt": 70467, "without": 0}
+05:17:22 mesh 9bfa5bd092bf4d84a4e5a563e235ddc3 2 s
+05:17:23 attach 9bfa5bd092bf4d84a4e5a563e235ddc3 1 s {"relief_vertices": 47151, "with_gt": 47151, "without": 0}
+05:17:24 mesh fac31ebbca974f3597f12ca083ececb9 1 s
+05:17:25 attach fac31ebbca974f3597f12ca083ececb9 1 s {"relief_vertices": 46187, "with_gt": 46187, "without": 0}
+05:17:28 mesh b52c66419c3b4091835cd72bc17c60d5 3 s
+05:17:30 attach b52c66419c3b4091835cd72bc17c60d5 2 s {"relief_vertices": 122081, "with_gt": 122081, "without": 0}
+05:17:32 mesh 698909fb744b4ed6b708b36606cb7e98 2 s
+05:17:34 attach 698909fb744b4ed6b708b36606cb7e98 2 s {"relief_vertices": 124161, "with_gt": 124161, "without": 0}
+05:17:36 mesh f39c6c7bf3454a50877ca0f2c7f07cb9 2 s
+05:17:38 attach f39c6c7bf3454a50877ca0f2c7f07cb9 2 s {"relief_vertices": 117000, "with_gt": 117000, "without": 0}
+05:17:39 mesh 3532d56ca306437f8460700695172ee7 1 s
+05:17:40 attach 3532d56ca306437f8460700695172ee7 1 s {"relief_vertices": 39030, "with_gt": 39030, "without": 0}
+05:17:41 mesh 921fa0069be74b1d967ee57b828ef4d6 1 s
+05:17:42 attach 921fa0069be74b1d967ee57b828ef4d6 1 s {"relief_vertices": 26790, "with_gt": 26790, "without": 0}
+05:17:44 mesh 5b1bbcb42f4544c892381acdcb57c0de 2 s
+05:17:45 attach 5b1bbcb42f4544c892381acdcb57c0de 1 s {"relief_vertices": 53902, "with_gt": 53902, "without": 0}
+05:17:47 mesh bc6f833fe3b440058b967375c25f28c1 2 s
+05:17:48 attach bc6f833fe3b440058b967375c25f28c1 1 s {"relief_vertices": 66997, "with_gt": 66997, "without": 0}
+05:17:51 mesh 843a674e45c84003b6c616c6a2bef715 3 s
+05:17:52 attach 843a674e45c84003b6c616c6a2bef715 1 s {"relief_vertices": 116198, "with_gt": 116198, "without": 0}
+05:17:55 mesh 0f45a8874b234efcb59e3a3268f750b5 3 s
+05:17:56 attach 0f45a8874b234efcb59e3a3268f750b5 1 s {"relief_vertices": 109671, "with_gt": 109671, "without": 0}
+05:17:59 mesh e8b32da76b8444c59aa13b749db5fc56 3 s
+05:18:01 attach e8b32da76b8444c59aa13b749db5fc56 2 s {"relief_vertices": 124512, "with_gt": 124512, "without": 0}
+05:18:03 mesh 62897c52e967469c85df9c6abdd09d16 2 s
+05:18:04 attach 62897c52e967469c85df9c6abdd09d16 1 s {"relief_vertices": 72226, "with_gt": 72226, "without": 0}
+05:18:06 mesh 4e9f8bfcb1df4e268d567a33cdd90e07 2 s
+05:18:07 attach 4e9f8bfcb1df4e268d567a33cdd90e07 1 s {"relief_vertices": 66380, "with_gt": 66380, "without": 0}
+05:18:08 mesh d4026f4bbc384c5f9307d9b066a21d93 1 s
+05:18:09 attach d4026f4bbc384c5f9307d9b066a21d93 1 s {"relief_vertices": 27158, "with_gt": 27158, "without": 0}
+05:18:11 mesh 11d6b28cc5504c95bce893f1cadc316c 2 s
+05:18:13 attach 11d6b28cc5504c95bce893f1cadc316c 2 s {"relief_vertices": 96047, "with_gt": 96047, "without": 0}
+05:18:14 mesh afaa0d29b2b54dc3b7f97b353e6313fd 1 s
+05:18:15 attach afaa0d29b2b54dc3b7f97b353e6313fd 1 s {"relief_vertices": 27608, "with_gt": 27608, "without": 0}
+05:18:17 mesh 2db24687155348c4827c750fb67b28c4 2 s
+05:18:19 attach 2db24687155348c4827c750fb67b28c4 2 s {"relief_vertices": 115116, "with_gt": 115116, "without": 0}
+05:18:20 mesh 45cfb8b422984d7a8db0451d74022a22 1 s
+05:18:21 attach 45cfb8b422984d7a8db0451d74022a22 1 s {"relief_vertices": 44452, "with_gt": 44452, "without": 0}
+05:18:22 mesh 1f95b6d17b074bccbd3f9236039288c9 1 s
+05:18:23 attach 1f95b6d17b074bccbd3f9236039288c9 1 s {"relief_vertices": 44248, "with_gt": 44248, "without": 0}
+05:18:26 mesh 343915fbdd0c46aabee09257e724095b 3 s
+05:18:27 attach 343915fbdd0c46aabee09257e724095b 1 s {"relief_vertices": 100328, "with_gt": 100328, "without": 0}
+05:18:30 mesh c6f69c82912b4961a6b5b7df2fa37747 3 s
+05:18:32 attach c6f69c82912b4961a6b5b7df2fa37747 2 s {"relief_vertices": 127342, "with_gt": 127342, "without": 0}
+05:18:33 mesh 8a8ecd1fdb1d41b9aa9d7da1c75f0d95 1 s
+05:18:35 attach 8a8ecd1fdb1d41b9aa9d7da1c75f0d95 2 s {"relief_vertices": 70459, "with_gt": 70459, "without": 0}
+05:18:37 mesh bbe1d47c0d714884a66c53d6c1e5d177 2 s
+05:18:38 attach bbe1d47c0d714884a66c53d6c1e5d177 1 s {"relief_vertices": 97228, "with_gt": 97228, "without": 0}
+05:18:42 mesh e272c70c23864949b234885ebfe4e804 4 s
+05:18:43 attach e272c70c23864949b234885ebfe4e804 1 s {"relief_vertices": 148646, "with_gt": 148646, "without": 0}
+05:18:45 mesh a6cf4b8f85274a929b3e63f260492391 2 s
+05:18:46 attach a6cf4b8f85274a929b3e63f260492391 1 s {"relief_vertices": 40911, "with_gt": 40911, "without": 0}
+05:18:47 mesh 79fbc9501aff4538bf077197d2502016 1 s
+05:18:48 attach 79fbc9501aff4538bf077197d2502016 1 s {"relief_vertices": 52291, "with_gt": 52291, "without": 0}
+05:18:50 mesh a4c4e43e911e4a7fa0cc2617a0697eef 2 s
+05:18:51 attach a4c4e43e911e4a7fa0cc2617a0697eef 1 s {"relief_vertices": 77965, "with_gt": 77965, "without": 0}
+05:18:53 mesh feb365045ac341f488e985e81aacfe6f 2 s
+05:18:54 attach feb365045ac341f488e985e81aacfe6f 1 s {"relief_vertices": 46155, "with_gt": 46155, "without": 0}
+05:18:57 mesh 06afd2b44b0f4523a85a5824b91a965b 3 s
+05:18:58 attach 06afd2b44b0f4523a85a5824b91a965b 1 s {"relief_vertices": 103345, "with_gt": 103345, "without": 0}
+05:18:59 mesh 95867cc0e7744d4bbba31c39814a67d5 1 s
+05:19:00 attach 95867cc0e7744d4bbba31c39814a67d5 1 s {"relief_vertices": 48853, "with_gt": 48853, "without": 0}
+05:19:00 STEPS 1-3 DONE

@@ -1,0 +1,44 @@
+10-29 05:19 steps 1-3 exit 0 542 s (summary.txt)
+10-29 05:19 start: 40 val reliefs
+10-29 05:40 f7afba1d4e91459e8c60237df5aa1a70 exit 0 1306 s samples 6000 of 99457 (with gt 99457) check ok views 308 peak 9363 MiB
+10-29 06:09 11c751284a3f470b95336598bfbc8755 exit 0 1716 s samples 6000 of 104294 (with gt 104294) check ok views 374 peak 9409 MiB
+10-29 06:37 52c9e26b0ad943c7a1d190d4cf3a2903 exit 0 1709 s samples 6000 of 69568 (with gt 69568) check ok views 326 peak 9362 MiB
+10-29 07:05 b312c05ff88640f383c4133981f659c5 exit 0 1668 s samples 6000 of 121538 (with gt 121538) check ok views 300 peak 9368 MiB
+10-29 07:39 9cf0d4d9c380433e9ae04b05d2397368 exit 0 2027 s samples 6000 of 116070 (with gt 116070) check ok views 368 peak 9474 MiB
+10-29 08:05 a647bc9f973e46178bd672c7211b6a2e exit 0 1574 s samples 6000 of 73258 (with gt 73258) check ok views 300 peak 9252 MiB
+10-29 08:33 90f00bd20ed44437a03acb0a129e81a0 exit 0 1682 s samples 6000 of 82877 (with gt 82877) check ok views 316 peak 9318 MiB
+10-29 09:07 0a5f52a298864b20a290fae141c2791b exit 0 2023 s samples 6000 of 117804 (with gt 117804) check ok views 364 peak 9394 MiB
+10-29 09:34 c0154b11b3774588b2d0c32c8776a0cf exit 0 1649 s samples 6000 of 70467 (with gt 70467) check ok views 314 peak 9280 MiB
+10-29 10:02 9bfa5bd092bf4d84a4e5a563e235ddc3 exit 0 1658 s samples 6000 of 47151 (with gt 47151) check ok views 326 peak 9026 MiB
+10-29 10:29 fac31ebbca974f3597f12ca083ececb9 exit 0 1626 s samples 6000 of 46187 (with gt 46187) check ok views 318 peak 8922 MiB
+10-29 10:59 b52c66419c3b4091835cd72bc17c60d5 exit 0 1776 s samples 6000 of 122081 (with gt 122081) check ok views 316 peak 9570 MiB
+10-29 11:31 698909fb744b4ed6b708b36606cb7e98 exit 0 1904 s samples 6000 of 124161 (with gt 124161) check ok views 338 peak 9452 MiB
+10-29 12:01 f39c6c7bf3454a50877ca0f2c7f07cb9 exit 0 1841 s samples 6000 of 117000 (with gt 117000) check ok views 336 peak 9457 MiB
+10-29 12:30 3532d56ca306437f8460700695172ee7 exit 0 1708 s samples 6000 of 39030 (with gt 39030) check ok views 342 peak 9391 MiB
+10-29 12:56 921fa0069be74b1d967ee57b828ef4d6 exit 0 1565 s samples 5448 of 26790 (with gt 26790) check ok views 315 peak 9054 MiB
+10-29 13:23 5b1bbcb42f4544c892381acdcb57c0de exit 0 1654 s samples 6000 of 53902 (with gt 53902) check ok views 328 peak 9272 MiB
+10-29 13:50 bc6f833fe3b440058b967375c25f28c1 exit 0 1601 s samples 6000 of 66997 (with gt 66997) check ok views 307 peak 9260 MiB
+10-29 14:22 843a674e45c84003b6c616c6a2bef715 exit 0 1932 s samples 6000 of 116198 (with gt 116198) check ok views 349 peak 9458 MiB
+10-29 14:53 0f45a8874b234efcb59e3a3268f750b5 exit 0 1840 s samples 6000 of 109671 (with gt 109671) check ok views 338 peak 9523 MiB
+10-29 15:25 e8b32da76b8444c59aa13b749db5fc56 exit 0 1941 s samples 6000 of 124512 (with gt 124512) check ok views 344 peak 9448 MiB
+10-29 15:51 62897c52e967469c85df9c6abdd09d16 exit 0 1529 s samples 6000 of 72226 (with gt 72226) check ok views 291 peak 9176 MiB
+10-29 16:17 4e9f8bfcb1df4e268d567a33cdd90e07 exit 0 1588 s samples 6000 of 66380 (with gt 66380) check ok views 304 peak 9458 MiB
+10-29 16:44 d4026f4bbc384c5f9307d9b066a21d93 exit 0 1615 s samples 6000 of 27158 (with gt 27158) check ok views 328 peak 8834 MiB
+10-29 17:14 11d6b28cc5504c95bce893f1cadc316c exit 0 1790 s samples 6000 of 96047 (with gt 96047) check ok views 329 peak 9384 MiB
+10-29 17:38 afaa0d29b2b54dc3b7f97b353e6313fd exit 0 1475 s samples 6000 of 27608 (with gt 27608) check ok views 300 peak 8975 MiB
+10-29 18:09 2db24687155348c4827c750fb67b28c4 exit 0 1851 s samples 6000 of 115116 (with gt 115116) check ok views 339 peak 9368 MiB
+10-29 18:36 45cfb8b422984d7a8db0451d74022a22 exit 0 1622 s samples 6000 of 44452 (with gt 44452) check ok views 320 peak 9236 MiB
+10-29 19:02 1f95b6d17b074bccbd3f9236039288c9 exit 0 1516 s samples 6000 of 44248 (with gt 44248) check ok views 300 peak 9179 MiB
+10-29 19:32 343915fbdd0c46aabee09257e724095b exit 0 1818 s samples 6000 of 100328 (with gt 100328) check ok views 334 peak 9401 MiB
+10-29 20:03 c6f69c82912b4961a6b5b7df2fa37747 exit 0 1887 s samples 6000 of 127342 (with gt 127342) check ok views 336 peak 9578 MiB
+10-29 20:30 8a8ecd1fdb1d41b9aa9d7da1c75f0d95 exit 0 1615 s samples 6000 of 70459 (with gt 70459) check ok views 308 peak 9405 MiB
+10-29 20:56 bbe1d47c0d714884a66c53d6c1e5d177 exit 0 1532 s samples 6000 of 97228 (with gt 97228) check ok views 281 peak 9564 MiB
+10-29 21:31 e272c70c23864949b234885ebfe4e804 exit 0 2084 s samples 6000 of 148646 (with gt 148646) check ok views 362 peak 9576 MiB
+10-29 21:56 a6cf4b8f85274a929b3e63f260492391 exit 0 1508 s samples 6000 of 40911 (with gt 40911) check ok views 300 peak 9306 MiB
+10-29 22:21 79fbc9501aff4538bf077197d2502016 exit 0 1530 s samples 6000 of 52291 (with gt 52291) check ok views 300 peak 9104 MiB
+10-29 22:50 a4c4e43e911e4a7fa0cc2617a0697eef exit 0 1744 s samples 6000 of 77965 (with gt 77965) check ok views 330 peak 9403 MiB
+10-29 23:16 feb365045ac341f488e985e81aacfe6f exit 0 1524 s samples 6000 of 46155 (with gt 46155) check ok views 300 peak 9177 MiB
+10-29 23:47 06afd2b44b0f4523a85a5824b91a965b exit 0 1853 s samples 6000 of 103345 (with gt 103345) check ok views 339 peak 9324 MiB
+10-30 00:12 95867cc0e7744d4bbba31c39814a67d5 exit 0 1519 s samples 6000 of 48853 (with gt 48853) check ok views 310 peak 9250 MiB
+10-30 00:12 RELIEF FEATURES DONE 18.9 h
+10-30 00:12 pusher started again for the relief features
