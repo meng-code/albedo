@@ -15,3 +15,12 @@ For each of the 40 validation objects, `<uid>/` holds:
 `<uid>_relief_targets.npy` (commits 91198a3, ac34ff2). `logs/` has every step's log and the summaries
 (`summary.txt` for steps 1-3, 542 s; `summary_step4.txt`, 18.9 h, 40/40 check ok).
 The intermediate IDArb/depth outputs (`_pipeline/`, 498 MB) stay on hpc02 only.
+
+## eval/: tier-B measurement (10-30)
+
+`eval_relief_tierb.py` computes train_adapter.py's validation metric (its evaluate() code) on
+three sets, with the identity and with adapter B (pilot_full_B.npz): `train_val40` (the training
+run's 40 val pairs, a check: it reproduces the run's val_before exactly), `tierB_relief` (the 40
+reliefs) and `tierA_cuts_same_objects` (the 79 tier-A val cuts of the same 40 objects). Columns
+without `pooled_` are means over pairs, as train_adapter reports them; `pooled_` over all points.
+Errors are fractions of the full diagonal. Command in `command.txt`, output in `run.log`.
