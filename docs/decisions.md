@@ -1512,3 +1512,63 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   measures the loss the real pipeline itself causes with ground truth, and is the first
   training material of the reliefs' kind. The three full adapters are kept as the record of
   the adapter line; the standing chain stays unadapted.
+
+## 2026-10-29 — Full-to-full baseline: functional maps on the generated mesh (Mac run): 0–1 % at the fine scale, and spectral refinement erases the nearest neighbour's matches
+
+- Question (supervisor, 10-29): Hunyuan3D and TRELLIS.2 give a full mesh from the photo and
+  good 3D-to-3D correspondence papers exist, so why is the correspondence still bad; is it
+  semantic? Until now only our own partial-to-full chain had been run on the generated meshes
+  (10-24, 10-25: nearest neighbour 17–23 %, chain 14–20 %). This entry runs the standard
+  full-to-full method of that literature, functional maps (Ovsjanikov et al. 2012) with
+  ZoomOut refinement (Melzi et al. 2019), on generated mesh → target mesh, with the same 13
+  same-category pairs and 89 keypoints as the keypoint benchmark.
+- Method (`functional_map_match.py`, implemented from scratch on robust_laplacian and scipy):
+  cotangent (intrinsic Delaunay) Laplace–Beltrami eigenbasis of each mesh's largest connected
+  component, point-cloud Laplacian where the mesh is not one piece (5 of 13 targets, 3 of 13
+  partial meshes), mass matrix normalised to unit area so the eigenvalues are comparable;
+  descriptors = the zoom-2 Diff3F features at the vertices (nearest sampled point), jointly
+  PCA-reduced and whitened; C solved row by row in closed form from descriptor preservation
+  plus Laplacian commutativity; point map by nearest neighbour in the spectral embedding;
+  ZoomOut from k to k_zoomout in steps of 5. Four maps per pair: `fmap` (solved C), `zoomout`
+  (its refinement), `nn` (vertex-feature nearest neighbour, no spectral part) and
+  `nn_zoomout` (ZoomOut started from the nearest-neighbour map, the usual spectral
+  post-processing of a feature matching). Sanity check: cat → cat with its own features maps
+  every keypoint within 2 %.
+- Result, pooled PCK@2 over the 89 keypoints (count in brackets), then PCK@5 and mean error:
+  - Hunyuan3D source, k 50 → 120, 40 descriptor dimensions (`results/diff3f/fmap_hunyuan3d.csv`):
+    fmap 0 % (0) / 9.0 % / 0.269, zoomout 0 % (0) / 7.9 % / 0.262, nn 18.0 % (16) / 51.7 % /
+    0.095, nn_zoomout 9.0 % (8) / 42.7 % / 0.094.
+  - Hunyuan3D source, k 80 → 200, 100 dimensions (`fmap_hunyuan3d_k200.csv`): fmap 1.1 % (1)
+    / 15.7 % / 0.321, zoomout 1.1 % (1) / 14.6 % / 0.327, nn 18.0 % (16), nn_zoomout 12.4 %
+    (11) / 52.8 % / 0.088.
+  - Partial mesh (relief) source, k 50 → 120, 40 dimensions (`fmap_relief.csv`): fmap 3.4 % (3)
+    / 7.9 % / 0.282, zoomout 2.2 % (2) / 9.0 % / 0.267, nn 64.0 % (57) / 77.5 % / 0.046,
+    nn_zoomout 14.6 % (13) / 52.8 % / 0.093.
+  - For comparison the standing numbers: nearest neighbour on the sampled points 63 % (56),
+    chain 61 % (54); the vertex-level nearest neighbour here (64 %) is the same matching.
+- Reading: (1) the functional map solved from the descriptors fails on every source, 0–3 %:
+  projecting the descriptors onto 40–100 smooth eigenfunctions keeps only their low-frequency
+  part, and the commutativity prior assumes the two shapes are near-isometric, which a
+  generated mesh and a different object of the same category (or an open partial sheet and a
+  closed mesh) are not. (2) Spectral refinement of a good point map makes it worse at the fine
+  scale: ZoomOut takes the partial mesh's nearest neighbour from 64 % to 15 % and the
+  generated mesh's from 18 % to 9–12 %, while PCK@5 stays about where it was (52–53 % on the
+  Hunyuan3D k 200 setting, nearest neighbour 52 %): the refinement keeps the coarse map and
+  smooths away the eye-to-eye matches the keypoint benchmark asks for. (3) On the generated
+  mesh the gap to the partial mesh is the features' (18 % against 64 % with the same matching),
+  as 10-24 found; the full-to-full machinery adds nothing on top. So the answer to the
+  question: on this benchmark the generate-then-match route is not rescued by the standard
+  3D-to-3D method; the fine-scale failure is in the features on the generated surface, and the
+  spectral prior those methods rely on works against fine-scale matching between objects that
+  are not near-isometric. These rows (Diff3F + functional maps, with either source) go into the
+  baseline table. DenseMatcher (a learned full-to-full matcher on 2 000-vertex remeshes whose
+  final map is a functional map of its features) is left as a later baseline row, not set up
+  now: ~10 GB of downloads and a day of builds for a method of the same family.
+- Cost: on the Mac, after replacing the k-d tree in the 50- to 2048-dimensional nearest
+  neighbour searches by a chunked matrix product (results unchanged, 132 s → 14 s on cow),
+  the three batches took 21, 31 and 52 min. Per-pair maps in
+  `outputs/diff3f/22_functional_maps/{hunyuan3d,hunyuan3d_k200,relief}/<pair>.npz`.
+- Commands (repository root, `mesh` environment, this commit):
+  `python scripts/idarb/functional_map_match.py --model hunyuan3d --groups same --k 50 --k_zoomout 120 --descr_dim 40 --out_dir outputs/diff3f/22_functional_maps/hunyuan3d --csv results/diff3f/fmap_hunyuan3d.csv`;
+  the same with `--k 80 --k_zoomout 200 --descr_dim 100 --out_dir outputs/diff3f/22_functional_maps/hunyuan3d_k200 --csv results/diff3f/fmap_hunyuan3d_k200.csv`;
+  `python scripts/idarb/functional_map_match.py --model relief --groups same --k 50 --k_zoomout 120 --descr_dim 40 --out_dir outputs/diff3f/22_functional_maps/relief --csv results/diff3f/fmap_relief.csv`.
