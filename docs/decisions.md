@@ -1572,3 +1572,40 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   `python scripts/idarb/functional_map_match.py --model hunyuan3d --groups same --k 50 --k_zoomout 120 --descr_dim 40 --out_dir outputs/diff3f/22_functional_maps/hunyuan3d --csv results/diff3f/fmap_hunyuan3d.csv`;
   the same with `--k 80 --k_zoomout 200 --descr_dim 100 --out_dir outputs/diff3f/22_functional_maps/hunyuan3d_k200 --csv results/diff3f/fmap_hunyuan3d_k200.csv`;
   `python scripts/idarb/functional_map_match.py --model relief --groups same --k 50 --k_zoomout 120 --descr_dim 40 --out_dir outputs/diff3f/22_functional_maps/relief --csv results/diff3f/fmap_relief.csv`.
+
+## 2026-10-30 — Tier B measured: the real pipeline halves the fine-scale accuracy of the clean cuts, and the adapter's gain shrinks with it
+
+- Inputs: the 40 tier-B reliefs (`make_relief_gt.py`, 10-28: renders of the 40 validation
+  objects' full meshes from the tier-A cutting camera, through IDArb, `estimate_depth.py` and
+  `normal_to_mesh.py`; every relief vertex carries the full-mesh vertex behind its pixel as
+  ground truth), zoom-2 front-only Diff3F features extracted on hpc02 (18.9 h, 25–34 min per
+  relief, 6000 samples each; features-dataset-tmp 91198a3 / ac34ff2, the renders, buffers,
+  reliefs and ground-truth files 620e605, `results/diff3f/relief_gt/<uid>/`).
+- Measurement (`eval_relief_tierb.py`, 149 s on hpc02, `results/diff3f/relief_gt/tierb_metrics.csv`):
+  train_adapter.py's validation metric reused through `adapter_data.pair_arrays`, nearest
+  neighbour by feature similarity, errors as fractions of the full mesh's diagonal; p2f =
+  partial samples to the full mesh, f2p = full samples near the partial to the partial; mean
+  over pairs as train_adapter reports it (pooled values in the CSV differ by at most 0.02).
+  Check: on the training run's 40 validation pairs it reproduces val_before exactly
+  (p2f 0.3257 / 0.7067 / 0.5259, f2p 0.3066 / 0.6372 / 0.4760) and adapter B's epoch-20 value.
+  Columns: within 1 % / within 5 % / within 2 % of the partial's diagonal / mean error.
+  - Tier B, 40 reliefs, unadapted: p2f 0.147 / 0.578 / 0.305 / 0.097, f2p 0.164 / 0.634 /
+    0.364 / 0.087. With adapter B: p2f 0.168 / 0.615 / 0.340 / 0.093, f2p 0.208 / 0.675 /
+    0.415 / 0.079.
+  - Tier A, the 79 validation cuts of the same 40 objects, unadapted: p2f 0.302 / 0.704 /
+    0.506 / 0.081, f2p 0.283 / 0.642 / 0.457 / 0.089. With adapter B: p2f 0.359 / 0.770 /
+    0.581 / 0.067, f2p 0.351 / 0.729 / 0.551 / 0.074.
+- Reading: with the same objects, views and features, going through the real pipeline instead
+  of cutting the mesh halves the fine-scale accuracy (within 1 %: 0.16 against 0.28 f2p, 0.15
+  against 0.30 p2f) while the coarse accuracy (within 5 %) drops only 0.06–0.13: the loss the
+  pipeline causes is at the fine scale, which is the scale the keypoint benchmark measures. This
+  is the first number for the gap that 10-28 and 10-29 inferred from the adapters' failure on
+  the real pairs. Adapter B still helps on the reliefs, but less: +4.4 points f2p within 1 %
+  (+6.8 on the cuts), +2.1 p2f (+5.7), +5.1 within 2 % of the partial (+9.4); the shift it
+  learned on clean cuts is partly, not fully, the shift the reliefs need. Tier B is therefore
+  both the right validation set for the adapter line and the first training material of the
+  reliefs' kind; training on reliefs of this kind (a dataset of them for the train split) is
+  the open question of that line, not started.
+- Command (hpc02, `idarb` environment, this commit's script; the run used the same code at
+  c94c442 with `--code ~/semtex/wt_train`):
+  `python scripts/idarb/eval_relief_tierb.py --root ~/semtex/dataset --feature_dir ~/semtex/features_train --relief_features ~/semtex/wt_fdata/results/diff3f/features_dataset --relief_gt ~/semtex/relief_gt --weights B=~/semtex/wt_train/outputs/adapter/pilot_full_B.npz --out results/diff3f/relief_gt/tierb_metrics.csv`.
