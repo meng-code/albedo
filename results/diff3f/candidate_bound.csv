@@ -1,0 +1,14 @@
+pair,n,region_samples_median,top1,top4,top16,top64,top256,top1024
+cow,7,34,4,4,4,5,6,7
+cat,7,41,5,5,6,7,7,7
+superman_man,7,38,7,7,7,7,7,7
+superman_posed,6,52,6,6,6,6,6,6
+okapi_camel,7,44,5,6,6,7,7,7
+okapi1_camel,7,46,5,5,5,6,7,7
+cat5_cat,7,37,6,6,6,6,7,7
+cat_lion,11,46,5,6,6,9,10,11
+labubu_man,7,43,2,2,3,3,6,6
+chair1_armchair,6,23,4,4,4,4,4,6
+panda_panda,6,37,3,4,4,5,6,6
+bird_bird,5,21,1,2,2,3,3,3
+dragon_lizard,6,55,3,3,3,4,5,6

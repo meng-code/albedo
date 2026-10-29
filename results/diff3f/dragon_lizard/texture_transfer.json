@@ -1,0 +1,16 @@
+{
+ "faces": 40000,
+ "textured_faces": 15622,
+ "span_median": 0.0129,
+ "within_2pct": 0.6481,
+ "within_5pct": 0.8287,
+ "source_used": 0.4974,
+ "all_within_2pct": 0.6735,
+ "all_within_5pct": 0.8143,
+ "all_source_used": 0.5829,
+ "covered_faces": 5613,
+ "covered_within_2pct": 0.6506,
+ "covered_within_5pct": 0.8546,
+ "source": "outputs/diff3f/fire_dragon_partial.npz",
+ "target": "outputs/diff3f/lizard_full.npz"
+}

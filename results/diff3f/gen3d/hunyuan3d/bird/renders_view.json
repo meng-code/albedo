@@ -1,0 +1,8 @@
+{
+ "mesh": "/home/24/23010524/semtex/gen3d/hunyuan3d/bird/textured_vc.ply",
+ "image": "/home/24/23010524/IDArb/mydata/my_single/bird.png",
+ "iou_best": 0.9185,
+ "azimuth": 0.0,
+ "elevation": 0.0,
+ "iou": 0.9185
+}

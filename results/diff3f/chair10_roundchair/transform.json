@@ -1,0 +1,159 @@
+{
+ "source": "outputs/diff3f/chair10_partial.npz",
+ "target": "outputs/diff3f/roundchair_full.npz",
+ "feature": "full",
+ "scale": 0.9252536405918248,
+ "rotation": [
+  [
+   0.9431218042121015,
+   -0.20045242828011134,
+   0.26521705528928124
+  ],
+  [
+   -0.08374212258644896,
+   0.6288025958015248,
+   0.7730424001424379
+  ],
+  [
+   -0.32172739908877357,
+   -0.7512829823108415,
+   0.5762511268238022
+  ]
+ ],
+ "translation": [
+  0.06582543877754833,
+  -0.04463132709066192,
+  0.04162746035620848
+ ],
+ "depth_factor": 1.0,
+ "matrix": [
+  [
+   0.8726268828687771,
+   -0.18546933903164467,
+   0.24539304595345077,
+   0.06582543877754833
+  ],
+  [
+   -0.07748270379399878,
+   0.5818018909789505,
+   0.7152602950636328,
+   -0.04463132709066192
+  ],
+  [
+   -0.29767944728502665,
+   -0.6951273144977895,
+   0.5331784529888643,
+   0.04162746035620848
+  ],
+  [
+   0.0,
+   0.0,
+   0.0,
+   1.0
+  ]
+ ],
+ "coarse_matrix": [
+  [
+   0.8992655911449854,
+   -0.13357036056777433,
+   0.1719728315428908,
+   0.11449647152918437
+  ],
+  [
+   0.034686756336574934,
+   0.8092734963385055,
+   0.4471772987164295,
+   0.09009485508996001
+  ],
+  [
+   -0.2149709862886893,
+   -0.4281701371304055,
+   0.791550445740651,
+   0.13346566905055335
+  ],
+  [
+   0.0,
+   0.0,
+   0.0,
+   1.0
+  ]
+ ],
+ "selected_candidate": 2,
+ "options": {
+  "inlier_dist": 0.05,
+  "icp_dist": 0.05,
+  "n_iter": 5000,
+  "seeds": [
+   0
+  ],
+  "match_mode": "both",
+  "consensus": false,
+  "n_candidates": 8,
+  "refine": "icp",
+  "n_joint": 3,
+  "joint_refit_scale": false,
+  "depth_grid": [
+   0.5,
+   0.7,
+   1.0,
+   1.4,
+   2.0
+  ],
+  "n_depth": 3,
+  "scale_low": 0.5,
+  "scale_high": 2.5,
+  "scale_bands": [
+   [
+    0.5,
+    0.8
+   ],
+   [
+    0.8,
+    1.3
+   ],
+   [
+    1.3,
+    2.5
+   ]
+  ],
+  "min_coverage": 0.2,
+  "piecewise": true,
+  "part_scale_range": [
+   0.8,
+   1.25
+  ],
+  "part_max_rot": 15.0,
+  "blend_sigma": 0.05,
+  "normals": false,
+  "depth_scale": false,
+  "n_parts": 6
+ },
+ "source_meta": {
+  "command": "scripts/idarb/diff3f_features.py --mesh outputs/mesh_depth/chair10/relief.ply --prompt chair --front_only --no_cpu_offload --out outputs/diff3f/chair10_partial.npz",
+  "commit": "085b1c8",
+  "mesh": "outputs/mesh_depth/chair10/relief.ply",
+  "prompt": "chair",
+  "num_views": 100,
+  "front_only": true,
+  "tolerance": 0.004,
+  "seed": 0,
+  "sd_repo": "stable-diffusion-v1-5/stable-diffusion-v1-5",
+  "n_vertices": 46871,
+  "n_features": 15000,
+  "seconds": 464.2
+ },
+ "target_meta": {
+  "command": "scripts/idarb/diff3f_features.py --mesh results/diff3f/targets/roundchair.ply --prompt chair --no_cpu_offload --out outputs/diff3f/roundchair_full.npz",
+  "commit": "085b1c8",
+  "mesh": "results/diff3f/targets/roundchair.ply",
+  "prompt": "chair",
+  "num_views": 100,
+  "front_only": false,
+  "tolerance": 0.004,
+  "seed": 0,
+  "sd_repo": "stable-diffusion-v1-5/stable-diffusion-v1-5",
+  "n_vertices": 8026,
+  "n_features": 8026,
+  "seconds": 292.4
+ }
+}

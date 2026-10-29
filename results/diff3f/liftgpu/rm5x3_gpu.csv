@@ -1,0 +1,5 @@
+group,pair,variant,textured_faces,within_2pct,within_5pct,source_used,conformal_median,distortion_over_10,flipped,flipped_area,mutual_anchors,gt_acc_1pct,gt_acc_5pct,seconds
+same,cat,arap,5290,0.825,0.9945,0.6508,3.631,0.2246,0.2119,0.0809,158,,,46.1
+same,cat_lion,arap,3795,0.7652,0.9697,0.6161,2.968,0.1607,0.1995,0.071,137,,,37.9
+synthetic,cat_synth,nn,,,,,,,,,336,0.5154,0.8887,14.4
+synthetic,cat_synth,arap,,,,,,,,,336,0.5601,0.9848,14.4

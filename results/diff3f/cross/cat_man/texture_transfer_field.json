@@ -1,0 +1,13 @@
+{
+ "faces": 13776,
+ "textured_faces": 6451,
+ "span_median": 0.0237,
+ "within_2pct": 0.4485,
+ "within_5pct": 0.7081,
+ "source_used": 0.5705,
+ "all_within_2pct": 0.4045,
+ "all_within_5pct": 0.685,
+ "all_source_used": 0.7766,
+ "source": "outputs/diff3f/features/cat_partial.npz",
+ "target": "outputs/diff3f/features/man_full.npz"
+}
