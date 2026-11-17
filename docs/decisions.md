@@ -1609,3 +1609,46 @@ The repository will be used beyond the original course, so the owner rewrote `AG
 - Command (hpc02, `idarb` environment, this commit's script; the run used the same code at
   c94c442 with `--code ~/semtex/wt_train`):
   `python scripts/idarb/eval_relief_tierb.py --root ~/semtex/dataset --feature_dir ~/semtex/features_train --relief_features ~/semtex/wt_fdata/results/diff3f/features_dataset --relief_gt ~/semtex/relief_gt --weights B=~/semtex/wt_train/outputs/adapter/pilot_full_B.npz --out results/diff3f/relief_gt/tierb_metrics.csv`.
+
+## 2026-11-17 — Sensitivity of the chain to the anchor-filter threshold: flat from 0.1 to 0.2
+
+- Question (owner, for the group meeting): how the 0.1 in `--anchor_filter rigid:0.1` was
+  chosen. The 2026-10-23 entry only compares 0.1 with no filter, so the threshold alone is
+  varied here under the standing keypoint-oriented setting (zoom-2 Diff3F features,
+  `--w_view 0.3 --view_from_anchors --final_rematch 0.05 --rematch_rounds 3`); nothing else
+  changes. The filter keeps the mutual nearest-neighbour anchors that lie within the threshold
+  (a fraction of the source diagonal) of a similarity transform fitted to the anchors by RANSAC.
+- Result (`results/diff3f/anchor_filter_sweep/summary.csv`, per pair in `per_pair.csv`; hpc02,
+  CPU, 3236 s). Anchors: mean over the 16 same-category pairs, 158.3 mutual pairs before the
+  filter. Keypoints: 89 on 13 pairs, PCK@2 pooled. Texture: 16 pairs, triangles within 2 % /
+  5 % and mirrored area. Difference: pooled PCK@2 minus the 0.1 row, 95 % interval from a
+  bootstrap over pairs.
+
+  | threshold | anchors kept | PCK@2 hits | PCK@2 % | mean error | within 2 % | within 5 % | mirrored % | diff vs 0.1 |
+  |---|---|---|---|---|---|---|---|---|
+  | none | 158.3 | 50 | 56.2 | 0.0470 | 65.2 | 95.9 | 12.5 | −4.5 [−12.2, 0.0] |
+  | 0.05 | 82.4 | 49 | 55.1 | 0.0446 | 68.3 | 97.3 | 10.9 | −5.6 [−11.2, −1.1] |
+  | 0.075 | 105.3 | 51 | 57.3 | 0.0433 | 68.5 | 97.1 | 10.8 | −3.4 [−8.7, 0.0] |
+  | 0.1 | 122.8 | 54 | 60.7 | 0.0376 | 68.3 | 96.8 | 11.3 | control |
+  | 0.15 | 135.8 | 54 | 60.7 | 0.0372 | 68.4 | 97.0 | 11.1 | 0.0 [0.0, 0.0] |
+  | 0.2 | 142.9 | 53 | 59.6 | 0.0372 | 67.5 | 96.7 | 11.9 | −1.1 [−3.5, 0.0] |
+  | 0.3 | 153.2 | 52 | 58.4 | 0.0430 | 66.0 | 96.4 | 11.9 | −2.2 [−5.6, 0.0] |
+
+  The 0.1 row reproduces the standing chain exactly (54 of 89, mean error 0.038, texture
+  68.3 / 96.8 / 11.3).
+- Reading. The result does not depend on the exact value: 0.1 and 0.15 give the same
+  keypoint count on every pair, 0.2 differs by one keypoint, and the texture numbers stay within
+  one point from 0.05 to 0.2. Outside that range the chain degrades on both sides: a loose
+  or absent filter raises the mean error (0.043–0.047 against 0.037) and lowers the texture
+  measures, a tight one (0.05) removes half the anchors and loses 5 keypoints. One keypoint
+  is 1.1 points, and only the 0.05 row's interval excludes zero.
+- The keypoint differences come from few pairs (`per_pair.csv`): chair1_armchair has 0 of 6
+  without the filter, 1 at 0.05–0.075, 3 at 0.1–0.2 and 2 at 0.3; okapi_camel 4 of 7 without
+  it and at 0.2–0.3, 5 at 0.075–0.15; superman_man and cat5_cat lose one keypoint each at 0.05
+  (cat5_cat also at 0.075). The other nine pairs have the same count at every threshold. So
+  the table shows that 0.1 sits on a plateau, not that it is an optimum; with 89 keypoints a
+  finer choice inside 0.1–0.2 cannot be told apart.
+- Command (hpc02, `diff3f` environment, commit b4a7670; features from the temporary branch
+  features-zoom2-tmp 1237660, identical to the files of the standing results):
+  `python scripts/idarb/sweep_anchor_filter.py --thresholds none 0.05 0.075 0.1 0.15 0.2 0.3 --jobs 2 --threads 3 --feature_dir <features_zoom2>`;
+  the tables alone: the same script with `--summarise_only`.
