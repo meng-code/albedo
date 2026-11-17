@@ -223,3 +223,16 @@ Python package (Apache-2.0), which is not needed to run anything in this reposit
   for Semantic Correspondence", WACV 2025, arXiv:2412.03512.
 - **Use:** Optional per-view features inside Diff3F (`scripts/idarb/diff3f_features.py --features
   distilldift`, default checkpoint `distilled_s`), tested on five meshes.
+
+## MARCO (source code and weights, not included)
+
+- **Source:** https://github.com/visinf/MARCO, commit `1ec16b9` (2026-04-21), cloned outside this
+  repository (`~/semtex/marco/repo` on the GPU server), with the checkpoint `marco_ap_spair.pth`
+  (72 MB, adapter and upsampling weights; pre-trained on AP-10K, then trained on SPair-71k) from
+  the Google Drive link of its README. The backbone is DINOv2 ViT-L/14 with registers, loaded by
+  the code from `torch.hub` (`facebookresearch/dinov2`, `dinov2_vitl14_reg`, Apache-2.0).
+- **License:** Apache License 2.0 (the repository's `LICENSE` file).
+- **Paper:** Cuttano, Trivigno, Masone and Roth, "MARCO: Navigating the Unseen Space of Semantic
+  Correspondence", CVPR 2026, arXiv:2604.18267.
+- **Use here:** `scripts/idarb/match2d.py --extractor marco` (a matcher trained on annotated
+  keypoint pairs, as the 2D similarity). Its training categories overlap the keypoint benchmark's.

@@ -131,11 +131,63 @@ def render_target(Vd, Fd, view, size=1024, colors=None):
 DINOV3_REPO = "facebook/dinov3-vitb16-pretrain-lvd1689m"
 
 
-def make_extractor(name, device="cuda", resolution=518, dinov3_repo=DINOV3_REPO):
-    """A function image (H,W,3) uint8 -> unit patch features (h,w,D) float32 from DINOv2
-    (torch.hub, patch 14) or DINOv3 (transformers, patch 16)."""
+def first_feature_map(out):
+    """The first image's feature map (C,h,w) from whatever MARCO's forward_backbone returns for
+    a pair: a tensor (B*2,C,h,w) or (B,2,C,h,w), or a tuple / list of per-image tensors."""
+    while isinstance(out, (tuple, list)):
+        out = out[0]
+    while out.dim() > 3:
+        out = out[0]
+    return out
+
+
+def make_marco_extractor(repo, ckpt, pylib=None, device="cuda", resolution=770):
+    """MARCO (Cuttano et al., CVPR 2026, github.com/visinf/MARCO, Apache-2.0): DINOv2 ViT-L/14
+    with adapters trained on annotated keypoint pairs and an upsampling head, 1024 channels at
+    4 cells per patch. The features are L2-normalised here so that the matching below (cosine,
+    temperature 0.05) is the same for every extractor; MARCO's own evaluation uses the raw dot
+    product. repo: a clone of the repository, ckpt: marco_spair.pth or marco_ap_spair.pth,
+    pylib: an extra folder with omegaconf when the environment lacks it."""
     import torch
 
+    for path in (pylib, repo):
+        if path and path not in sys.path:
+            sys.path.insert(0, os.path.expanduser(path))
+    cwd = os.getcwd()
+    os.chdir(os.path.expanduser(repo))  # build_marco reads configs/model/marco.yaml
+    try:
+        from models import build_marco
+
+        model = build_marco()
+    finally:
+        os.chdir(cwd)
+    state = torch.load(os.path.expanduser(ckpt), map_location="cpu")
+    model.load_state_dict(state["model"])
+    model = model.to(device).eval()
+    res = (resolution // 14) * 14
+
+    def extract(image):
+        from PIL import Image
+
+        im = Image.fromarray(image).convert("RGB").resize((res, res), Image.BICUBIC)
+        x = (np.asarray(im, dtype=np.float32) / 255.0 - IMAGENET_MEAN) / IMAGENET_STD
+        x = torch.from_numpy(x).permute(2, 0, 1).to(device)
+        with torch.no_grad():
+            out = model.forward_backbone(torch.stack([x, x])[None])  # the pair is the image twice
+        f = first_feature_map(out).float().permute(1, 2, 0).cpu().numpy()
+        return f / np.maximum(np.linalg.norm(f, axis=2, keepdims=True), 1e-9)
+
+    return extract
+
+
+def make_extractor(name, device="cuda", resolution=518, dinov3_repo=DINOV3_REPO, marco=None):
+    """A function image (H,W,3) uint8 -> unit patch features (h,w,D) float32 from DINOv2
+    (torch.hub, patch 14), DINOv3 (transformers, patch 16) or MARCO (marco: dict with repo,
+    ckpt and optionally pylib)."""
+    import torch
+
+    if name == "marco":
+        return make_marco_extractor(device=device, resolution=resolution, **(marco or {}))
     if name == "dinov2":
         model = torch.hub.load("facebookresearch/dinov2", "dinov2_vitb14").to(device).eval()
         patch = 14
@@ -393,7 +445,12 @@ def main():
     ap.add_argument("--view_from", help="refined.npz whose stored view to use")
     ap.add_argument("--turn", type=float, default=25.0, help="extra views turned by +-deg")
     ap.add_argument("--elev", type=float, default=0.0, help="extra views tilted by +-deg")
-    ap.add_argument("--extractor", choices=["dinov2", "dinov3"], default="dinov2")
+    ap.add_argument("--extractor", choices=["dinov2", "dinov3", "marco"], default="dinov2")
+    ap.add_argument("--marco_repo", default="~/semtex/marco/repo",
+                    help="clone of github.com/visinf/MARCO (--extractor marco)")
+    ap.add_argument("--marco_ckpt", default="~/semtex/marco/ckpt/marco_ap_spair.pth")
+    ap.add_argument("--marco_pylib", default="~/semtex/marco/pylib",
+                    help="folder with omegaconf when the environment has none")
     ap.add_argument("--resolution", type=int, default=518, help="model input size")
     ap.add_argument("--size", type=int, default=1024, help="render size")
     ap.add_argument("--device", default="cuda")
@@ -445,7 +502,8 @@ def main():
     photo[~fg] = 255  # the background is white, like the renders', not the texture's fill
     H, W = photo.shape[:2]
     crop_p, box_p = square_crop(photo, fg, args.margin)
-    extract = make_extractor(args.extractor, args.device, args.resolution)
+    marco = dict(repo=args.marco_repo, ckpt=args.marco_ckpt, pylib=args.marco_pylib)
+    extract = make_extractor(args.extractor, args.device, args.resolution, marco=marco)
     fp = extract(crop_p)
     hp, wp = fp.shape[:2]
     # photo cells on the object: the cell centre's pixel holds a relief vertex
