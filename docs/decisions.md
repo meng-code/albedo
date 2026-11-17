@@ -1652,3 +1652,76 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   features-zoom2-tmp 1237660, identical to the files of the standing results):
   `python scripts/idarb/sweep_anchor_filter.py --thresholds none 0.05 0.075 0.1 0.15 0.2 0.3 --jobs 2 --threads 3 --feature_dir <features_zoom2>`;
   the tables alone: the same script with `--summarise_only`.
+
+## 2026-11-18 — Feature debiasing and an oracle test of the re-match step: hubs are real but not the cause; the re-match returns a correct map to the features' own peak
+
+- Question. An outside review (Gemini 4 through the owner's subscription, method and numbers
+  only; notes in `outputs/handoff/method-scout/`) attributed the 61–63 % plateau to two things:
+  hub points (source points similar to everything, which attract matches) and a similarity peak
+  displaced between individuals, to which the final 5 % re-match returns whatever prior it is
+  given. Both are measurable on the stored zoom-2 Diff3F features without any new model.
+- Code (8fc4f9c): `feature_debias.py` (per-pair centering, PCA whitening, CSLS hub correction),
+  `debias_check.py` (keypoint level, no chain), `refine_correspondence.py --debias` and
+  `--landmarks_release`, `eval_features.py --landmarks_from`, `sweep_debias.py`. Run on hpc02,
+  CPU, 281 s and 1681 s; commands in `results/diff3f/debias_check/run.json` and
+  `results/diff3f/debias_chain/run.json`. 89 keypoints on the 13 annotated same-category pairs.
+- Keypoint level (`results/diff3f/debias_check/summary.csv`). nn: nearest-neighbour PCK@2.
+  rematch from truth: the most similar of the 64 candidates within 5 % of the TRUE source
+  point (what the chain's re-match would pick from a perfect field; the 9 keypoints with no
+  such candidate keep the true position and count as hits). peak 5 %: the most similar of all
+  source samples within 5 % of the true point. hub share: target samples whose nearest
+  neighbour is one of the 1 % most chosen source samples.
+
+  | variant | nn hits | nn % | diff vs none | in top 64 % | rematch from truth % | peak 5 % | hub share % |
+  |---|---|---|---|---|---|---|---|
+  | none | 56 | 62.9 | | 80.9 | 76.4 | 67.4 | 45.4 |
+  | center | 53 | 59.6 | −3.4 [−7.4, 1.2] | 77.5 | 74.2 | 64.0 | 40.9 |
+  | whiten:64:1 | 48 | 53.9 | −9.0 [−15.9, −2.2] | 75.3 | 78.7 | 67.4 | 39.6 |
+  | whiten:256:1 | 37 | 41.6 | −21.3 [−29.8, −14.4] | 60.7 | 77.5 | 64.0 | 31.4 |
+  | whiten:256:0.5 | 50 | 56.2 | −6.7 [−14.1, 2.2] | 78.7 | 74.2 | 68.5 | 32.0 |
+  | whiten:1024:0.5 | 52 | 58.4 | −4.5 [−15.5, 6.8] | 80.9 | 74.2 | 67.4 | 28.6 |
+  | csls:10 | 54 | 60.7 | −2.2 [−5.2, 0.0] | 82.0 | 75.3 | 68.5 | 39.6 |
+  | center+csls:10 | 51 | 57.3 | −5.6 [−12.2, 1.2] | 82.0 | 73.0 | 65.2 | 36.7 |
+  | whiten:256:1+csls:10 | 32 | 36.0 | −27.0 [−33.3, −20.0] | 58.4 | 84.3 | 64.0 | 20.2 |
+
+- Chain (`results/diff3f/debias_chain/summary.csv`), the standing setting with `--debias`, and
+  the oracle: the annotated keypoints as exact constraints of the field before the re-match
+  (`--landmarks_hard`), then released for the three re-match rounds.
+
+  | configuration | PCK@2 hits | PCK@2 % | mean error | anchors | within 2 % | within 5 % | mirrored % | diff vs none |
+  |---|---|---|---|---|---|---|---|---|
+  | none | 54 | 60.7 | 0.0376 | 122.6 | 68.2 | 96.7 | 11.6 | control |
+  | center | 49 | 55.1 | 0.0412 | 139.2 | 68.5 | 97.2 | 11.5 | −5.6 [−10.1, 0.0] |
+  | csls:10 | 50 | 56.2 | 0.0384 | 256.2 | 67.4 | 97.0 | 12.0 | −4.5 [−12.0, 3.5] |
+  | center+csls:10 | 51 | 57.3 | 0.0381 | 263.2 | 67.9 | 97.7 | 11.5 | −3.4 [−11.0, 4.7] |
+  | whiten:256:1 | 42 | 47.2 | 0.1142 | 134.8 | 68.0 | 99.1 | 16.9 | −13.5 [−23.3, −4.7] |
+  | oracle (13 pairs) | 57 | 64.0 | 0.0300 | 140.9 | 69.8 | 97.2 | 11.7 | +3.4 [0.0, 6.6] |
+
+  Oracle, distance of the keypoint vertices from their true source points: before the re-match
+  0 for all (100 % within 2 %); after the three rounds median 2.07 %, mean 3.0 %, 63.8 % within
+  2 %. Per pair the oracle gains one keypoint on cat, cat → lion and okapi → camel and changes
+  nothing on the other ten.
+- Reading.
+  1. Hubs exist: 1 % of the source samples receive 45 % of all nearest-neighbour matches. They
+     are not what the keypoints get wrong: every correction lowers the hub share (to 20–41 %)
+     and none raises the keypoint accuracy, at the nearest neighbour or in the chain; CSLS
+     doubles the mutual anchors (123 → 256) without one more keypoint. Wrong keypoint matches
+     land on hubs at about the base rate (39 % against 45 %). Debiasing is closed.
+  2. The displaced-peak diagnosis holds. Given the true neighbourhood, the most similar sample
+     within 5 % of the true point is within 2 % of it for only 67 % of the keypoints, the
+     nearest neighbour's level (63 %). In the chain, a map that is exactly right at all 89
+     keypoints ends at 64 % after the re-match rounds, three keypoints above the control: the
+     re-match moves a third of them more than 2 % away again.
+  3. Consequence for every method that supplies a better position prior to this chain (2D
+     matches, parts, a generated proxy): with the Diff3F re-match as the last step its result
+     is bounded near 64 % on this set, whatever the prior. This matches the earlier closed
+     lines (2D landmarks pinned or soft, neighbour voting, photo-window matches). A gain has to
+     come from the similarity used in the last step itself (other features, a trained chooser),
+     or from a last step that does not re-match on Diff3F; a candidate matcher is to be judged
+     on its own matches and as the re-match similarity, not as a prior.
+- Reproducibility note from the server: the texture numbers of the control differ from the
+  2026-11-17 row in the third decimal (68.2 / 96.7 / 11.6 against 68.3 / 96.8 / 11.3; anchors
+  122.6 against 122.8) because this run used `--threads 2` and that one `--threads 3`; a re-run
+  of chairgen → armchair with three threads reproduces the 11-17 row exactly. BLAS summation
+  order changes which near-tied samples become mutual anchors. The keypoint counts are
+  identical. Comparisons between runs should use the same `--threads`.

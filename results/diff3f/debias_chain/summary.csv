@@ -1,0 +1,7 @@
+config,pairs_keypoints,keypoints,hits_pck2,pck2_pooled,mean_error,pairs_texture,anchors,within_2pct,within_5pct,mirrored_area,diff_vs_none,ci_low,ci_high,release_before,release_after
+none,13,89,54,60.7,0.0376,16,122.6,68.2,96.7,11.6,,,,,
+center,13,89,49,55.1,0.0412,16,139.2,68.5,97.2,11.5,-5.6,-10.1,0.0,,
+csls-10,13,89,50,56.2,0.0384,16,256.2,67.4,97.0,12.0,-4.5,-12.0,3.5,,
+center_csls-10,13,89,51,57.3,0.0381,16,263.2,67.9,97.7,11.5,-3.4,-11.0,4.7,,
+whiten-256-1,13,89,42,47.2,0.1142,16,134.8,68.0,99.1,16.9,-13.5,-23.3,-4.7,,
+oracle,13,89,57,64.0,0.03,13,140.9,69.8,97.2,11.7,3.4,0.0,6.6,"{""median"": 0.0, ""mean"": 0.0, ""within_2pct"": 1.0}","{""median"": 0.0207, ""mean"": 0.03, ""within_2pct"": 0.6382}"
