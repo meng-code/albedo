@@ -47,6 +47,7 @@ from scipy.spatial import cKDTree
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import register_partial as rp  # noqa: E402
 from correspondence_maps import mesh_features  # noqa: E402
+from feature_debias import debias  # noqa: E402
 
 
 def topk_candidates(fd, fs, k, chunk=2048):
@@ -593,6 +594,14 @@ def confidence(sim, Vd, anchors=None, landmarks_t=None):
     return w
 
 
+def landmark_drift(P, truth, t_lm, diag):
+    """How far the map sits from the landmarks' true source positions, as fractions of the
+    source diagonal: median, mean and the share within 2 %."""
+    d = np.linalg.norm(P[t_lm] - truth, axis=1) / diag
+    return dict(median=round(float(np.median(d)), 4), mean=round(float(d.mean()), 4),
+                within_2pct=round(float((d < 0.02).mean()), 4))
+
+
 def read_pp(path):
     """Points of a MeshLab PickPoints (.pp) file, in file order."""
     pts = []
@@ -686,6 +695,19 @@ def main():
         "--prior_transform",
         help="transform.json of register_partial.py: use the rigid registration (inverted) as the "
         "position prior instead of a map fitted on anchors; keeps left and right apart",
+    )
+    ap.add_argument(
+        "--debias",
+        default="none",
+        help="statistical correction of the pair's features before any matching, see "
+        "feature_debias.py: center, whiten:<dims>:<power>, csls:<k>, joined with +",
+    )
+    ap.add_argument(
+        "--landmarks_release",
+        action="store_true",
+        help="oracle test of the re-match step, with --landmarks_hard: the landmarks are exact "
+        "constraints of the field before the re-match and are then let go (ordinary weight, not "
+        "re-pinned), so the map starts right at them and the re-match rounds are free to move it",
     )
     ap.add_argument("--max_anchors", type=int, default=400)
     ap.add_argument(
@@ -855,6 +877,10 @@ def main():
     Vs, Fs, _, _ = mesh_features(args.source, args.source_mesh, args.feature)
     Vd, Fd, fd, _ = mesh_features(args.target, args.target_mesh, args.feature)
     dst = rp.load_features(args.target, args.feature)
+    if args.debias != "none":
+        # the vertex features are the nearest sample's, as in mesh_features
+        src["feat"], dst["feat"] = debias(src["feat"], dst["feat"], args.debias)
+        fd = dst["feat"][cKDTree(dst["xyz"]).query(Vd)[1]]
     gt = dict(np.load(args.gt)) if args.gt else None
 
     lm = load_landmarks(args, Vs, Vd)
@@ -1042,6 +1068,17 @@ def main():
             # repeated --rematch_rounds times
             cand, sims = topk_candidates(fd, src["feat"], args.k)
             w_re = args.rematch_weight if args.rematch_weight is not None else args.keep_weight
+            release = lm is not None and args.landmarks_release
+            if release:
+                # the field passes through the landmarks exactly here; from now on they are
+                # ordinary vertices, and the drift measures what the re-match does to a map that
+                # was right at them
+                stats["release_before"] = landmark_drift(P, Vs[s_lm], t_lm, diag_src)
+                w = w.copy()
+                w[t_lm] = 1.0
+                keep_hard = h_mask.copy()
+                keep_hard[t_lm] = False
+                hard = (keep_hard, h_val) if keep_hard.any() else None
             for _ in range(max(args.rematch_rounds, 1)):
                 best = rematch_within(P, src["xyz"][cand], sims, args.final_rematch * diag_src)
                 has = best >= 0
@@ -1051,7 +1088,7 @@ def main():
                 w2[has] = np.maximum(w2[has], w_re)
                 if mutual is not None:
                     S2[cKDTree(Vd).query(mutual[0])[1]] = mutual[1]
-                if lm is not None:  # landmarks are re-pinned every round, like the anchors
+                if lm is not None and not release:  # re-pinned every round, like the anchors
                     S2[t_lm] = Vs[s_lm]
                 stats["rematch_fraction"] = round(float(has.mean()), 4)
                 P = smooth_field(Vd, Fd, S2, w2, args.field, args.field_order, hard=hard)
@@ -1060,6 +1097,8 @@ def main():
                         Vd, Fd, S2, w2, P, lam, args.arap, view=args.target_view,
                         w_view=args.w_view, hard=hard,
                     )
+            if release:
+                stats["release_after"] = landmark_drift(P, Vs[s_lm], t_lm, diag_src)
         if args.local_npz:
             # the photo-window refinement (match2d.py --prior --per_vertex) searched every
             # visible vertex on its own, which breaks the smooth map when taken as is; here its

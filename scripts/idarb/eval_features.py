@@ -167,6 +167,11 @@ def evaluate_pair(args, env, group, name, src, src_mesh, target, transform, extr
     else:
         cmd += ["--target_view"] + view_str
     cmd += ["--out", refined] + (["--gt", gt] if gt else [])
+    for folder in args.landmarks_from or []:
+        lm_path = os.path.join(folder, name + ".json")
+        if os.path.exists(lm_path):  # the first folder that has this pair
+            cmd += ["--landmarks", lm_path, "--add_mutual"]
+            break
     stats = last_json(run(cmd, env))
     if args.view == "anchors" and not gt:
         view = np.load(refined)["view"]
@@ -263,6 +268,13 @@ def main():
         default="",
         help="extra arguments for refine_correspondence.py, one string, for example "
         "'--anchor_filter rigid:0.1' (the ARAP settings stay)",
+    )
+    ap.add_argument(
+        "--landmarks_from",
+        nargs="*",
+        help="folders with <pair>.json landmark files (source and target points); a pair found "
+        "there runs with --landmarks <file> --add_mutual, for example the annotated keypoints "
+        "as an oracle (results/diff3f/keypoints results/diff3f/landmarks)",
     )
     args = ap.parse_args()
     if args.refine_args:
