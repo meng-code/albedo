@@ -14,6 +14,8 @@ keypoint_table.py over all of them, and writes one summary row per threshold:
                bootstrap over pairs (one keypoint is about one point of PCK)
 
 "none" runs the chain without the filter; its anchor count is the number before the filter.
+--groups cross runs the cross-category pairs instead (or both), and a threshold may be a full
+filter specification such as loo:0.1 (the non-rigid mode of filter_anchors).
 CPU only. About 15 minutes per threshold on one machine (16 pairs, about 50 s each).
 
 Usage (repository root, mesh environment):
@@ -35,8 +37,13 @@ SCRIPTS = os.path.dirname(os.path.abspath(__file__))
 FIXED_ARGS = "--w_view 0.3 --final_rematch 0.05 --rematch_rounds 3"
 
 
+def spec_of(thr):
+    """'0.1' -> 'rigid:0.1'; a full specification such as 'loo:0.1' is kept."""
+    return thr if ":" in thr or thr == "none" else "rigid:" + thr
+
+
 def tag_of(thr):
-    return "none" if thr == "none" else "rigid" + thr.replace(".", "p")
+    return spec_of(thr).replace(":", "").replace(".", "p")
 
 
 def run(cmd):
@@ -74,12 +81,12 @@ def paired_interval(hits_a, hits_b, n, draws=20000, seed=0):
 
 def summarise(args, tags):
     kp = [r for r in read_csv(os.path.join(args.csv_dir, "keypoint_accuracy.csv"))
-          if r["group"] == "same"]
+          if r["group"] in args.groups]
     per = {}
     for tag in tags:
         rows = {r["pair"]: r for r in kp if r["method"] == tag}
         tex = {r["pair"]: r for r in read_csv(os.path.join(args.csv_dir, tag + ".csv"))
-               if r["group"] == "same" and r["variant"] == "arap"}
+               if r["group"] in args.groups and r["variant"] == "arap"}
         per[tag] = dict(kp=rows, tex=tex)
     before = {p: int(r["mutual_anchors"]) for p, r in per.get("none", {}).get("tex", {}).items()}
     control = tag_of(args.control)
@@ -141,7 +148,9 @@ def main():
     )
     ap.add_argument("--thresholds", nargs="+",
                     default=["none", "0.05", "0.075", "0.1", "0.15", "0.2", "0.3"],
-                    help="fractions of the source diagonal; 'none' runs without the filter")
+                    help="fractions of the source diagonal (rigid mode), or a full "
+                    "specification such as loo:0.1; 'none' runs without the filter")
+    ap.add_argument("--groups", nargs="+", default=["same"], choices=["same", "cross"])
     ap.add_argument("--control", default="0.1", help="threshold the paired differences refer to")
     ap.add_argument("--feature_dir", default="outputs/diff3f/features_zoom2")
     ap.add_argument("--out_root", default="outputs/diff3f/23_anchor_filter_sweep")
@@ -159,9 +168,10 @@ def main():
         py = sys.executable
         commands = []
         for thr, tag in zip(args.thresholds, tags):
-            refine = FIXED_ARGS if thr == "none" else f"--anchor_filter rigid:{thr} {FIXED_ARGS}"
+            refine = (FIXED_ARGS if thr == "none"
+                      else f"--anchor_filter {spec_of(thr)} {FIXED_ARGS}")
             cmd = [py, os.path.join(SCRIPTS, "eval_features.py"),
-                   "--feature_dir", args.feature_dir, "--groups", "same",
+                   "--feature_dir", args.feature_dir, "--groups"] + args.groups + [
                    "--variants", "nn", "arap", "--view", "anchors",
                    "--refine_args", refine, "--threads", str(args.threads),
                    "--jobs", str(args.jobs),
@@ -179,7 +189,8 @@ def main():
         commands.append(" ".join(cmd))
         with open(os.path.join(args.csv_dir, "run.json"), "w") as f:
             json.dump(dict(commit=git_commit(), command=" ".join(sys.argv), fixed_args=FIXED_ARGS,
-                           thresholds=args.thresholds, steps=commands), f, indent=1)
+                           thresholds=args.thresholds, groups=args.groups, steps=commands),
+                      f, indent=1)
     summarise(args, tags)
 
 
