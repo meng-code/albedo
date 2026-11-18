@@ -1,0 +1,103 @@
+group,pair,keypoint,model,blind,error,error_plane
+same,cow,1,"claude subagent, single pass, no names shown",1,0.005,0.0049
+same,cow,2,"claude subagent, single pass, no names shown",1,0.0035,0.0035
+same,cow,3,"claude subagent, single pass, no names shown",1,0.0151,0.007
+same,cow,4,"claude subagent, single pass, no names shown",1,0.3344,0.3343
+same,cow,5,"claude subagent, single pass, no names shown",1,0.026,0.0238
+same,cow,6,"claude subagent, single pass, no names shown",1,0.1545,0.145
+same,cow,7,"claude subagent, single pass, no names shown",1,0.2052,0.2018
+same,cat,1,"claude-fable-5-2, single pass, no names shown; pilot answers minus the 36-pixel border found after the annotation was seen",0,0.0036,0.0032
+same,cat,2,"claude-fable-5-2, single pass, no names shown; pilot answers minus the 36-pixel border found after the annotation was seen",0,0.0052,0.0046
+same,cat,3,"claude-fable-5-2, single pass, no names shown; pilot answers minus the 36-pixel border found after the annotation was seen",0,0.011,0.0065
+same,cat,4,"claude-fable-5-2, single pass, no names shown; pilot answers minus the 36-pixel border found after the annotation was seen",0,0.0032,0.0023
+same,cat,5,"claude-fable-5-2, single pass, no names shown; pilot answers minus the 36-pixel border found after the annotation was seen",0,0.0423,0.0412
+same,cat,6,"claude-fable-5-2, single pass, no names shown; pilot answers minus the 36-pixel border found after the annotation was seen",0,0.0114,0.0114
+same,cat,7,"claude-fable-5-2, single pass, no names shown; pilot answers minus the 36-pixel border found after the annotation was seen",0,0.007,0.0051
+same,superman_man,1,"claude subagent, single pass, no names shown",1,0.0017,0.0017
+same,superman_man,2,"claude subagent, single pass, no names shown",1,0.0039,0.0037
+same,superman_man,3,"claude subagent, single pass, no names shown",1,0.0069,0.0069
+same,superman_man,4,"claude subagent, single pass, no names shown",1,0.0238,0.0101
+same,superman_man,5,"claude subagent, single pass, no names shown",1,0.0192,0.0165
+same,superman_man,7,"claude subagent, single pass, no names shown",1,0.0025,0.0017
+same,superman_posed,1,"claude subagent, single pass, no names shown",1,0.0017,0.0017
+same,superman_posed,2,"claude subagent, single pass, no names shown",1,0.0039,0.0037
+same,superman_posed,3,"claude subagent, single pass, no names shown",1,0.0069,0.0069
+same,superman_posed,4,"claude subagent, single pass, no names shown",1,0.0192,0.0165
+same,superman_posed,6,"claude subagent, single pass, no names shown",1,0.0025,0.0017
+same,okapi_camel,1,"claude subagent, single pass, no names shown",1,0.0032,0.0031
+same,okapi_camel,2,"claude subagent, single pass, no names shown",1,0.0234,0.0232
+same,okapi_camel,3,"claude subagent, single pass, no names shown",1,0.004,0.0034
+same,okapi_camel,5,"claude subagent, single pass, no names shown",1,0.0304,0.0299
+same,okapi_camel,6,"claude subagent, single pass, no names shown",1,0.0142,0.0142
+same,okapi_camel,7,"claude subagent, single pass, no names shown",1,0.0047,0.0022
+same,okapi1_camel,1,"claude subagent, single pass, no names shown",1,0.0032,0.0031
+same,okapi1_camel,2,"claude subagent, single pass, no names shown",1,0.0095,0.0092
+same,okapi1_camel,4,"claude subagent, single pass, no names shown",1,0.0032,0.0031
+same,okapi1_camel,5,"claude subagent, single pass, no names shown",1,0.0099,0.007
+same,okapi1_camel,6,"claude subagent, single pass, no names shown",1,0.0675,0.0626
+same,okapi1_camel,7,"claude subagent, single pass, no names shown",1,0.013,0.013
+same,cat5_cat,1,"claude subagent, single pass, no names shown",1,0.0182,0.0178
+same,cat5_cat,2,"claude subagent, single pass, no names shown",1,0.0025,0.002
+same,cat5_cat,3,"claude subagent, single pass, no names shown",1,0.0102,0.0101
+same,cat5_cat,4,"claude subagent, single pass, no names shown",1,0.0064,0.0063
+same,cat5_cat,5,"claude subagent, single pass, no names shown",1,0.0072,0.0072
+same,cat5_cat,6,"claude subagent, single pass, no names shown",1,0.0071,0.0063
+same,cat5_cat,7,"claude subagent, single pass, no names shown",1,0.003,0.0028
+same,cat_lion,1,"claude subagent, single pass, no names shown",1,0.0139,0.0139
+same,cat_lion,2,"claude subagent, single pass, no names shown",1,0.0035,0.0032
+same,cat_lion,3,"claude subagent, single pass, no names shown",1,0.0069,0.0069
+same,cat_lion,4,"claude subagent, single pass, no names shown",1,0.0294,0.0216
+same,cat_lion,5,"claude subagent, single pass, no names shown",1,0.015,0.0137
+same,cat_lion,6,"claude subagent, single pass, no names shown",1,0.01,0.0072
+same,cat_lion,7,"claude subagent, single pass, no names shown",1,0.0101,0.0082
+same,cat_lion,8,"claude subagent, single pass, no names shown",1,0.0734,0.0689
+same,cat_lion,9,"claude subagent, single pass, no names shown",1,0.0238,0.0216
+same,cat_lion,10,"claude subagent, single pass, no names shown",1,0.0829,0.0803
+same,cat_lion,11,"claude subagent, single pass, no names shown",1,0.0526,0.0526
+same,labubu_man,1,"claude subagent, single pass, no names shown",1,0.0046,0.0046
+same,labubu_man,2,"claude subagent, single pass, no names shown",1,0.0051,0.0051
+same,labubu_man,3,"claude subagent, single pass, no names shown",1,0.0117,0.0115
+same,labubu_man,4,"claude subagent, single pass, no names shown",1,0.0928,0.0918
+same,labubu_man,5,"claude subagent, single pass, no names shown",1,0.0394,0.0389
+same,labubu_man,6,"claude subagent, single pass, no names shown",1,0.0051,0.0051
+same,labubu_man,7,"claude subagent, single pass, no names shown",1,0.0145,0.0123
+same,chair1_armchair,1,"claude subagent, single pass, no names shown",1,0.0941,0.094
+same,chair1_armchair,3,"claude subagent, single pass, no names shown",1,0.0069,0.0061
+same,chair1_armchair,4,"claude subagent, single pass, no names shown",1,0.006,0.0038
+same,chair1_armchair,5,"claude subagent, single pass, no names shown",1,0.0067,0.0061
+same,panda_panda,1,"claude subagent, single pass, no names shown",1,0.002,0.002
+same,panda_panda,2,"claude subagent, single pass, no names shown",1,0.0063,0.0062
+same,panda_panda,3,"claude subagent, single pass, no names shown",1,0.0,0.0
+same,panda_panda,4,"claude subagent, single pass, no names shown",1,0.014,0.0139
+same,panda_panda,5,"claude subagent, single pass, no names shown",1,0.0115,0.0115
+same,panda_panda,6,"claude subagent, single pass, no names shown",1,0.0057,0.0056
+same,bird_bird,1,"claude subagent, single pass, no names shown",1,0.0051,0.0047
+same,bird_bird,2,"claude subagent, single pass, no names shown",1,0.0073,0.0071
+same,bird_bird,3,"claude subagent, single pass, no names shown",1,0.02,0.0085
+same,bird_bird,4,"claude subagent, single pass, no names shown",1,0.0053,0.0053
+same,bird_bird,5,"claude subagent, single pass, no names shown",1,0.0084,0.0053
+same,dragon_lizard,1,"claude subagent, single pass, no names shown",1,0.0069,0.0069
+same,dragon_lizard,2,"claude subagent, single pass, no names shown",1,0.0339,0.0337
+same,dragon_lizard,3,"claude subagent, single pass, no names shown",1,0.0271,0.027
+same,dragon_lizard,4,"claude subagent, single pass, no names shown",1,0.0115,0.0102
+same,dragon_lizard,5,"claude subagent, single pass, no names shown",1,0.0266,0.0261
+same,dragon_lizard,6,"claude subagent, single pass, no names shown",1,0.016,0.0159
+cross,labubu_camel,1,"claude-fable-5-2, single pass, no names shown; pilot answers minus the 36-pixel border found after the annotation was seen",0,0.0023,0.0023
+cross,labubu_camel,2,"claude-fable-5-2, single pass, no names shown; pilot answers minus the 36-pixel border found after the annotation was seen",0,0.1058,0.1053
+cross,labubu_camel,4,"claude-fable-5-2, single pass, no names shown; pilot answers minus the 36-pixel border found after the annotation was seen",0,0.0051,0.0051
+cross,labubu_camel,5,"claude-fable-5-2, single pass, no names shown; pilot answers minus the 36-pixel border found after the annotation was seen",0,0.0162,0.0139
+cross,labubu_camel,6,"claude-fable-5-2, single pass, no names shown; pilot answers minus the 36-pixel border found after the annotation was seen",0,0.0206,0.0189
+cross,labubu_camel,7,"claude-fable-5-2, single pass, no names shown; pilot answers minus the 36-pixel border found after the annotation was seen",0,0.0321,0.0321
+cross,labubu_camel,8,"claude-fable-5-2, single pass, no names shown; pilot answers minus the 36-pixel border found after the annotation was seen",0,0.0545,0.0529
+cross,labubu_camel,9,"claude-fable-5-2, single pass, no names shown; pilot answers minus the 36-pixel border found after the annotation was seen",0,0.214,0.207
+cross,labubu_camel,10,"claude-fable-5-2, single pass, no names shown; pilot answers minus the 36-pixel border found after the annotation was seen",0,0.221,0.221
+cross,labubu_lion,1,"claude subagent, single pass, no names shown",1,0.0023,0.0023
+cross,labubu_lion,2,"claude subagent, single pass, no names shown",1,0.1663,0.1655
+cross,labubu_lion,3,"claude subagent, single pass, no names shown",1,0.0071,0.0069
+cross,labubu_lion,4,"claude subagent, single pass, no names shown",1,0.1238,0.1238
+cross,labubu_lion,5,"claude subagent, single pass, no names shown",1,0.0125,0.0094
+cross,labubu_lion,6,"claude subagent, single pass, no names shown",1,0.0125,0.0117
+cross,labubu_lion,7,"claude subagent, single pass, no names shown",1,0.0436,0.0436
+cross,labubu_lion,8,"claude subagent, single pass, no names shown",1,0.0264,0.0252
+cross,labubu_lion,9,"claude subagent, single pass, no names shown",1,0.3654,0.3596
+cross,labubu_lion,10,"claude subagent, single pass, no names shown",1,0.0206,0.0205

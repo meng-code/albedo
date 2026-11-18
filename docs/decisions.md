@@ -1888,3 +1888,49 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   4. Caveats: MARCO was trained on AP-10K and SPair-71k, whose categories include cat, cow,
      chair, bird and person; the full meshes are seen untextured. The standing setting is not
      changed by this entry.
+
+## 2026-11-18 — A vision-language model as the matcher at the keypoints (trial)
+
+- Question (owner): can a vision-language model that looks at the photo decide where the
+  points of the full mesh belong, instead of the features?
+- Set-up. `scripts/idarb/vlm_keypoint_trial.py make` renders the full mesh in grey with a
+  numbered mark at every annotated keypoint (the pair's view, turned left and right by 40
+  degrees, then the same from behind; a keypoint is marked in the first view that sees it) and
+  writes the photo behind the partial mesh, cropped square at 1000 pixels with ruler lines.
+  The model (Claude Fable 5.2, one pass, no keypoint names, no zoom) answers pixel coordinates
+  in the photo; `score` takes the partial-mesh vertex at the nearest object pixel and measures
+  it as `keypoint_table.py` does. No feature of the chain is used. The answers of 13 pairs were
+  given by subagents that saw only the images. Commands:
+  `python scripts/idarb/vlm_keypoint_trial.py make` and
+  `python scripts/idarb/vlm_keypoint_trial.py score --csv_dir results/diff3f/vlm_keypoints`;
+  answers and crop boxes are in `results/diff3f/vlm_keypoints/answers/`.
+- Pilot (cat, labubu → camel; not blind). The first photo had a 36-pixel border for the ruler
+  numbers and every answer came back shifted by the border: the model reports the pixel
+  position in the file, not the ruler value. The border was removed; the two pilot pairs are
+  kept with the shift subtracted and marked `blind = 0`.
+- Result, blind, 12 same-category pairs. Six of the 82 keypoints are seen in none of the six
+  views and count as misses.
+
+  | method | hits at 2 % of 82 | at 5 % | at 10 % |
+  |---|---|---|---|
+  | model, one pass | 56 (68.3 %) | 67 | 73 |
+  | Diff3F nearest neighbour | 51 | 63 | 73 |
+  | chain, standing setting | 49 | 63 | 74 |
+  | chain, fused Diff3F + MARCO | 51 | 68 | 79 |
+
+  Paired against the nearest neighbour at 2 %: +6.1 points [−7.5, 21.3]; against the chain
+  +8.5 [−4.9, 22.2]. Of the 76 keypoints answered, 56 are within 2 % and the median error is
+  0.0097; in the image plane 58.
+- Where it fails. The misses are not small offsets but a wrong side or a wrong part: on cow,
+  the ear and two hooves (errors 0.15 to 0.33); far-side legs on the cats and camels; marks on
+  featureless surface (back, flank) placed by proportion. bird 4 of 5 (nearest neighbour 0),
+  cat → lion 6 of 11 (3), labubu → man 5 of 7 (3); cow 3 of 7 (5).
+- Cross pairs. labubu → lion, blind: 4 of 10 at 2 % (nearest neighbour 3), 7 at 5 %.
+  labubu → camel, not blind: 3 of 9. The limbs decide: the annotation puts the quadruped's
+  front and hind feet on the toy's two feet, the model put the front feet on the hands.
+- Reading. On the points it can see and name, the model is as precise as the features or more
+  (median error under 1 %), and its total is above every feature-based variant at 2 %, inside
+  the interval. Its errors are of another kind (side and part confusions), and it answers
+  sparse points only, about 20 s per pair; it does not give a dense map. Open: marks on
+  hidden or featureless places, the left-right convention, and whether its answers used as
+  anchors or as a prior improve the chain. The standing setting is not changed.

@@ -1,0 +1,32 @@
+{
+ "pair": "labubu_camel",
+ "keypoints": 10,
+ "box": [
+  -31,
+  -125,
+  449
+ ],
+ "photo_size": 1000,
+ "renders": {
+  "target_0.png": [
+   2,
+   4,
+   5,
+   6,
+   7,
+   8,
+   9
+  ],
+  "target_1.png": [
+   1
+  ],
+  "target_2.png": [
+   10
+  ]
+ },
+ "unseen": [
+  3
+ ],
+ "commit": "a04985d507204f025258958dfb659b1ed7dfc932",
+ "command": "scripts/idarb/vlm_keypoint_trial.py make"
+}

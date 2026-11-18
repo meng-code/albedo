@@ -1,0 +1,4 @@
+{
+ "commit": "a04985d507204f025258958dfb659b1ed7dfc932",
+ "command": "scripts/idarb/vlm_keypoint_trial.py score --csv_dir results/diff3f/vlm_keypoints"
+}

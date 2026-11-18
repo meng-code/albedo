@@ -1,0 +1,29 @@
+{
+ "pair": "okapi1_camel",
+ "keypoints": 7,
+ "box": [
+  -26,
+  -28,
+  364
+ ],
+ "photo_size": 1000,
+ "renders": {
+  "target_0.png": [
+   1,
+   4,
+   5
+  ],
+  "target_1.png": [
+   2,
+   6
+  ],
+  "target_2.png": [
+   7
+  ]
+ },
+ "unseen": [
+  3
+ ],
+ "commit": "a04985d507204f025258958dfb659b1ed7dfc932",
+ "command": "scripts/idarb/vlm_keypoint_trial.py make"
+}

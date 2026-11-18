@@ -1,0 +1,28 @@
+{
+ "pair": "cow",
+ "keypoints": 7,
+ "box": [
+  -36,
+  -42,
+  514
+ ],
+ "photo_size": 1000,
+ "renders": {
+  "target_0.png": [
+   1,
+   2,
+   3,
+   5
+  ],
+  "target_1.png": [
+   4,
+   6
+  ],
+  "target_5.png": [
+   7
+  ]
+ },
+ "unseen": [],
+ "commit": "a04985d507204f025258958dfb659b1ed7dfc932",
+ "command": "scripts/idarb/vlm_keypoint_trial.py make"
+}
