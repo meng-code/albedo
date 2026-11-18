@@ -117,16 +117,22 @@ def one_mesh(extract, kind, mesh_path, points_path, out_path, args):
     idx = z["idx"].astype(np.int64)
     mesh = load_mesh(mesh_path)
     V = np.asarray(mesh.vertices, dtype=np.float64)
-    if not np.allclose(V[idx], z["xyz"], atol=1e-4 * float(np.abs(V).max())):
-        raise ValueError("the points of " + points_path + " are not vertices of " + mesh_path)
+    tol = 1e-4 * float(np.abs(V).max())
+    vidx = idx
+    if idx.max() >= len(V) or not np.allclose(V[idx], z["xyz"], atol=tol):
+        # the feature file may number the corners of an OBJ that load_mesh merged (the man: 41 320
+        # corners, 6 890 positions); then its points are found by position among the vertices
+        d, vidx = cKDTree(V).query(z["xyz"])
+        if d.max() > tol:
+            raise ValueError("the points of " + points_path + " are not vertices of " + mesh_path)
     if kind == "partial":
         C = np.asarray(mesh.visual.vertex_colors)[:, :3]
-        feat, seen, count = partial_features(extract, V, C, idx, args.margin)
+        feat, seen, count = partial_features(extract, V, C, vidx, args.margin)
         n_views = 1
     else:
         F = np.asarray(mesh.faces, dtype=np.int64)
         views = sphere_views(args.elevations, args.azimuths)
-        feat, seen, count = full_features(extract, V, F, idx, views, args.size, args.margin)
+        feat, seen, count = full_features(extract, V, F, vidx, views, args.size, args.margin)
         n_views = len(views)
     feat = fill_unseen(feat, seen, z["xyz"].astype(np.float64))
     meta = dict(feature_set="marco", feature_dim=int(feat.shape[1]), kind=kind, views=n_views,
