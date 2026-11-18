@@ -1982,3 +1982,47 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   One pair, no feature used on the model's side; mirrored area and keypoints not measured.
   Files: `results/diff3f/vlm_part_colour/dense_cat/`.
 - The standing setting is not changed.
+
+## 2026-11-18 — The untuned defaults of the candidate-choice stage, one at a time
+
+- Question (owner, through the teaching session): the prior width 0.25, the neighbour weight
+  0.3, the two smoothing passes, the position scale 0.05 and the 64 candidates were fixed on
+  2026-10-21 (93dc83c) without a comparison on the present features. Is each standing value in
+  a flat region, or is another value better beyond noise?
+- Set-up. `scripts/idarb/sweep_chain_defaults.py` (a04985d), standing setting otherwise, 13
+  same-category pairs / 89 keypoints, texture measures over 16 pairs, hpc02, 24 runs in
+  6628 s. `refine_correspondence.py` got `--prior_sigma` for this (0: affine part alone).
+  Command: `python scripts/idarb/sweep_chain_defaults.py --jobs 4 --threads 2 --feature_dir
+  ~/semtex/wt_fz2/outputs/diff3f/features_zoom2 --out_root ~/semtex/chain_defaults/out
+  --csv_dir results/diff3f/chain_defaults_sweep`. Results:
+  `results/diff3f/chain_defaults_sweep/` (summary.csv, one CSV per run, run.json). The standing
+  run reproduces the control: 54 of 89, within 2 % 68.2, mirrored area 11.6.
+- Result (hits of 89; paired PCK@2 difference against the standing run with its interval;
+  within 2 % in per cent):
+
+  | parameter | values | hits | reading |
+  |---|---|---|---|
+  | prior width | 0.05, 0.1 | 51, 51 | −3.4 [−6.7, 0.0] |
+  | | 0.15, affine alone | 52, 52 | −2.2, interval reaches 0 |
+  | | **0.25**, 0.4, 0.6, 1.0 | 54 each | flat; mean error 0.0376 to 0.0363 |
+  | neighbour weight | 0, 0.1, **0.3**, 0.6, 1.0, 3.0 | 54 each | no keypoint moves; texture within 0.2 |
+  | smoothing passes | 0, 1, **2**, 4 | 54 each | no change |
+  | position scale | 0.025, **0.05**, 0.075, 0.1, 0.2 | 54 each | no keypoint moves; texture within 0.2 |
+  | candidates | 8 | 49 | −5.6 [−11.2, −1.1]; within 2 % −2.5 [−3.5, −1.6] |
+  | | 16 | 47 | −7.9 [−15.7, −2.1]; within 2 % −1.8 [−2.9, −0.9] |
+  | | 32 | 53 | −1.1 [−3.5, 0.0]; within 2 % −0.9 [−1.7, −0.3] |
+  | | **64** | 54 | |
+  | | 128 | 52 | −2.2 [−5.6, 0.0]; within 2 % +1.6 [0.7, 2.5]; mirrored area −0.6 [−1.5, 0.0] |
+
+- Reading.
+  1. The neighbour weight, the number of smoothing passes and the position scale do nothing
+     measurable in the standing chain: with zero passes or zero weight the result is the same
+     54 keypoints and the same texture numbers. The smoothing step of the candidate choice is
+     inert here; what follows it (field, ARAP, re-match) decides the result.
+  2. The prior width is flat from 0.25 upwards and loses 2 to 3 keypoints below 0.15 and
+     without the radial part; the standing 0.25 sits at the lower edge of the flat region.
+  3. The number of candidates is the one that matters: fewer than 32 is worse beyond noise on
+     both measures. 128 gives more triangles within 2 % beyond noise and two fewer keypoints
+     inside the interval.
+  4. No value is better than the standing one beyond noise on the keypoints. The standing
+     setting is not changed.
