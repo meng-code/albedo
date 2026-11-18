@@ -18,6 +18,8 @@ the chain is involved, and the keypoint names are not shown.
           "blind": false in an answer file marks answers given or corrected after the
           annotation of that pair was seen; they are summarised apart.
           Writes per_keypoint.csv and summary.csv to --csv_dir.
+  figure  per pair one image in --figure_dir: the marked renders beside the photo with the
+          annotated points and the model's answers.
 
 The answers are produced by the model reading the images (in a session, by hand); the file
 records which model in "model". CPU only, a few seconds per pair.
@@ -218,11 +220,78 @@ def score(args):
         print("| " + " | ".join(str(r[c]) for c in cols) + " |")
 
 
+def figure(args):
+    """Per pair one image: the marked renders on the left; on the right the photo with the
+    annotated point (green ring), the model's answer (cross: blue within 2 %, red beyond) and
+    a line between the two."""
+    from PIL import Image, ImageDraw
+
+    os.makedirs(args.figure_dir, exist_ok=True)
+    for _group, name, _s, src_mesh, _t, _tr, _ex in ef.pair_table(["same", "cross"]):
+        folder = os.path.join(args.out, name)
+        answer = os.path.join(folder, "answer.json")
+        kp = keypoint_file(name, args.keypoints, args.landmarks)
+        if kp is None or not os.path.exists(answer):
+            continue
+        with open(kp) as f:
+            lm_s = np.asarray(json.load(f)["source"], dtype=np.float64)
+        with open(answer) as f:
+            ans = json.load(f)
+        with open(os.path.join(folder, "meta.json")) as f:
+            meta = json.load(f)
+        mesh = load_mesh(src_mesh)
+        Vs = np.asarray(mesh.vertices, dtype=np.float64)
+        photo, vert = m2.albedo_image(Vs, np.asarray(mesh.visual.vertex_colors)[:, :3])
+        photo = photo.copy()
+        photo[vert < 0] = 255
+        diag = float(np.linalg.norm(Vs.max(axis=0) - Vs.min(axis=0)))
+        col, row = tt.relief_grid(Vs)
+        oy, ox, side = meta["box"]
+        size = meta["photo_size"]
+        crop, _ = m2.square_crop(photo, vert >= 0, args.margin)
+        right = Image.fromarray(crop).resize((size, size), Image.LANCZOS).convert("RGB")
+        d = ImageDraw.Draw(right)
+        truth = cKDTree(Vs).query(lm_s)[1]
+        hits = n = 0
+        for k in range(len(lm_s)):
+            tx = (col[truth[k]] + 0.5 - ox) * size / side
+            ty = (row[truth[k]] + 0.5 - oy) * size / side
+            d.ellipse([tx - 9, ty - 9, tx + 9, ty + 9], outline=(0, 170, 0), width=3)
+            xy = ans.get(str(k + 1))
+            if xy is None:
+                d.text((tx + 12, ty - 6), f"{k + 1} (not marked)", fill=(0, 120, 0))
+                continue
+            v = nearest_object_vertex(ruler_to_image(xy, meta["box"], size), vert)
+            ok = np.linalg.norm(Vs[v] - lm_s[k]) / diag < 0.02
+            n += 1
+            hits += int(ok)
+            colour = (0, 90, 230) if ok else (225, 0, 0)
+            x, y = xy
+            d.line([tx, ty, x, y], fill=colour, width=2)
+            d.line([x - 9, y - 9, x + 9, y + 9], fill=colour, width=3)
+            d.line([x - 9, y + 9, x + 9, y - 9], fill=colour, width=3)
+            d.text((x + 12, y - 6), str(k + 1), fill=colour)
+        d.text((10, 8), f"{name}: {hits} of {n} answered within 2 % "
+               f"(green ring: annotation; cross: model, blue hit, red miss)", fill=(0, 0, 0))
+        lefts = [Image.open(os.path.join(folder, r)).convert("RGB") for r in meta["renders"]]
+        h = size // max(len(lefts), 1) if len(lefts) > 2 else size // 2
+        lefts = [im.resize((h, h), Image.LANCZOS) for im in lefts]
+        strip = Image.new("RGB", (h, size), (255, 255, 255))
+        for i, im in enumerate(lefts):
+            strip.paste(im, (0, i * h))
+        out = Image.new("RGB", (strip.width + size, size), (255, 255, 255))
+        out.paste(strip, (0, 0))
+        out.paste(right, (strip.width, 0))
+        out.save(os.path.join(args.figure_dir, name + ".png"))
+        print(os.path.join(args.figure_dir, name + ".png"), flush=True)
+
+
 def main():
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    ap.add_argument("mode", choices=["make", "score"])
+    ap.add_argument("mode", choices=["make", "score", "figure"])
+    ap.add_argument("--figure_dir", default="results/diff3f/vlm_keypoints/figures")
     ap.add_argument("--out", default="outputs/diff3f/27_vlm_keypoints")
     ap.add_argument("--csv_dir", default="results/diff3f/vlm_keypoints")
     ap.add_argument("--keypoints", default="results/diff3f/keypoints")
@@ -235,6 +304,8 @@ def main():
     args = ap.parse_args()
     if args.mode == "make":
         make(args)
+    elif args.mode == "figure":
+        figure(args)
     else:
         score(args)
 
