@@ -1763,3 +1763,65 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   No difference to the nearest neighbour is outside its interval. The 2D route with this
   matcher is not a replacement for the chain. Still open from the plan: MARCO features lifted
   onto the samples and used as the similarity of the last step (stage 3).
+
+## 2026-11-18 — The anchor filter on cross-category pairs: rigid:0.1 empties regions when the body layouts differ, and the non-rigid mode does not keep them better
+
+- Why: the threshold sweep of 2026-11-17 covered same-category pairs only. One similarity
+  transform cannot carry an upright toy onto a quadruped, so correct anchors on some parts may
+  be dropped and leave the prior without anchors there.
+- Runs (hpc02, commit ac6af00, `results/diff3f/anchor_filter_cross/`):
+  `python scripts/idarb/anchor_filter_regions.py --groups cross --settings none rigid:0.1
+  rigid:0.2 rigid:0.3 loo:0.1 loo:0.2 --csv .../regions.csv --figure_dir .../figures` (the
+  chain's mutual anchors rebuilt per pair; the target cut into 12 unnamed spatial regions) and
+  `python scripts/idarb/sweep_anchor_filter.py --groups cross --thresholds none 0.1 0.2 0.3
+  loo:0.1 loo:0.2 --control 0.1 --jobs 2 --threads 3` (the standing chain otherwise).
+- Anchors kept of those before the filter, and target regions left without an anchor of the
+  regions that had one:
+
+  | pair | before | rigid:0.1 | rigid:0.2 | rigid:0.3 | loo:0.1 | loo:0.2 |
+  |---|---|---|---|---|---|---|
+  | labubu → camel | 43 | 12, 4 of 11 | 21, 3 | 36, 0 | 18, 5 | 30, 3 |
+  | labubu → cow | 49 | 17, 3 of 10 | 32, 3 | 36, 2 | 22, 5 | 34, 2 |
+  | labubu → lion | 59 | 28, 6 of 10 | 40, 5 | 51, 3 | 43, 4 | 54, 3 |
+  | superman → camel | 61 | 33, 5 of 10 | 51, 2 | 57, 0 | 46, 3 | 55, 1 |
+  | panda → man | 132 | 74, 4 of 11 | 119, 0 | 129, 0 | 120, 0 | 129, 0 |
+  | cat → man | 67 | 32, 5 of 11 | 44, 2 | 57, 0 | 34, 3 | 49, 1 |
+  | cow → camel | 167 | 136, 0 of 10 | 165, 0 | 167, 0 | 160, 0 | 166, 0 |
+  | fire dragon → man | 86 | 45, 2 of 12 | 70, 0 | 84, 0 | 66, 1 | 83, 1 |
+  | bird → cat | 28 | 18, 4 of 8 | 24, 0 | 25, 0 | 16, 4 | 23, 2 |
+  | chair1 → cow | 53 | 18, 5 of 11 | 29, 4 | 42, 3 | 15, 5 | 28, 3 |
+  | reference: okapi → camel | 152 | 133, 1 of 11 | 151, 0 | 152, 0 | 148, 0 | 151, 0 |
+  | reference: cat → lion | 150 | 136, 2 of 12 | 147, 1 | 147, 1 | 149, 0 | 150, 0 |
+  | reference: labubu → man | 106 | 74, 2 of 10 | 91, 0 | 104, 0 | 93, 1 | 104, 1 |
+
+  The largest distance from a target sample to its nearest kept anchor (fraction of the
+  target's diagonal) grows under rigid:0.1 from 0.14 to 0.28 on labubu → camel and from 0.20
+  to 0.69 on labubu → lion. In the figures of these two pairs the dropped anchors are whole
+  clusters: on the camel the central body and hump, on the lion the underside of the front
+  body and the tail end, on the Labubu the ears and the feet.
+- Chain on the cross pairs (keypoints: 20, on labubu → camel and labubu → lion only; texture:
+  ten pairs; nearest neighbour alone 2 hits, mean error 0.079):
+
+  | setting | anchors kept (of 74.5) | hits of 20 | mean error | within 2 % | within 5 % | mirrored area % |
+  |---|---|---|---|---|---|---|
+  | none | 74.5 | 3 | 0.0713 | 52.3 | 89.7 | 19.4 |
+  | rigid:0.1 (standing) | 41.3 | 1 | 0.0862 | 55.2 | 93.0 | 16.5 |
+  | rigid:0.2 | 59.5 | 2 | 0.0680 | 54.8 | 92.1 | 16.3 |
+  | rigid:0.3 | 68.4 | 3 | 0.0706 | 53.1 | 90.8 | 19.3 |
+  | loo:0.1 | 54.0 | 1 | 0.0890 | 54.5 | 91.2 | 16.3 |
+  | loo:0.2 | 65.1 | 1 | 0.0817 | 52.5 | 90.3 | 20.8 |
+
+  labubu → camel: 2 hits and mean error 0.055 without the filter, 0 hits and 0.104 with
+  rigid:0.1. labubu → lion: 1 hit in every setting, mean error 0.087 without and 0.069 with
+  rigid:0.1.
+- Reading. On pairs whose body layouts differ, rigid:0.1 keeps 28–64 % of the anchors and
+  leaves 3–6 target regions without one (cow → camel, two quadrupeds, excepted); on the
+  same-category reference pairs it keeps 70–91 % and empties 1–2. The leave-one-out mode is
+  not a remedy: at 0.1 it empties as many regions or more on four of the ten pairs and only
+  approaches the unfiltered set at 0.2. The outcome numbers pull in two directions: the
+  texture measures and the mirrored area are best at rigid:0.1–0.2, the keypoints of
+  labubu → camel are best without the filter. With 20 keypoints on two pairs no setting can be
+  called better on keypoints; every interval touches zero. The standing setting is unchanged.
+  What the measurement establishes is the mechanism: on dissimilar pairs the rigid filter
+  removes anchors by region, so the prior extrapolates there. The regions are spatial, not
+  named parts; a part-level measure needs part names on both meshes, which do not exist yet.
