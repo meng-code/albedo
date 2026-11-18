@@ -1934,3 +1934,32 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   sparse points only, about 20 s per pair; it does not give a dense map. Open: marks on
   hidden or featureless places, the left-right convention, and whether its answers used as
   anchors or as a prior improve the chain. The standing setting is not changed.
+
+## 2026-11-18 — Colouring the full mesh by regions named by a vision-language model (trial)
+
+- The owner's idea as stated: the model looks at the points of the mesh, decides which part
+  each belongs to, looks up what colour that part has in the photo, and colours it.
+- Set-up. `scripts/idarb/vlm_part_colour.py make` cuts the full mesh into 48 regions
+  (farthest-point seeds, every vertex to its nearest seed) and renders six views with a
+  numbered mark at each seed; the model (Claude, a subagent that sees only the images, one
+  pass) names the part under every mark and gives the place of that part in the photo, with
+  hidden-side marks sent to the visible mirror place. `colour` writes two meshes: flat (every
+  region in the median photo colour around its answer) and smooth (the 48 answers as anchors
+  of an affine plus radial-basis map from the mesh into the photo plane, every vertex taking
+  the colour at its own mapped pixel). No feature of the chain is used. Commands:
+  `python scripts/idarb/vlm_part_colour.py make --pairs cat cat_lion labubu_man` and
+  `python scripts/idarb/vlm_part_colour.py colour`; answers with the part names are in
+  `results/diff3f/vlm_part_colour/answers/`, previews in `results/diff3f/vlm_part_colour/`.
+- Result (three pairs, by eye; no measure yet). All regions were answered (47 of 48 on the
+  man, one seed is seen in no view), about 90 s per pair. The parts land on the right parts:
+  cat → cat and cat → lion have the dark tail tip, the pink ear, the lighter legs and belly;
+  labubu → man has the shirt on the torso and arms, the shorts on the legs, the shoes on the
+  feet, the skin colour on the hands. The flat version is blotchy on patterned fur (a median
+  over a few stripes) and has no detail inside a region; on the man's face one region took
+  the colour of the toy's nose. The smooth version carries the stripes and the eyes along,
+  stretched where the anchors are sparse, and paints the face on both sides of the head,
+  because the map goes into the photo plane and both sides of the mesh fall on the same
+  pixels.
+- Open: a measure (the keypoints, and the texture measures of the chain, on the smooth map);
+  more regions on the head; the back side; the answers as anchors of the chain instead of
+  the mutual feature anchors. The standing setting is not changed.
