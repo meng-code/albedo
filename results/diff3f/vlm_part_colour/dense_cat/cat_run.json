@@ -1,0 +1,8 @@
+{
+ "commit": "c0e01b4544b48d417a6b0331faf03b85ebe28800",
+ "command": "scripts/idarb/vlm_part_colour.py colour --pairs cat --out outputs/diff3f/29_vlm_dense --loo 0.08 --ridge 0.1 --figure_dir outputs/diff3f/29_vlm_dense/fig_ridge0.1",
+ "regions": 288,
+ "answered": 278,
+ "dropped": 7,
+ "model": "claude subagent, single pass"
+}

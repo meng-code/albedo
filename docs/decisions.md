@@ -1963,3 +1963,22 @@ The repository will be used beyond the original course, so the owner rewrote `AG
 - Open: a measure (the keypoints, and the texture measures of the chain, on the smooth map);
   more regions on the head; the back side; the answers as anchors of the chain instead of
   the mutual feature anchors. The standing setting is not changed.
+
+## 2026-11-18 — The model's answers made dense and textured through the chain's texture step
+
+- The owner found the region colouring poor ("花纹都没了") and asked for point-by-point
+  colouring. Independent answers per vertex are not affordable (48 answers take a subagent
+  about 90 s) and would not keep a pattern, since neighbouring answers err independently by
+  about 1 %. Tried instead on cat → cat: 288 seeds in six batches of 48
+  (`vlm_part_colour.py make --pairs cat --batches 6 --out outputs/diff3f/29_vlm_dense`), six
+  subagents, 285 answers; 7 dropped by the leave-one-out test (`--loo 0.08`), the rest joined
+  by the smooth map with more regularisation (`--ridge 0.1`).
+- Finding 1: with vertex colours the stripes stay blurred at 288 answers as at 48. The mesh
+  has 7 207 vertices, so a colour per vertex cannot hold the stripes whatever the map is.
+- Finding 2: the same map written as a correspondence file (`vlm_map.npz`) and passed to
+  `transfer_texture.py --correspondence`, which makes a UV texture as the chain does, gives a
+  striped cat: triangles within 2 % 76.6 %, within 5 % 99.6 %, source used 71.4 %. The
+  standing chain on this pair has 77.2 % within 2 % (`results/diff3f/debias_chain/none.csv`).
+  One pair, no feature used on the model's side; mirrored area and keypoints not measured.
+  Files: `results/diff3f/vlm_part_colour/dense_cat/`.
+- The standing setting is not changed.

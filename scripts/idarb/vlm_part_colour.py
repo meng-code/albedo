@@ -14,7 +14,9 @@ there. No feature of the chain is involved.
            photo.png) and writes two coloured meshes and their previews:
              flat      every region in the median photo colour around its answer (regions
                        without an answer take the nearest answered region's colour)
-             smooth    the answers as anchors of a smooth map (affine plus radial basis
+             smooth    (also vlm_map.npz, a correspondence file for transfer_texture.py
+                       --correspondence) the answers as anchors of a smooth map (affine plus
+                       radial basis
                        functions, fit_prior) from the mesh into the photo plane; every vertex
                        takes the photo colour at its own mapped pixel, so patterns inside a
                        part come along
@@ -29,6 +31,7 @@ Usage (repository root, mesh environment):
 """
 
 import argparse
+import glob
 import json
 import os
 import sys
@@ -42,7 +45,7 @@ import match2d as m2  # noqa: E402
 import transfer_texture as tt  # noqa: E402
 import vlm_keypoint_trial as vk  # noqa: E402
 from correspondence_maps import load_mesh  # noqa: E402
-from refine_correspondence import farthest_points, fit_prior  # noqa: E402
+from refine_correspondence import farthest_points, filter_anchors, fit_prior  # noqa: E402
 from sweep_anchor_filter import git_commit  # noqa: E402
 
 
@@ -109,21 +112,33 @@ def source_photo(src_mesh, margin):
     photo = photo.copy()
     photo[~fg] = 255
     crop, box = m2.square_crop(photo, fg, margin)
-    return photo, fg, crop, box
+    return photo, vert, crop, box
+
+
+def read_answers(folder):
+    """The answers of a pair: answer.json in the folder and in its batch_<n> folders, merged."""
+    paths = [os.path.join(folder, "answer.json")]
+    paths += sorted(glob.glob(os.path.join(folder, "batch_*", "answer.json")))
+    ans = {}
+    for path in paths:
+        if os.path.exists(path):
+            with open(path) as f:
+                part = json.load(f)
+            ans.update({k: v for k, v in part.items() if k != "parts"})
+    return ans
 
 
 def make(args):
     for _group, name, _s, src_mesh, target, transform, extra in pair_rows(args.pairs):
         out = os.path.join(args.out, name)
         os.makedirs(out, exist_ok=True)
-        _photo, _fg, crop, box = source_photo(src_mesh, args.margin)
-        vk.draw_photo(crop, args.photo_size).save(os.path.join(out, "photo.png"))
+        _photo, _vert, crop, box = source_photo(src_mesh, args.margin)
 
         tmesh = load_mesh(ef.TARGET_MESH[target])
         Vd = np.asarray(tmesh.vertices, dtype=np.float64)
         Fd = np.asarray(tmesh.faces, dtype=np.int64)
         normals = np.asarray(tmesh.vertex_normals, dtype=np.float64)
-        seeds = farthest_points(Vd, args.regions)
+        seeds = farthest_points(Vd, args.regions * args.batches)
         region = cKDTree(Vd[seeds]).query(Vd)[1]
         views = six_views(ef.view_of(transform or extra), args.turn)
         visible, facing, pixels, images = [], [], [], []
@@ -136,11 +151,19 @@ def make(args):
             images.append(m2.render_target(Vd, Fd, v, args.render_size)[0])
         best = best_views(visible, facing)
         renders = {}
-        for i in sorted(set(best.tolist()) - {-1}):
-            ks = [int(k) for k in np.nonzero(best == i)[0]]
-            draw_marks(images[i], [(k + 1, pixels[i][k]) for k in ks]).save(
-                os.path.join(out, f"target_{i}.png"))
-            renders[f"target_{i}.png"] = [k + 1 for k in ks]
+        for b in range(args.batches):
+            # the seeds come in farthest-point order, so every batch is spread over the mesh
+            sub = out if args.batches == 1 else os.path.join(out, f"batch_{b}")
+            os.makedirs(sub, exist_ok=True)
+            vk.draw_photo(crop, args.photo_size).save(os.path.join(sub, "photo.png"))
+            for i in sorted(set(best.tolist()) - {-1}):
+                ks = [int(k) for k in np.nonzero(best == i)[0] if k % args.batches == b]
+                if not ks:
+                    continue
+                draw_marks(images[i], [(k + 1, pixels[i][k]) for k in ks]).save(
+                    os.path.join(sub, f"target_{i}.png"))
+                renders[os.path.relpath(os.path.join(sub, f"target_{i}.png"), out)] = [
+                    k + 1 for k in ks]
         np.savez_compressed(os.path.join(out, "regions.npz"), seeds=seeds, region=region,
                             views=np.asarray(views))
         meta = dict(pair=name, regions=int(len(seeds)), box=[int(b) for b in box],
@@ -159,16 +182,15 @@ def colour(args):
     os.makedirs(args.figure_dir, exist_ok=True)
     for _group, name, _s, src_mesh, target, _tr, _ex in pair_rows(args.pairs):
         folder = os.path.join(args.out, name)
-        answer = os.path.join(folder, "answer.json")
-        if not os.path.exists(answer):
+        ans = read_answers(folder)
+        if not ans:
             continue
-        with open(answer) as f:
-            ans = json.load(f)
         with open(os.path.join(folder, "meta.json")) as f:
             meta = json.load(f)
         z = np.load(os.path.join(folder, "regions.npz"))
         seeds, region, views = z["seeds"], z["region"], z["views"]
-        photo, fg, crop, box = source_photo(src_mesh, args.margin)
+        photo, vert, crop, box = source_photo(src_mesh, args.margin)
+        fg = vert >= 0
         tmesh = load_mesh(ef.TARGET_MESH[target])
         Vd = np.asarray(tmesh.vertices, dtype=np.float64)
         Fd = np.asarray(tmesh.faces, dtype=np.int64)
@@ -176,14 +198,29 @@ def colour(args):
         has = np.array([ans.get(str(k + 1)) is not None for k in range(len(seeds))])
         rc = np.array([vk.ruler_to_image(ans[str(k + 1)], box, meta["photo_size"])
                        for k in np.nonzero(has)[0]], dtype=np.float64)
+        diag = float(np.linalg.norm(Vd.max(axis=0) - Vd.min(axis=0)))
+        dropped = 0
+        if args.loo > 0:
+            # answers that the other answers predict elsewhere (a wrong side or part) are dropped
+            keep = filter_anchors(Vd[seeds[has]], rc, "loo", args.loo)
+            dropped = int((~keep).sum())
+            has[np.nonzero(has)[0][~keep]] = False
+            rc = rc[keep]
         radius = args.disc * box[2]
         seed_rgb = np.array([disc_colour(photo, fg, p, radius) for p in rc])
         # flat: unanswered regions take the nearest answered region's colour
         nearest = cKDTree(Vd[seeds[has]]).query(Vd[seeds])[1]
         flat = seed_rgb[nearest][region]
         # smooth: the answers as anchors of a map from the mesh into the photo plane
-        diag = float(np.linalg.norm(Vd.max(axis=0) - Vd.min(axis=0)))
-        smooth = pixel_colours(photo, fg, fit_prior(Vd[seeds[has]], rc, args.sigma * diag)(Vd))
+        mapped = fit_prior(Vd[seeds[has]], rc, args.sigma * diag, ridge=args.ridge)(Vd)
+        smooth = pixel_colours(photo, fg, mapped)
+        # the smooth map as a correspondence file (the partial-mesh vertex at every target
+        # vertex's mapped pixel), which transfer_texture.py turns into a UV texture and measures
+        rows, cols = np.nonzero(fg)
+        t2s = vert[rows, cols][cKDTree(np.stack([rows, cols], axis=1) + 0.5).query(mapped)[1]]
+        Vs = np.asarray(load_mesh(src_mesh).vertices, dtype=np.float64)
+        np.savez_compressed(os.path.join(folder, "vlm_map.npz"), t2s=t2s, src_pos=Vs[t2s],
+                            view=views[0])
 
         size = args.preview_size
         panels = [Image.fromarray(crop).resize((size, size), Image.LANCZOS).convert("RGB")]
@@ -203,13 +240,13 @@ def colour(args):
         for i, (im, title) in enumerate(zip(panels, titles)):
             sheet.paste(im, (i * size, 26))
             d.text((i * size + 8, 6), title, fill=(0, 0, 0))
-        d.text((8, size + 8), f"{name}: {int(has.sum())} of {len(seeds)} regions answered",
-               fill=(0, 0, 0))
+        note = f"{name}: {int(has.sum())} of {len(seeds)} answers used, {dropped} dropped"
+        d.text((8, size + 8), note, fill=(0, 0, 0))
         path = os.path.join(args.figure_dir, name + ".png")
         sheet.save(path)
         with open(os.path.join(args.figure_dir, name + "_run.json"), "w") as f:
             json.dump(dict(commit=git_commit(), command=" ".join(sys.argv),
-                           regions=int(len(seeds)), answered=int(has.sum()),
+                           regions=int(len(seeds)), answered=int(has.sum()), dropped=dropped,
                            model=ans.get("model", "")), f, indent=1)
         print(path, flush=True)
 
@@ -222,7 +259,13 @@ def main():
     ap.add_argument("--out", default="outputs/diff3f/28_vlm_part_colour")
     ap.add_argument("--figure_dir", default="results/diff3f/vlm_part_colour")
     ap.add_argument("--pairs", nargs="*", help="only these pair names")
-    ap.add_argument("--regions", type=int, default=48)
+    ap.add_argument("--regions", type=int, default=48, help="regions per batch")
+    ap.add_argument("--batches", type=int, default=1,
+                    help="regions x batches seeds in all; every batch gets its own renders in "
+                    "<pair>/batch_<n>/ (one set of images per model session)")
+    ap.add_argument("--loo", type=float, default=0.0,
+                    help="drop answers that the other answers predict farther away than this "
+                    "fraction of the answers' extent in the photo (0: keep all)")
     ap.add_argument("--photo_size", type=int, default=1000)
     ap.add_argument("--render_size", type=int, default=1000)
     ap.add_argument("--preview_size", type=int, default=520)
@@ -232,6 +275,9 @@ def main():
                     help="radius of the colour sample, of the photo crop's side")
     ap.add_argument("--sigma", type=float, default=0.25,
                     help="width of the smooth map's basis functions, of the mesh diagonal")
+    ap.add_argument("--ridge", type=float, default=1e-3,
+                    help="regularisation of the smooth map: larger values follow the single "
+                    "answers less closely and average their errors out")
     args = ap.parse_args()
     if args.mode == "make":
         make(args)
