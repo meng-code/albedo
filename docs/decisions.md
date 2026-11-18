@@ -1725,3 +1725,41 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   of chairgen → armchair with three threads reproduces the 11-17 row exactly. BLAS summation
   order changes which near-tied samples become mutual anchors. The keypoint counts are
   identical. Comparisons between runs should use the same `--threads`.
+
+## 2026-11-18 — MARCO as the 2D matcher (stage 2): above DINOv2, below the Diff3F nearest neighbour
+
+- Why: after the oracle test above, a candidate matcher is judged on its own matches. MARCO
+  (CVPR 2026, github.com/visinf/MARCO at 1ec16b9, Apache-2.0, see `NOTICE.md`) is a DINOv2
+  ViT-L/14-reg with adapters trained on annotated keypoint pairs (AP-10K, SPair-71k) and an
+  upsampling head: 1024 channels, one cell per 3.5 px. Smoke test on hpc02: weights load with
+  all keys matched, `forward_backbone` returns one tensor (1, 2, 1024, 220, 220) at 770 px,
+  0.26 s per image, about 3.6 GB of GPU memory.
+- Run (hpc02, commit b29df8b, `results/diff3f/match2d_marco/`, 855 s):
+  `python scripts/idarb/sweep_match2d.py --configs marco:770:3 marco:840:5 dinov2:840:5
+  --view_root outputs/diff3f/24_debias/none --feature_dir <features_zoom2>`: the photo against
+  shaded grey renders of the target (`match2d.py`, mutual matches, features L2-normalised),
+  89 keypoints on the 13 annotated same-category pairs, 3D error (image-plane error in
+  brackets).
+
+  | method | hits PCK@2 | PCK@2 % | PCK@5 % | PCK@10 % | mean error | vs nearest neighbour [95 %] |
+  |---|---|---|---|---|---|---|
+  | Diff3F nearest neighbour | 56 (57) | 62.9 (64.0) | 77.5 | 89.9 | 0.0483 | |
+  | MARCO 770 px, 3 views | 52 (53) | 58.4 (59.6) | 75.3 | 92.1 | 0.0412 | −4.5 [−15.3, 5.8] |
+  | MARCO 840 px, 5 views | 48 (52) | 53.9 (58.4) | 76.4 | 91.0 | 0.0360 | −9.0 [−20.2, 2.4] |
+  | DINOv2 ViT-B/14 840 px, 5 views | 41 (45) | 46.1 (50.6) | 75.3 | 87.6 | 0.0497 | −16.9 [−25.9, −8.1] |
+
+  The DINOv2 control reproduces the 50 % (image plane) of 2026-10-25.
+- By pair (hits of the nearest neighbour / MARCO 770 px): cow 4 / 5, cat 5 / 6, cat5 → cat
+  6 / 6, cat → lion 5 / 4, chair1 → armchair 4 / 4, bird 1 / 2, superman → man 7 / 5,
+  superman → posed 6 / 3, okapi → camel 5 / 3, okapi1 → camel 5 / 6, labubu → man 2 / 2,
+  panda 3 / 4, dragon → lizard 3 / 2. On the eight pairs whose categories are in MARCO's
+  training sets (56 keypoints) 38 against 35; on the other five (33 keypoints) 18 against 17.
+  The two superman pairs lose 5 of 13.
+- Other numbers: 15–31 s per pair at 770 px including the model build; 4 000–17 000 mutual
+  matches per pair against 750–2 400 for DINOv2.
+- Reading. As a 2D matcher against untextured renders MARCO gains 7–11 keypoints over DINOv2
+  ViT-B and has the lowest mean error of all rows (fewer far-off matches, PCK@10 92 %), but at
+  the 2 % threshold it stays under the Diff3F nearest neighbour and far under the 70 % line.
+  No difference to the nearest neighbour is outside its interval. The 2D route with this
+  matcher is not a replacement for the chain. Still open from the plan: MARCO features lifted
+  onto the samples and used as the similarity of the last step (stage 3).

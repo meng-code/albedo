@@ -1,0 +1,9 @@
+method,pairs,keypoints,hits_pck2,pck2_pooled,mean_error,diff_vs_nn,ci_low,ci_high
+nearest_neighbour,13,89,56,62.9,0.0483,,,
+nearest_neighbour_xy,13,89,57,64.0,0.0467,,,
+marco_770_3,13,89,52,58.4,0.0412,-4.5,-15.3,5.8
+marco_770_3_xy,13,89,53,59.6,0.0376,,,
+marco_840_5,13,89,48,53.9,0.036,-9.0,-20.2,2.4
+marco_840_5_xy,13,89,52,58.4,0.0323,,,
+dinov2_840_5,13,89,41,46.1,0.0497,-16.9,-25.9,-8.1
+dinov2_840_5_xy,13,89,45,50.6,0.0482,,,
