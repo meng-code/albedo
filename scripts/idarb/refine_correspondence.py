@@ -97,7 +97,8 @@ def farthest_points(X, n, seed=0):
 def fit_prior(X, Y, sigma, ridge=1e-3):
     """A smooth map X -> Y through anchor pairs: an affine part (least squares, or a similarity
     transform when there are fewer than 8 anchors) plus Gaussian radial basis functions on the
-    residuals, with ridge regularisation. Returns predict(Q)."""
+    residuals, with ridge regularisation (sigma <= 0: the affine part alone). Returns
+    predict(Q)."""
     X = np.asarray(X, dtype=np.float64)
     Y = np.asarray(Y, dtype=np.float64)
     n = len(X)
@@ -114,6 +115,8 @@ def fit_prior(X, Y, sigma, ridge=1e-3):
         def base(Q):
             return rp.transform(Q, s, R, t)
 
+    if sigma <= 0:
+        return base
     res = Y - base(X)
     D = np.linalg.norm(X[:, None] - X[None], axis=2)
     K = np.exp(-(D**2) / (2 * sigma**2))
@@ -722,6 +725,9 @@ def main():
         "--radius", type=float, default=0.05, help="prior window, of the source diagonal"
     )
     ap.add_argument("--w_prior", type=float, default=1.0)
+    ap.add_argument("--prior_sigma", type=float, default=0.25,
+                    help="width of the prior's radial basis functions, of the target diagonal "
+                    "(0: the affine part alone)")
     ap.add_argument(
         "--parts",
         help="part_anchors.npz of part_anchors.py: candidates outside the matched part are "
@@ -962,6 +968,7 @@ def main():
         iters=args.iters,
         radius_s=args.radius_s,
         w_smooth=args.w_smooth,
+        sigma=args.prior_sigma,
         pred=dense_pred,
         k_prior=args.k_prior,
         parts=parts,
