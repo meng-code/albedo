@@ -1825,3 +1825,66 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   What the measurement establishes is the mechanism: on dissimilar pairs the rigid filter
   removes anchors by region, so the prior extrapolates there. The regions are spatial, not
   named parts; a part-level measure needs part names on both meshes, which do not exist yet.
+
+## 2026-11-18 — MARCO lifted onto the samples (stage 3): fused with Diff3F the chain gains texture consistency clearly and keypoints within noise
+
+- What: `marco_features.py` writes MARCO features for the same 15 000 samples as the Diff3F
+  files (partial mesh: the photo's own pixels; full mesh: the mean over 24 shaded grey renders,
+  elevations −30 / 0 / 30 × 8 azimuths, no painting model), so they can serve as the similarity
+  everywhere. 25 meshes, 609 s on hpc02, 537 MB kept on the server (`~/semtex/features_marco`);
+  97–100 % of the samples of a full mesh are seen by a view (armchair, roundchair, lizard
+  88–89 %, panda 68 %; the rest take the nearest seen sample). One fix from the server
+  (75597b9): `man_full.npz` numbers the 41 320 corners of `man.obj`, so points are found by
+  position when the indices do not fit.
+- Runs (hpc02, code 3e4f755 plus the fix, `results/diff3f/marco_lifted/`): `rerank_check.py
+  --a <features_zoom2> --b <features_marco>`; `debias_check.py --feature_dir <features_marco>
+  --variants none`; the standing chain through `sweep_debias.py --configs none --jobs 4
+  --threads 2` on `features_marco` and on `fuse_features.py --a <features_zoom2> --b
+  <features_marco> --w 0.25`; `compare_chain_runs.py --base results/diff3f/debias_chain
+  --other results/diff3f/marco_lifted/chain_fused` (and `chain_marco`) for the paired rows.
+- At the keypoints, without the chain (89 keypoints, 13 pairs; A = Diff3F, B = MARCO):
+
+  | method | hits | PCK@2 % | mean error | vs Diff3F nearest neighbour [95 %] |
+  |---|---|---|---|---|
+  | Diff3F nearest neighbour | 56 | 62.9 | 0.0483 | |
+  | MARCO nearest neighbour | 51 | 57.3 | 0.0350 | −5.6 [−12.1, 1.2] |
+  | MARCO choosing among Diff3F's top 64 | 51 | 57.3 | 0.0439 | −5.6 [−12.0, 1.1] |
+  | Diff3F choosing among MARCO's top 64 | 57 | 64.0 | 0.0289 | +1.1 [−5.3, 6.5] |
+  | fused, weight 0.25 on Diff3F | 60 | 67.4 | 0.0305 | +4.5 [−4.1, 13.1] |
+  | fused, weight 0.5 | 56 | 62.9 | 0.0302 | 0.0 [−6.2, 5.8] |
+  | fused, weight 0.75 | 56 | 62.9 | 0.0383 | 0.0 [−3.0, 3.4] |
+
+  A sample within 2 % of the truth is among the top 64 for 80.9 % (Diff3F) and 85.4 % (MARCO)
+  of the keypoints. Peak check of the MARCO features (Diff3F in brackets): most similar sample
+  within 5 % of the true point is within 2 % for 64.0 % (67.4 %); the re-match from the truth
+  70.8 % (76.4 %); hub share 61.0 % (45.4 %), wrong matches on a hub 73.7 % (39.4 %).
+- The chain (standing setting, same `--jobs` and `--threads` as the control):
+
+  | features | hits of 89 | PCK@2 % | PCK@5 / @10 hits | mean error | anchors | within 2 % | within 5 % | mirrored area % |
+  |---|---|---|---|---|---|---|---|---|
+  | Diff3F (control of this date) | 54 | 60.7 | 69 / 81 | 0.0376 | 122.6 | 68.2 | 96.7 | 11.6 |
+  | MARCO lifted | 50 | 56.2 | 74 / 85 | 0.0320 | 254.8 | 74.0 | 97.4 | 7.1 |
+  | fused, weight 0.25 on Diff3F | 57 | 64.0 | 75 / 86 | 0.0273 | 193.1 | 74.2 | 97.4 | 6.3 |
+
+  Paired against the control (bootstrap over pairs): fused, keypoints +3.4 points [−3.7, 10.6];
+  triangles within 2 % +6.0 points [3.6, 8.6], up on 14 of 16 pairs; mirrored area −5.3 points
+  [−7.9, −3.0], down on 14 of 16. MARCO alone: keypoints −4.5 [−11.4, 2.5]; within 2 % +5.8
+  [3.7, 8.2]; mirrored area −4.5 [−6.9, −2.3]. Per pair the fused chain gains on cow, cat,
+  cat5 → cat, okapi1 → camel, chair1 → armchair, panda and dragon → lizard (one keypoint each)
+  and loses one on okapi → camel, cat → lion, labubu → man and bird. The two annotated cross
+  pairs (20 keypoints, nearest neighbour only): Diff3F 2 hits, MARCO 5, fused 6.
+- Reading.
+  1. MARCO's similarity is coarser than Diff3F's at the 2 % threshold (fewer hits, a lower
+     peak-5 value, more hubs) and better beyond it (lowest mean errors, more hits at 5 % and
+     10 %, a larger candidate bound). The two sets fail on different keypoints, so the fused
+     similarity is the first variant whose mean error and PCK@5 / @10 are better than both.
+  2. The texture measures move outside their intervals with either MARCO or the fused set:
+     about 6 points more triangles within 2 % and the mirrored area roughly halved (11.6 to
+     6.3 %), on 14 of 16 pairs. MARCO gives twice the mutual anchors of Diff3F.
+  3. The keypoint gain at 2 % (54 to 57, 64.0 %) is inside its interval and under the 70 %
+     line, and the weight 0.25 was chosen on these same 89 keypoints out of three, so the 60
+     of the fused nearest neighbour is an optimistic figure. The texture measures were not
+     used for the choice.
+  4. Caveats: MARCO was trained on AP-10K and SPair-71k, whose categories include cat, cow,
+     chair, bird and person; the full meshes are seen untextured. The standing setting is not
+     changed by this entry.

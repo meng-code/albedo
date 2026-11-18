@@ -1,0 +1,2 @@
+config,pairs_keypoints,keypoints,hits_pck2,pck2_pooled,mean_error,pairs_texture,anchors,within_2pct,within_5pct,mirrored_area,diff_vs_none,ci_low,ci_high,release_before,release_after
+none,13,89,57,64.0,0.0273,16,193.1,74.2,97.4,6.3,,,,,
