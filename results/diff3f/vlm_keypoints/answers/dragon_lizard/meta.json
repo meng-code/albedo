@@ -1,0 +1,25 @@
+{
+ "pair": "dragon_lizard",
+ "keypoints": 6,
+ "box": [
+  -35,
+  -63,
+  506
+ ],
+ "photo_size": 1000,
+ "renders": {
+  "target_0.png": [
+   1,
+   2,
+   3,
+   4,
+   5
+  ],
+  "target_2.png": [
+   6
+  ]
+ },
+ "unseen": [],
+ "commit": "a04985d507204f025258958dfb659b1ed7dfc932",
+ "command": "scripts/idarb/vlm_keypoint_trial.py make"
+}

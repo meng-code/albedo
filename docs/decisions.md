@@ -105,3 +105,1924 @@ The repository will be used beyond the original course, so the owner rewrote `AG
   The report now quotes 0.93 to 0.996.
 - `AGENTS.md` was merged into `CLAUDE.md` and removed. `README.md` was rewritten for the current project,
   and `NOTICE.md` now lists rembg (MIT) and the U²-Net model it downloads (Apache-2.0).
+
+## 2026-10-20 — Next step: register partial meshes to full meshes with Diff3F features
+
+- **Direction (supervisor):** after the single-image mesh, do "3D point set registration" and "mesh and
+  partial mesh registration", using the features of Diff3F (Dutt, Muralikrishnan and Mitra, CVPR 2024,
+  https://diff3f.github.io). Our relief mesh is the partial mesh; a full mesh of the same kind of object
+  is the target. The correspondence found this way is what will later carry the albedo from the image
+  onto a full mesh.
+- **Why Diff3F:** its per-vertex features are semantic, not geometric, so they match across different
+  poses, proportions and coordinate systems and need no training; the paper reports state-of-the-art
+  correspondence on SHREC'19/'20. The paper does not test partial shapes; whether its features hold up on
+  our one-sided relief meshes is the open question of this experiment.
+- **Code:** `third_party/Diff3F/` (unmodified upstream, commit 5bda687, MIT; see `NOTICE.md`),
+  `scripts/idarb/diff3f_features.py` (server, new `diff3f` environment) and
+  `scripts/idarb/register_partial.py` (CPU). Design choices:
+  - `runwayml/stable-diffusion-v1-5` no longer exists on Hugging Face; the script loads the same weights
+    from the `stable-diffusion-v1-5/stable-diffusion-v1-5` mirror, fp16 files only (about 4 GB in total
+    with the two ControlNets and DINOv2).
+  - Features are stored for at most 15000 randomly chosen vertices (the whole mesh is still rendered),
+    as the paper does for point clouds; a full relief mesh has 36k to 92k vertices.
+  - `--front_only` renders the partial mesh only from the hemisphere in front of it (elevation ±45°,
+    azimuth ±75°), because a one-sided sheet seen from behind would give meaningless images.
+  - Registration: mutual nearest-neighbour feature matches → RANSAC similarity transform (Umeyama) →
+    rigid ICP with the scale fixed, plus a feature-free ICP baseline. Distances are reported as fractions
+    of the target's bounding-box diagonal.
+- **First experiment (planned):** cow and cat. Source: `outputs/mesh_depth/{cow,cat}/relief.ply` (our
+  meshes with the depth prior); target: `third_party/Diff3F/meshes/cow.obj` (2759 vertices) and
+  `meshes/cat.off` (7207 vertices), the sample meshes that ship with Diff3F.
+- **Feature extraction (server, A40):** 100 views per mesh, 15000 sampled vertices for the partial meshes.
+  Run times 373 to 947 s per mesh (6 to 13 minutes of GPU work, peak 10 to 12 GB), far slower than the
+  2 to 3 minutes the paper reports, because Diff3F enables diffusers' model CPU offload; `--no_cpu_offload`
+  was added for the next run. Commands, commit and timings are in the commit message of
+  `results/diff3f/` (first run) and in `transform.json`.
+- **First registration run (mutual matches only, best RANSAC hypothesis):** cat works, cow fails.
+  Cat: median distance to the target 0.0118 of the diagonal, 75.5 % of points within 2 %
+  (feature-free ICP baseline: 0.0491 / 23.6 %, and the wrong way round). Cow: only 144 mutual matches;
+  RANSAC chose a transform with scale 0.295 (bounding-box ratio 0.51) that put the whole partial cow on
+  the full cow's head, median 0.0313 / 33.9 %, worse than the baseline (0.0217 / 45.2 %). The cartoon
+  cow's head is much larger than the realistic cow's, so the head matches were the most self-consistent.
+- **Second run (same features, registration changed):** matches in both directions (8808 for cow,
+  11037 for cat), scale limited to 0.4 to 2.5 times the bounding-box ratio, up to 8 RANSAC hypotheses
+  refined by ICP and the one with the best feature agreement selected. Cow: scale 0.429, median 0.020,
+  RMS 0.031, 90.7 % of points paired by ICP, agreement 0.565 (baseline 0.0217 / 0.0418 / 0.420); the
+  head-only transform (scale 0.29) is still among the candidates with agreement 0.27 and is rejected.
+  Cat: median 0.0117, agreement 0.689 (baseline 0.049 / 0.245). Both previews show the partial mesh on
+  the right part of the full mesh. Run on the laptop with the server's feature files;
+  `results/diff3f/{cow,cat}/` holds this run.
+- **What the residual means:** a similarity transform cannot fit a cartoon cow's head and body to a
+  realistic cow at the same time; the 2 % median is the compromise. If the final goal (albedo transfer by
+  correspondence) needs closer surfaces, the next step is a non-rigid refinement after this alignment,
+  or using the feature correspondences directly without a global transform.
+- **Registration ablation (same day, `scripts/idarb/eval_registration.py`, `results/diff3f/ablation.csv`;
+  details in `scripts/idarb/README.md`, section 5):**
+  - Ground truth: `make_partial_mesh.py` cuts the camera-visible part of Diff3F's cow and cat meshes
+    (1248 of 2759 and 2821 of 7207 vertices) into the camera frame with a known transform; their features
+    are computed like the real relief meshes (`--front_only`, with `--no_cpu_offload`: about 4 minutes
+    per mesh, 10.3 GB). Every setting registers them exactly (rotation error 0°, correspondences 100 %
+    within 1 % of the diagonal), so the method itself is sound on partial meshes; the 2 % residual on the
+    real cow is the cartoon-versus-realistic gap. The features alone place only 30 to 39 % of the points
+    within 1 % of the true point (86 to 97 % within 5 %): they find the part, the geometry the point.
+  - Kept as default: matches in both directions, 8 candidates, geometric ICP with the scale fixed,
+    selection by feature agreement. The consensus filter, normal checks and more seeds change nothing.
+  - Not default: feature-guided ICP (with a refitted scale it shrinks the source; with the scale fixed it
+    equals plain ICP at 5 to 8 times the time) and the depth factor on z (recovers a halved or doubled
+    relief depth to within 10 to 30 % on the synthetic meshes and fixes the pose, but is not determined
+    on the real cat, whose body is thinner than the 5 % tolerance: 0.48 or 1.76 depending on the start).
+  - The registered partial lies on the near side of the target (normals agree for 90 % / 93 % of close
+    pairs), so the albedo transfer `target_from_source_colors_registered.ply` paints the right side.
+- **Painting and per-part refinement (same day):** the albedo transfer now paints a subdivided
+  target mesh and chooses, for every covered vertex, the source point that is close, of the same
+  k-means part and of the most similar feature (`paint_target()`); stripes and markings follow the
+  body, but detail smaller than the registration residual (the cartoon cow's eyes and muzzle) still
+  lands next to, not on, the real feature. `--piecewise` aligns each k-means part on its own with a
+  clipped scale and rotation, blended between parts; safe on the synthetic pairs with ground truth,
+  helpful on the depth-squashed ones and on the cat (median 0.0116 → 0.0099, agreement
+  0.689 → 0.707), no change on the cow because its head would need more deformation than the limits
+  allow. Kept optional; the next step for such cases is a real non-rigid deformation of the head.
+- **Seven more pairs (server batch 1, same day; `results/diff3f/<pair>/`):** superman → man.obj and
+  posed_human.off, okapi and okapi1 → camel.obj, cat5 → cat.off, cat → lion.off, labubu → man.obj.
+  All register (medians 0.011 to 0.028 of the diagonal; table in `scripts/idarb/README.md`). The
+  cross-species pairs work as the paper claims: the okapi's striped legs land on the camel's legs and
+  the cat's spots on the lion. The toy-to-human pair has a low feature agreement (0.32), so its small
+  distances mean little. Next: chairs, panda, bird and dragon against CC-BY Objaverse meshes
+  (`results/diff3f/targets/`, batch 2).
+- **Seven more pairs (server batch 2, 2026-10-21; Objaverse targets):** chairs, panda, bird and
+  dragon. Five register well (panda best: median 0.0104, agreement 0.81), chair10 is poor (its relief
+  mesh is in 6 pieces), and the stone-bird figurine is a failure of a new kind: the registration
+  shrinks the blob onto the sparrow's belly (small distances, part agreement 0.46). Table in
+  `scripts/idarb/README.md`.
+- **Painting with ground truth, symmetric completion (2026-10-21, night):** `eval_painting.py` paints
+  the synthetic partial meshes back onto their full meshes with a known mirror-symmetric colour field:
+  covered vertices come out within 3.6 / 4.4 (RGB, 0 to 255), feature-only transfer within 7.7 / 8.0,
+  and the nearest-point, feature-guided and part-aware painting variants are indistinguishable when
+  the alignment is exact. `paint_target()` now fills the far side of a bilaterally symmetric target
+  through its symmetry plane (mirrored vertices as accurate as covered ones on the synthetic field;
+  cow 17 % of the vertices, panda 7 %). Also fixed: without `--piecewise` the painted files were
+  overwritten by point clouds (an `else` attached to the wrong `if`).
+- **Scale bands and coverage discount (2026-10-21, night):** the stone bird collapsed because the
+  best-inlier RANSAC solution shrank it into the sparrow's belly (scale 0.38 of the bounding-box
+  ratio, coverage 0.16). RANSAC now runs per scale band so candidates exist at every plausible
+  scale, and the selection score discounts candidates that cover less than 0.2 of the target
+  (registered pairs: 0.24 to 0.75). Averaging the source- and target-side agreements was tried and
+  rejected: it rewards larger scales (the dragon moved to a worse solution). Validated on all 22
+  pairs before adoption (see `ablation.csv`).
+- **Stored results slimmed (2026-10-21, night):** `results/diff3f/<pair>/` now keeps only metrics,
+  transform, correspondences, `render.png` and one painted mesh (decimated to 40000 triangles when
+  larger): 24 MB for 18 folders instead of 192 MB. The branch history still carries the larger files
+  the first result pushes contained (about 180 MB in `diff3f-more-pairs`, `diff3f-more-pairs2` and
+  earlier commits); whether to rebuild the branch without them before merging is the owner's call.
+- **Depth factor with ground truth on deformed geometry (2026-10-21, night):** synthetic cow partials
+  cut with the depth halved / doubled and featured as such: `--depth_scale` finds 1.76 (true 2) and
+  0.65 (true 0.5), cutting the rotation error from 12.8° / 16.4° to 2.1° / 5.5° and lifting the
+  correspondences within 1 % from 15 % to 94 % (halved case); harmless when the depth is right.
+  Still optional, because on thin real objects the agreement cannot pick the factor.
+- **Full-resolution colours (2026-10-21):** after reading Foti et al., "Heat Kernel Textures"
+  (arXiv 2609.07557; a UV-free texture representation fitted by differentiable rendering, not a
+  correspondence method), the cheap part of its lesson was applied: the painting now takes colours
+  from every source vertex (36k to 92k) instead of the 15000 feature points, and subdivides the
+  target twice. Sharper stripes and markings; placement unchanged. HKTex itself would only improve
+  how the transferred texture is stored and rendered; adopting it means Mitsuba 3 + Dr.Jit on the
+  GPU, deferred until the supervisor confirms the direction. Functional maps (pyFM inside
+  third_party/Diff3F) are the more relevant next step for placement.
+- **Functional maps, not adopted (2026-10-21):** with Diff3F descriptors and pyFM, 50 or 100
+  eigenfunctions, whole or cropped target, with ZoomOut: 13 to 24 % of the target vertices land
+  within 1 % of the true source vertex on the synthetic pairs, against 40 to 52 % for feature
+  matching and 100 % for the registration (`results/diff3f/functional_map_eval.csv`). The method
+  assumes shared low-frequency structure, which a one-sided relief and a full body lack. The eye
+  placement therefore needs either a non-rigid deformation driven by the features or a better
+  single-image mesh, not a different correspondence solver.
+
+## 2026-10-21 — Supervisor's direction after the group meeting: the correspondence first
+
+- The priority is the semantic correspondence between the partial mesh and the full mesh: make it
+  accurate, show it as "same part, same colour" maps on both meshes, and start from nearest-neighbour
+  matching in feature space. Painting is an application of the correspondence, not the goal.
+- `scripts/idarb/correspondence_maps.py` draws the maps (joint feature PCA, and the target coloured by
+  its nearest neighbour) for every pair; `results/diff3f/<pair>/correspondence_maps.png`. The feature
+  maps agree part by part on all 16 real pairs; nearest neighbour alone places 40 to 52 % of the
+  target vertices within 1 % of the true vertex on the synthetic pairs (87 to 94 % within 5 %), with
+  the errors inside parts. Next: improve the nearest-neighbour correspondence itself (denser feature
+  sampling, more views or other UNet layers on the server; mutual-neighbour and surface-consistency
+  filters on the laptop), measured on the synthetic pairs; the registration (100 % on them) is the
+  upper bound.
+
+## 2026-10-21 — Texture transfer, not vertex colours
+
+- Shown the albedo carried over by the nearest-neighbour table (one colour per vertex, the lion's
+  5 000 vertices), the supervisor said this is not what is wanted: the texture itself must be
+  transferred, so that the inside of a triangle shows the image and not a blend of three colours.
+- `scripts/idarb/transfer_texture.py` transfers texture coordinates instead of colours. The relief is a
+  height field over the albedo image, so each relief vertex is one pixel and the albedo image is its
+  texture; every target vertex takes the texture coordinates of the relief vertex it is matched to.
+  Output: `target_textured.obj` + MTL + PNG per pair (MeshLab shows the texture), a render
+  (`results/diff3f/<pair>/texture_transfer.png`) and, as the measure of the correspondence's
+  consistency, the fraction of triangles whose corners map within 2 % / 5 % of the image diagonal of
+  each other (`texture_transfer.json`). Cat → lion: 66.9 % / 85.6 % of all triangles.
+- The correspondence table is an input (`--correspondence`), so any improvement of the matching is
+  judged by rerunning this script: more consistent triangles, fewer streaks.
+
+## 2026-10-21 — Cross-category pairs, and a second number next to the triangle span
+
+- The supervisor asked for very different source and target (the Labubu toy on the camel). Ten
+  cross-category pairs were run from the features alone, without registering the pair:
+  `results/diff3f/cross/`. The part level holds (head on head with the eyes at the eyes, shirt on the
+  body, jeans on the legs, shoes on the hooves; Superman's boots at the bottom of the camel's legs;
+  the panda's black limbs and white belly on the man); what the source lacks is filled with the
+  nearest thing (the camel's hump takes the head). Mean consistency 46 % / 65 % against 57 % / 79 %
+  within a category. A control pair with no relation (chair on the cow) also gives a picture, so the
+  pictures are judged by the numbers.
+- The triangle span alone rewards a collapse of the matching onto a few source points (all spans
+  zero), which the stone bird showed (67.7 % within 2 % while using 28 % of its relief).
+  `transfer_texture.py` therefore also reports **source used**, the fraction of the relief's image
+  cells that receive at least one match; the two are read together.
+
+## 2026-10-21 — Improving the details: one side only, a prior for the matching, manual landmarks
+
+- Supervisor's verdict on the nearest-neighbour texture transfer: fine from afar, poor in the
+  details; improve it; texture one side only and leave the back blank; try manual landmarks.
+- `transfer_texture.py` textures only the faces visible from the relief's camera (depth-buffer
+  visibility); the rest point at a grey strip of the texture. Numbers are on the textured faces.
+- `refine_correspondence.py`: anchors (mutual nearest neighbours, or landmarks) → a smooth
+  target-to-source position prior (affine + Gaussian RBF) → each target vertex takes the most
+  similar of its 64 candidates near its predicted position → two smoothing passes. Synthetic ground
+  truth: cat 52 → 73 % within 1 %, cow 40 → 57 %; with 8 exact landmarks 92 % (the synthetic pairs
+  are rigidly related, so exact landmarks pin the map down). The prior is what helps; smoothing on
+  its own does nothing.
+- Landmarks: MeshLab .pp files or `pick_landmarks.py` (grid render, pixel coordinates, snap to the
+  silhouette). Eleven picked on cat → lion (nose, ear tip, eye, chin, paws, tail tip, rump, back,
+  belly, chest, checked on zoomed renders and silhouette extremes after the owner caught a chin
+  matched to a throat, a cheek matched to a nose and a heel matched to a toe): 70 % / 95 % of the
+  textured triangles within 2 % / 5 %, against 69 % / 91 % for nearest neighbour and 74 % / 96 %
+  for the automatic anchors; the landmarks plus the mutual anchors give 73 % / 96 %, the best of
+  the four. Consistent picking matters more than the number of landmarks. On a real pair a few landmarks do not beat the
+  automatic anchors; they guarantee the picked features and little else.
+
+## 2026-10-22 — Overnight: smooth field, texture-map quality, landmarks on the hard pairs
+
+- The owner asked for the texture to come out clearer and left the night to it. Three things:
+- **Smooth correspondence field** (`refine_correspondence.py --field 0.1 --field_order 2`): a
+  continuous source-position field fitted to the matches with Laplacian regularisation, texture
+  coordinates taken straight from it. Keeps the synthetic accuracy of the matches, lifts the
+  16 same-category pairs to 66.5 % / 91.1 % / 70 % (triangles within 2 % / 5 %, relief used) from
+  65.4 % / 89.1 % / 62 %, and visibly removes the streaks (rosettes and stripes stay whole on the
+  lion). Stronger smoothing is cleaner still but costs synthetic accuracy; left at 0.1.
+- **Texture-map quality** (`uv_metrics.py`, `results/diff3f/uv_quality.csv`): conformal distortion
+  and flipped triangles, the measures RealSkin (arXiv 2607.12495) reports for the same
+  image-to-3D setting (a partial surface from one photo, the target cut to the visible part). Same
+  category: median distortion 674 → 8.3 → 4.1 and flips 48 → 39 → 29 % for nearest neighbour,
+  refined matches and the field. Flips are the next target; a re-solve that down-weights the
+  vertices of flipped triangles (`--field_iters`) was tried and barely moved them (24 → 23 % on
+  cat → lion) while costing synthetic accuracy, so it is not used.
+- **Landmarks on Labubu → camel and Labubu → lion**: picked by two Opus annotation agents and
+  verified by two Opus checking agents (both annotators had put the Labubu chin on the fur under
+  the face; one camel toe was on the far foot; fixed before use). Ten landmarks reduce flips by
+  4 to 6 points and lift the 5 % figure by about 4 points on these pairs; they do not make a toy
+  and a camel correspond. The automatic pipeline already reaches 83 to 97 % within 2 % on the
+  cross pairs whose shapes are closer (panda, dragon and cat on the man).
+- Literature checked tonight: SemTex (the group's own paper; code not yet released) works in image
+  space with patch matching plus diffusion refinement; DenseMatcher and TriTex need trained
+  networks; RealSkin's code is unreleased. Nothing to pull and run on the laptop; the ideas taken
+  are the sub-mesh cut to the visible side and the distortion/flip metrics.
+- **As-rigid-as-possible field** (`--arap 10 --arap_weight 3`, folder `07_texture_arap/`): every
+  vertex's one-ring is asked to move by a rotation and a scale, reflections rejected. The step that
+  makes the texture crisp: same-category median conformal distortion 4.1 → 2.0, triangles stretched
+  more than tenfold 31.6 → 11.0 %, within 5 % 91.1 → 96.8 %, synthetic accuracy kept. Cross pairs
+  9.1 → 2.5 and 45.5 → 12.3 %. Flips stay (23 % of the screen area on same-category pairs): they are
+  mirrored regions of the feature matching, not triangle noise.
+- Not adopted: subdividing the target before matching (no gain per triangle), the rigid
+  registration as the prior (no better than the mutual anchors), re-solving the field with the
+  flipped triangles down-weighted (no gain, accuracy lost).
+
+## 2026-10-22 — Correction after a code review (same night)
+
+- An Opus review agent checked `uv_metrics.py`, `refine_correspondence.py` and `transfer_texture.py`
+  and found: flips had been counted on triangles with no texture area (so "flips 48 → 29 %" was the
+  disappearance of degenerate triangles, not of mirrored ones); the distortion was measured in
+  normalised uv instead of pixels; `man.obj` loaded as a triangle soup (41 320 vertices for 6 890
+  positions), so no smoothing had acted on the five pairs with the man; field positions could land
+  in the texture's blank strip; the rigid-registration prior had been mixed into the anchors in the
+  comparison. All fixed; the five man pairs rerun through every step, the field and ARAP textures
+  of every pair rebuilt, every number recomputed. Corrected picture, 16 same-category pairs:
+  nearest neighbour / refined / smooth field / ARAP within 5 % 82.8 / 88.9 / 89.3 / 96.6 %;
+  triangles with no texture patch 65 / 38 / 0 / 1 %; median conformal distortion of the rest
+  4.1 / 3.2 / 3.6 / 2.0; mirrored screen area 23 / 19 / 21 / 23 %, i.e. unchanged by any step.
+  The numbers in the two entries above that disagree with these are superseded.
+
+## 2026-10-22 — IDArb above 512 px: the normals collapse
+
+- To raise the texture resolution the owner suggested running IDArb at 1024 and 2048 (its
+  `max_length` is a constant in the dataset loader). The server ran both on cat, okapi, superman and
+  panda with the released weights: no out-of-memory on the 24 GB card (1024: fp32 + xformers,
+  17.8 GB peak, 30 s per image; 2048: fp16 + xformers + VAE slicing, 15 GB peak, 230 s per image).
+- The outputs are unusable for geometry: the normal map collapses to an almost flat, camera-facing
+  field (spread of the unit normals inside the object 0.34 / 0.37 / 0.19 at 512, 0.09 / 0.08 / 0.06
+  at 1024, 0.06 / 0.05 / 0.04 at 2048; mean n_z 0.84 → 0.98 → 0.99). Metallic becomes erratic
+  (cat 0.59 → 0.99). Inputs that are native 1024 fail the same way, so it is the model outside its
+  training size, not upscaling. The albedo stays close to the input (1024 removes less lighting;
+  2048 adds a fine generated hatching on fur). Comparison images are kept in
+  `outputs/diff3f/99_experiments/idarb_hires/`; the temporary branch was deleted.
+- Decision: geometry stays at 512. For a sharper texture, use the 1024 albedo on the 512 relief
+  (`transfer_texture.py --albedo_image`), which doubles the texture detail at the cost of slightly
+  weaker lighting removal; tiled 512 inference would be the way to raise the normals as well.
+
+## 2026-10-22 — Better semantic features: 3D-native feature models (started)
+
+- The supervisor's reading of the ARAP results: the texture is crisp but the Labubu's face still
+  lands on the camel's body, so the semantic features themselves are not good enough; improve the
+  features. Diff3F lifts 2D features (Stable Diffusion + DINOv2) from 100 renders; the alternative
+  is a model that reads the 3D shape directly.
+- Read (PDFs in the owner's Zotero): PartField (Liu et al., CVPR 2025; feed-forward point cloud →
+  triplane feature field, 448-d, trained with a part-contrastive loss on Objaverse; code and the
+  Objaverse checkpoint released; the paper itself says the features are orientation-sensitive),
+  MeshFM (Zhou et al., arXiv 2607.27592; feed-forward, 1536-d, distilled from DINOv2 fields with
+  SAM-based anti-aliasing, trained with SO(3) rotation augmentation; code and checkpoint released;
+  dense-correspondence AUC on DenseCorr3D 0.52 vs Diff3F 0.46 and PartField 0.35, on TOSCA 0.34 vs
+  0.48 / 0.25), HNSR (Du et al., arXiv 2509.17431; features from the TRELLIS 3D generator, global
+  → local matching, SHREC'19 accuracy 37.4 vs Diff3F 26.4; no code), TokenMatch (Islam et al., arXiv
+  2609.04202; mesh transformer with functional maps trained on BeCoS humans/animals, partial
+  matching; code promised), UniMatch (Xiao et al., arXiv 2602.19112; PartField parts + GPT-5 part
+  names + a trained functional-map refiner; needs training and an LLM).
+- Decision: try the two released feed-forward models as drop-in replacements for the Diff3F
+  features, MeshFM first (rotation-robust, built for general use, best correspondence numbers of
+  the released ones), PartField second (part-aware; also the natural basis for a part-level step
+  in which a target part with no counterpart in the source follows its neighbours, the owner's
+  "hump follows the body" idea). The server queries each model's feature field at the same sampled
+  points as the Diff3F files, so the feature files keep the same idx / xyz and the whole pipeline
+  (anchors, prior, field, ARAP, texture, metrics) runs unchanged. HNSR has no code and TRELLIS is
+  heavy; TokenMatch and UniMatch need training data or an LLM: not first.
+- `eval_features.py` runs every pair (16 same-category, 10 cross-category, 2 synthetic) for one
+  feature folder and writes a CSV, so feature sets are compared with one command each. Risk noted
+  before running: both models were trained on closed, whole objects normalised to the unit cube;
+  our source is an open, front-only relief.
+
+## 2026-10-22 — MeshFM as a feature replacement: fails on partial shapes
+
+- The server ran MeshFM (checkpoint 502 MB, env cloned from diff3f, 0.1–0.7 s per mesh, 1.4 GB
+  GPU) at the Diff3F sample points of all 29 meshes (`scripts/idarb/meshfm_features.py`,
+  `results/diff3f/check_meshfm/`). The features are smooth and part-like on the open reliefs, but
+  the partial mesh's features are shifted against the full mesh's: synthetic ground truth within
+  5 % of the diagonal, nearest neighbour, cow 36 % (Diff3F 86 %), cat 58 % (97 %); mutual nearest
+  neighbours 0.5 % vs 1 % on the real cat and cow pairs. Through the whole pipeline (ARAP field,
+  `eval_features.py`): cat 10.8 % / cow 7.8 % within 1 % against 72.1 / 58.2 for Diff3F. Fusing
+  the two sets (`fuse_features.py`, w 0.75 on Diff3F) gives 63.0 / 55.7, below Diff3F alone.
+- Over the 26 real pairs (`results/diff3f/features_meshfm.csv`) the span numbers look no worse
+  (same-category ARAP 97.4 % within 5 % vs 96.6 %), but they are the span of a collapsed matching:
+  relief used 20 % (nearest neighbour) against 53 % for Diff3F, mutual anchors 38 per pair against
+  127, mirrored screen area 34 % against 24 %; cross-category 8 mutual anchors per pair against 47.
+  The caveat recorded on 2026-10-21 applies: span without source-used is not a quality measure.
+  The fused set (w 0.75) over the same 26 pairs is indistinguishable from Diff3F alone
+  (`results/diff3f/features_fused_w0.75.csv`: same-category ARAP 96.5 % within 5 %, relief used
+  64 %, 118 anchors; synthetic 59.4 % within 1 % against 65.3 %): MeshFM adds nothing there either.
+- Cause, by elimination on the server: not the orientation, the normalisation or the number of
+  encoder points (50k–200k; moving the partial into the full mesh's frame with the true transform
+  changes nothing). The encoder sees the whole shape, so a front-only relief is a different shape to
+  it. Closing the relief with a mirrored back copy (thin shell) gains 2–10 points and is still 30–50
+  points behind Diff3F; a thick closure hurts. Diff3F works view by view, so what it sees of the
+  front is the same on both meshes: this is what makes it robust to partial input.
+- Decision: no feed-forward 3D encoder on the partial relief (PartField uses the same PVCNN +
+  triplane encoder and is expected to fail the same way, so its 4–5 GB download is not started).
+  Better features have to come from the 2D side: variants of the Diff3F extraction (real albedo
+  render of the relief instead of a ControlNet painting, DINOv3 in the DINO branch, MeshFM's
+  SAM-based anti-aliasing of the 2D feature maps) are the next server runs. A 3D-native model
+  would only become usable with a completed shape (an image-to-3D model such as TRELLIS, whose
+  back is a guess); that widens the project's scope and is for the owner to decide.
+- Negative side result on the laptop: anchors from neighbourhood-pooled Diff3F features (the
+  global-then-local idea of HNSR) are fewer and less precise than the plain mutual nearest
+  neighbours (cat anchors within 1 %: 62 → 56 / 48 / 36 % for pooling radii 2 / 5 / 10 % of the
+  diagonal; refined accuracy drops accordingly). Not adopted.
+
+## 2026-10-22 — Part-level anchors after SemAnCorr: tested on the Diff3F features
+
+- SemAnCorr (Dong et al., RA-L 2026) matches parts before points: k-means parts on lifted 2D
+  features, part similarity after removing each object's mean feature, a joint rigid alignment
+  with a soft part assignment, bilateral-margin confidence with each part used once, anchors only
+  inside confident part pairs. `scripts/idarb/part_anchors.py` implements this on our feature
+  files (the paper uses SigLIP2 features and a functional map afterwards; we feed the anchors to
+  the existing prior / field / ARAP chain).
+- Same-category synthetic pairs: the part pairs are right (clear diagonal in the relative
+  similarity, 0.8–0.9), but anchors taken by nearest neighbour inside the matched regions are
+  imprecise (cat 47 %, cow 67 % within 5 % of the diagonal) against 98–100 % for the mutual
+  nearest neighbours, so as a source of anchors the part step is worse here (refined accuracy
+  cat 19 % vs 73 % within 1 %). As a filter it keeps the mutual anchors' precision (99–100 %) and
+  discards a third to three quarters of them.
+- Cross-category Labubu → camel: after removing the object means the Diff3F part similarities
+  are all below 0.35 and the selected pairs have confidence 0.001: the features do not tell the
+  parts of a toy from the parts of a camel. This is the measurement behind the supervisor's
+  judgement, and it points at the feature itself, not the matching. SemAnCorr's language-aligned
+  SigLIP2 features are the next server variant; `part_anchors.py --out_dir` writes the part
+  similarity matrix and part-coloured point clouds, so the same measurement is repeated on every
+  new feature set.
+
+## 2026-10-23 — Where the mirrored texture comes from, and three steps against it (night run)
+
+- Measurement first. On the synthetic pairs (the partial cut from the target itself) the mirrored
+  screen area after refinement is about 1 %, so the 20–35 % on the real pairs is not a property
+  of the pipeline but of real pairs: different individuals, different poses, and features that
+  cannot tell the left edge of a limb from its right edge. By facing angle (ARAP, 16 same-category
+  pairs): faces almost edge-on to the texture camera mirror 47 % of their area, faces turned
+  towards it 6.5 %; the worst pairs (posed human, the chairs, the stone bird, dragon → lizard)
+  keep 25–40 % even on front faces. Anchor consistency: on real pairs 14–44 % of the mutual
+  anchors disagree with one similarity transform (synthetic: 0–1 %).
+- Tried, no effect: a penalty in the candidate choice for mirroring the vertex's camera-facing fan
+  (`--w_flip`; the neighbours are mirrored together, so no single change helps).
+- Three steps that do help, each a refinement option, measured on the five most mirrored pairs
+  (superman_posed, chair10_roundchair, bird_bird, cat_lion, dragon_lizard; ARAP; triangles
+  within 2 % / 5 %, relief used, median distortion, mirrored area):
+  - `--anchor_filter rigid:0.1`: anchors farther than 10 % of the diagonal from a RANSAC
+    similarity transform of all anchors are dropped. All 26 pairs: same-category 64.3 → 66.2 %
+    within 2 %, mirrored 23.7 → 21.3 %, distortion 2.18 → 2.12; cross 44.3 → 47.9 %. Small, consistent.
+  - `--w_view w`: every vertex's ARAP rotation also has to carry the texture camera's direction
+    onto the relief's viewing axis (a virtual edge pair weighted by w times the one-ring), so a
+    limb cannot be turned about its own axis to put its hidden side on the relief's visible side.
+    w = 1: mirrored area 32.4 → 21.9 %, within 2 % 76.2 → 79.5 %, but distortion 2.53 → 3.75 and
+    relief used 59 → 55 %. (A first version let the pair inflate the ARAP scale; the scale is now
+    fitted from the edges alone.) Visibly: the posed human's legs lose the cape bleed, the chair's
+    backrest becomes one continuous pattern.
+  - `--coarse_to_fine 2 --coarse_factor 4`: the field and the choice of matches alternate, the
+    smoothness falling from 16× to the final weight, every level predicting each vertex's source
+    position from the current field (the non-rigid ICP schedule of Jung et al. 2025). Within 2 %
+    76.2 → 79.9 %, distortion 2.53 → 2.21, mirrored area about unchanged (chair 37 → 24 %).
+  - Combined (`--coarse_to_fine 2 --coarse_factor 4 --w_view 1 --anchor_filter rigid:0.1`):
+    within 2 % 76.2 → 85.5 %, within 5 % 97.4 → 99.3 %, mirrored 32.4 → 17.9 %, distortion
+    2.53 → 3.36, relief used 59 → 53 %; with `--w_view 0.3` instead: 81.1 % / 98.8 % / 17.8 % /
+    3.03 / 55 %. Synthetic ground truth: the view pair costs about 2 points within 1 % (cat 72.1 →
+    69.9), coarse-to-fine is neutral, the rigid filter gains (cat 72.1 → 77.6 at 5 % threshold).
+- Decision, after runs over all 28 pairs with 2, 3 and 4 coarse-to-fine levels
+  (`results/diff3f/features_diff3f_c2f{2,3,4}.csv`, with `--w_view 0.3 --anchor_filter
+  rigid:0.1`): three levels is the recommended setting
+  (`outputs/diff3f/09_texture_view_consistent/`). ARAP means, 07 → 09: same-category within 2 %
+  64.3 → 80.1 %, within 5 % 96.6 → 99.2 %, mirrored area 23.7 → 9.1 %, distortion 2.18 → 2.23,
+  relief used 65 → 56 %; cross-category 44.3 → 72.1 %, 89.3 → 98.2 %, 39.0 → 14.1 %, 2.31 → 2.45,
+  49 → 37 %; synthetic within 1 % 65.3 → 60.4 % (within 5 % 99.5 both). Each extra level smooths
+  more; four levels reaches 84.6 / 81.5 % within 2 % and 6.8 / 8.8 % mirrored but uses only 52 /
+  31 % of the relief and drops the synthetic accuracy to 58.1 %, and on Labubu → camel the face
+  vanishes instead of landing anywhere, so the map is collapsing: not adopted. The confidence gate
+  on top adds little (`features_diff3f_c2f3_gate.csv`); `--w_view 1` costs distortion and relief
+  used (`features_diff3f_view1_c2f.csv`). Visible gains beyond the numbers: the Labubu's, the
+  cat's and the panda's faces now land on the man's face, the dragon's on the lizard's head.
+
+## 2026-10-22 — Better semantic features: MeshFM and Diff3F variants (server results)
+
+- **MeshFM** (threedle/MeshFM `e6577b1`, 502 MB checkpoint, no license file): queried at the idx /
+  xyz of all 29 Diff3F files (`scripts/idarb/meshfm_features.py`), 0.1 to 0.7 s per mesh, 1.4 GB
+  GPU. On the synthetic partials (share matched within 5 % of the full mesh's diagonal) it reaches
+  cow 0.360 and cat 0.584 against Diff3F's 0.860 and 0.974. Not caused by orientation,
+  normalisation or point count (50k / 200k points, partial moved into the full mesh's frame, the
+  full mesh's normalisation: cow 0.34 to 0.37, cat 0.43 to 0.60). The encoder sees the whole shape,
+  so a front-only partial gets shifted features. Closing the relief with a mirrored copy
+  (`--close_mirror`) gives mid-depth 0.380 / 0.688 and z_min 0.183 / 0.558: not enough. PartField
+  (same encoder family, about 4 to 5 GB of downloads) was not run.
+- **Diff3F variants** (`scripts/idarb/diff3f_features.py`, new options; without them the script
+  still calls the unchanged upstream function), on cow_synth / cat_synth / cow / cat. Same seed:
+  a rerun reproduces Diff3F exactly (cow 0.8598 both, cat 0.9741 vs 0.9738), so run-to-run noise
+  is negligible. Within 5 % (cow, cat) and mutual nearest neighbours on the real pairs (cat, cow):
+  - Diff3F: 0.860, 0.974; 0.0089, 0.0096.
+  - C, SAM cleaning (`--sam_tau 1`, MeshFM-style: per SAM ViT-B mask, pixels farther than 1 from
+    the mask's median feature take the median): 0.853, 0.956; 0.0071, 0.0101.
+  - E, SigLIP2 (`--siglip2`, timm `vit_base_patch16_siglip_512.v2_webli`, mean of the last four
+    blocks on the same painted views, 768-d): 0.645, 0.736; 0.0060, 0.0069.
+  - Diff3F + SigLIP2 concatenated (each unit length, divided by √2): 0.846, 0.964; 0.0064, 0.0090.
+  - A, the relief rendered with its own IDArb albedo, one UNet pass at t = 100 with the positive
+    prompt and no ControlNet, plus DINOv2 on the same image (`--appearance vertex_colors`); the
+    full meshes keep the painted features: no synthetic number (the synthetic partials have no
+    colours); real pairs 0.0052, 0.0089. With SigLIP2 on that image: 0.0031, 0.0032.
+  - B (DINOv3) was skipped: gated model, no Hugging Face token on the server. D (other SD layers or
+    steps) was skipped: the layer (`up_blocks[1]`) and the step averaging are local variables
+    inside `third_party/Diff3F`.
+- Runtime and peak GPU (nvidia-smi): Diff3F alone 247 to 632 s, 10 to 13 GB; the combined pass with
+  SAM and SigLIP2 resident 623 to 1097 s, 21.1 to 22.4 GB (SAM's automatic masks roughly double the
+  time); A 286 to 459 s, 16.7 to 16.9 GB.
+- Upstream detail: Diff3F's diffusion feature is the first half of the classifier-free-guidance
+  batch, i.e. the negative-prompt branch.
+- The per-pixel SigLIP2 features are the outputs of the vision tower's last blocks, before the
+  final norm and the attention-pool head. They are not in SigLIP's joint image-text space, so a dot
+  product with a text embedding is not meaningful without pooling them through that head.
+- Decision: keep Diff3F. No variant beats it at point level. SigLIP2 is computed for all 29 point
+  sets (`results/diff3f/features_siglip2/`, on the temporary branch only) so that the cross-category
+  part-level similarity can be measured on the laptop. The Diff3F part of those runs equals the
+  original Diff3F files exactly (mean cosine 1.0000 on all 29), so the concatenation is simply the
+  existing Diff3F features plus SigLIP2 and is formed on the laptop instead of stored. SAM and A
+  are not pursued. The text-embedding route waits for that measurement.
+
+## 2026-10-23 — SigLIP2 at the part level, and the part-naming test
+
+- The 29 SigLIP2 feature files (server, `results/diff3f/features_siglip2/` on the temporary branch,
+  `outputs/diff3f/features_siglip2/` locally) were put through `part_anchors.py` next to the
+  Diff3F files. Relative part similarity (object mean removed), best value and best pair
+  confidence: Labubu → camel 0.43 / 0.03 (Diff3F 0.33 / 0.05), Labubu → lion 0.31 / 0.01
+  (0.35 / 0.02), cat → man 0.35 / 0.03 (0.32 / 0.04), superman → camel 0.54 / 0.04 (0.39 / 0.03);
+  same-category cat → lion 0.55 / 0.06 (0.61 / 0.07), synthetic cat 0.91 / 0.55 (0.92 / 0.32). So
+  the lifted per-pixel SigLIP2 features separate parts of the same object about as well as Diff3F
+  and cross-category parts no better. The server's note explains why: the per-pixel features are
+  the transformer's token outputs before the attention-pool head, which is where SigLIP2's
+  image-text alignment is formed, so they are not in the joint space.
+- Test in progress on the server: each part's patch tokens pooled through the attention-pool head
+  per rendered view (masked pooling), averaged over views, compared with text embeddings of a part
+  vocabulary ("a photo of the hump of a camel", ...). Part labels of eight meshes are on the
+  temporary branch `part-labels-tmp` (`results/diff3f/part_labels_tmp/`). If "face" and "hump" come
+  apart there, the own method's first version (parts named by image-text similarity, matched by
+  name, unmatched parts follow the body through `--parts`) is viable; if not, the language route
+  is dropped.
+- Full pipeline (09 setting, `eval_features.py`) on the SigLIP2 files and on the Diff3F+SigLIP2
+  concatenation (`fuse_features.py --w 0.5`, built locally; `results/diff3f/features_siglip2.csv`,
+  `features_diff3f_siglip2.csv`): SigLIP2 alone synthetic 34.7 % within 1 % (Diff3F 60.4 %),
+  mutual anchors 30 / 5 per same / cross pair (99 / 27), same-category within 2 % 77.0 % (80.1 %);
+  the concatenation 62.4 % synthetic, 79.9 / 70.7 % within 2 %, 79 / 16 anchors: equal to Diff3F
+  within noise. Neither is adopted; the 1.5 GB of concatenated files are not stored.
+
+## 2026-10-23 — Part naming with SigLIP2 (server) and name-based part matching: partial
+
+- Server (`scripts/idarb/siglip2_part_naming.py`, `results/diff3f/part_naming/`): every part of
+  eight meshes pooled through SigLIP2's attention head over Diff3F's painted views, compared with
+  a part vocabulary. Whole objects are all named right (8 of 8). Parts: the camel's parts come out
+  as hump, front leg, leg, paw, foot, hind leg; the cow's as head, snout, tail, hoof; the Labubu's
+  as ear, hood, face, face, shirt, shirt. But the scores are small (0.02–0.11) with margins
+  between the best names often below 0.01, and the raw part-vector cosines across objects are
+  nearly flat (0.61–0.79); after mean removal the Labubu's face still goes to the camel's
+  hump-and-head part.
+- Two limits come from the parts themselves: they are k-means clusters of the Diff3F features,
+  so the camel's hump and head sit in one part (the feature confusion the whole line is about),
+  and six parts on the Labubu leave its legs and shoes inside "shirt". And the names of a dressed
+  toy (hood, shirt) and of an animal (leg, paw) do not overlap, so name agreement alone
+  (`name_parts.py`, same word or same group over the best three names, plus a little of the
+  vector cosine) yields no confident pair on Labubu → camel or Labubu → lion, one on cat → man
+  (face ← snout), three on cat → lion and cow → cow (head, snout, tail). With no pair, `--parts`
+  would gate every target part, so the step cannot drive the correspondence as it stands.
+- Decision: keep the machinery (naming works at the object level and for animal parts) and
+  change the two inputs before judging the method: parts from a part model rather than from the
+  Diff3F clusters (PartField on the full mesh, SAM masks lifted to the relief), and name
+  similarity from text embeddings rather than a hand-written group table. Not pursued tonight;
+  the owner reviews the dataset phase A first.
+
+## 2026-10-23 — Supervisor: fine-scale matching ("eye to eye, nose to nose"); keypoint accuracy
+
+- The supervisor's reading of the Labubu → camel result (08:40): what is needed is fine-scale
+  matching, eye to eye and nose to nose, and the face features look wrong. New measure:
+  `scripts/idarb/eval_keypoints.py` maps every annotated target landmark through a correspondence
+  and reports its distance to the annotated source landmark as a fraction of the relief's
+  diagonal (mean, median, PCK within 2 / 5 / 10 %). On the three pairs that have landmarks
+  (`results/diff3f/landmarks/`, 10–11 each; `results/diff3f/keypoints/landmark_accuracy.csv`):
+  cat → lion mean error nearest neighbour 4.2 %, ARAP (07) 2.9 %, the 09 setting 3.5 %;
+  Labubu → camel 8.8 / 8.3 / 9.3 %; Labubu → lion 7.8 / 9.0 / 7.9 %. So at the keypoint level the
+  09 setting is not better than ARAP, and both are 3–9 % of the diagonal away from the landmarks:
+  the smooth-map improvements of the night did not move the fine-scale accuracy, which agrees with
+  the review's warning that span and mirror numbers measure smoothness.
+- Why the face features are coarse: Diff3F renders every view at 512 px and DINOv2 works on
+  14-px patches, so a camel's face in a full-body render covers 3 to 4 patches; the lifted features
+  are blurred at the scale of an eye. Planned test on the server (session to be reopened by the
+  owner): zoomed views (`--zoom 2`: Z×Z tiles per camera at Z times the focal length) and the
+  synthetic 1 % accuracy as the fine-scale measure.
+- The landmark set is being extended to the other pairs (eyes, nose, mouth, ear tips, paws) so
+  that keypoint accuracy becomes the primary number next to the synthetic ground truth.
+
+## 2026-10-23 — Keypoint benchmark on 15 pairs: the refinement loses fine accuracy; texture cameras were wrong on 6 pairs
+
+- Keypoints: two annotation agents picked 5–7 named keypoints per pair (eye, nose, chin or
+  mouth, ear tip, front and hind paw or hoof tip, tail; hands, feet and head top on the humans;
+  seat corners and leg bottoms on the chair pair) on 12 more pairs with `pick_landmarks.py`,
+  each verified on its contact sheet (`results/diff3f/keypoints/<pair>.json`, sheets in
+  `results/diff3f/keypoints/check/`); with the three older landmark sets that is 15 pairs and
+  109 keypoints (89 on the 13 same-category pairs, 20 on the two cross pairs; an earlier count
+  of 93 in these notes was wrong). `keypoint_table.py` evaluates every result folder on all of them.
+- Result (`results/diff3f/keypoints/keypoint_accuracy.csv`), 13 same-category pairs, mean error
+  as a fraction of the relief diagonal and PCK within 2 / 5 / 10 %: nearest neighbour 5.3 %,
+  54 / 76 / 89 %; ARAP (07) 6.0 %, 39 / 68 / 82 %; the 09 setting 5.6 %, 40 / 63 / 82 %. So the
+  whole smoothing chain (prior, field, ARAP, coarse-to-fine) makes the map smoother and
+  mirror-free but moves the keypoints away from their right place: at 2 % of the diagonal it is
+  14 points worse than the plain nearest neighbour. The night's improvements were measured on
+  smoothness proxies; on the supervisor's criterion (eye to eye, nose to nose) they are a loss.
+- Texture cameras: comparing each pair's stored camera with the camera implied by its own
+  mutual anchors (RANSAC similarity transform, relief axis +z pulled back to the target) shows
+  the stored one looking at the target from behind on labubu_man (179°, a failed registration:
+  the Labubu's face had been painted on the back of the man's head and reported as "on his
+  face"), and on the cross pairs that borrowed another pair's camera: superman_camel 174°,
+  bird_cat 160°, labubu_lion 102°, labubu_camel 96°; cat_man 62°, labubu_cow 75° and
+  chairgen_armchair 47° off. `refine_correspondence.py --view_from_anchors` now derives the
+  camera from the anchors and stores it in the npz; `eval_features.py --view anchors` uses it
+  for texturing and the metrics. All 28 pairs are being rerun with it
+  (`outputs/diff3f/11_anchor_view/`).
+- Decision: keypoint accuracy (with the synthetic ground truth) is the primary measure from now
+  on; the span, distortion and mirror numbers are diagnostics. The next steps aim at the
+  keypoints: finer features (zoomed views, running on the server) and a refinement that keeps
+  the nearest-neighbour accuracy where it is right instead of smoothing it away.
+- Where the keypoint accuracy is lost (89 keypoints, 13 same-category pairs, PCK within 2 %):
+  nearest neighbour 54 %; the discrete choice with the rigid-filtered anchors, prior window and
+  two smoothing passes 51 % (k 16 candidates: 56 %; prior-position candidates `--k_prior 16`:
+  45 %; RBF width 0.1: 47 %); then the coarse-to-fine rematching 39 % and the field/ARAP 38–40 %.
+  So the prior stage is nearly neutral once the anchors are filtered, and the losses are the
+  coarse-to-fine levels and the smoothing. `--keep_confident q` keeps the nearest neighbour of
+  the vertices whose similarity is above the quantile q and that pass a soft mutual test (on
+  the keypoints these matches reach 65 % within 2 %); on the synthetic pairs it costs
+  (cat 67.7 → 59.3 % within 1 % with q 0.7), because there the prior improves every match.
+  Variants without coarse-to-fine and with kept matches are being run on the server against the
+  keypoints.
+- Six refinement variants without coarse-to-fine, run on the server against the keypoints
+  (`results/diff3f/kp_variants/`, branch kp-variants-tmp; 13 same-category pairs, PCK within
+  2 %): anchor filter + view term 37 %; + kept confident matches (q 0.7) 35 %; k 16 candidates
+  34 %; k 16 + kept 33 %; kept matches without ARAP 44 %; kept q 0.5 with field weight 10 41 %;
+  nearest neighbour 54 %. The variant that keeps the most keypoint accuracy (no ARAP) is the worst
+  on the texture-map measures (triangles stretched over tenfold 28 % against 12 %, mirrored area
+  18 % against 12 %), so the ARAP smoothing is what moves keypoints off their place, and with the
+  present features no setting of this chain keeps both. Conclusion: the lever is the features
+  (zoomed views running on the server) and, for the map, a formulation that keeps confident
+  matches as hard constraints rather than weights.
+- Smoothing-strength sweep on the Windows laptop (`results/diff3f/sweep_smooth/`, branch
+  sweep-win-tmp merged; 8 settings × 28 pairs, keypoints on the 13 same-category pairs, texture
+  measures on the 16): weakening the smoothing raises keypoint PCK@2 % monotonically from 37 %
+  (field 0.1, ARAP weight 3) to 42 % (ARAP 1), 43 % (ARAP 0.3), 45–46 % (no ARAP), while the
+  texture quality falls just as monotonically: triangles within 5 % 97.5 → 89.5 %, median
+  conformal distortion 2.37 → 4.30, stretched over tenfold 11.6 → 27.0 %. Kept confident matches
+  with field weight 10 or 30 are worse on both sides and cost the synthetic pairs 9 points. So with
+  the present features the chain only trades fine accuracy against texture coherence; nothing in
+  it recovers the nearest neighbour's 54 %. This curve is the argument for changing the features
+  (zoomed views) or the input (a generated full mesh), not the smoothing.
+
+## 2026-10-23 — Zoomed views raise the fine-scale accuracy (server, first batch)
+
+- `diff3f_features.py --zoom 2` (server): for every camera, besides the full view, up to 2×2
+  tiles rendered with twice the focal length through the camera intrinsics (each tile equals a
+  512-px crop of a 1024-px render, same perspective), painted, lifted and averaged like the full
+  views; 300–370 views per mesh, 13–38 min per mesh (relief tiles are mostly foreground), 8.5 GB
+  GPU. Features in `results/diff3f/features_zoom2/` on the temporary branch.
+- Synthetic ground truth, nearest neighbour within 1 % (check_features.py): cat 38.8 → 49.5 %,
+  cow 30.4 → 37.2 %; through the pipeline (eval_features, anchor filter + view term) cat
+  70.6 → 75.8 %, cow 57.2 → 55.2 %. Keypoints on the four pairs in the batch (cat, cat → lion,
+  Labubu → camel, Labubu → lion; 38 keypoints): nearest neighbour PCK@2 % 24 → 34 %, after the
+  pipeline 22 → 34 %; the gain is consistent on the cat pairs and Labubu → lion, none on
+  Labubu → camel. A seed-1 rerun of the plain extraction (painting is random) and zoom 3 are
+  running as controls; zoom 2 for the remaining 15 keypoint meshes follows overnight.
+- First evidence that the feature resolution, not the matching, is what limits "eye to eye".
+- Zoom 3 and a control (server, `features_zoom3/`, `features_zoom1_seed1/`): the control is not
+  a noise estimate, because Diff3F fixes the painting seed (torch.manual_seed(60) per view in its
+  diffusion.py), so `--seed` only changes the vertex subsample and the features are the same;
+  through the pipeline the numbers still move by up to 1.5 points, which is the pipeline's own
+  spread. Synthetic within 1 %, nearest neighbour (check_features) / after the pipeline: cat zoom 1
+  38.8 / 70.6 %, zoom 2 49.5 / 75.8 %, zoom 3 53.9 / 72.4 %; cow 30.4 / 57.2, 37.2 / 55.2,
+  38.4 / 53.3 %. Zoom 3 adds a little on the raw measure, nothing through the pipeline, at twice
+  the cost (22–28 min per mesh): zoom 2 is the setting kept. A true noise estimate needs a
+  different paint seed per run (a patch of that line); deferred.
+
+## 2026-10-24 — Zoom 2 on the whole keypoint benchmark: +9 points at the fine scale
+
+- Zoom-2 features now exist for the 23 meshes of the 15 annotated pairs (server,
+  `results/diff3f/features_zoom2/` on the temporary branch; reliefs 29–48 min, full meshes 16–20
+  min each). Keypoints, 13 same-category pairs, PCK within 2 / 5 / 10 % and mean error:
+  nearest neighbour zoom 1 54 / 76 / 89 %, 5.3 % → zoom 2 63 / 77 / 89 %, 4.8 %; after the
+  pipeline (anchor filter + view term + ARAP) 37 / 66 / 88 % → 43 / 69 / 87 %. No pair gets worse
+  at 2 % with the nearest neighbour, 6 of 13 gain; the two cross pairs 5 → 10 %. The texture
+  measures are unchanged (same-category within 2 % 71.1 → 71.6, within 5 % 98.3 → 98.0, mirrored
+  area 10.6 → 10.7 %), the synthetic cat gains and the cow is flat. Numbers in
+  `results/diff3f/kp_variants/` (server runs, branch kp-variants-tmp merged).
+- Decision: zoom 2 is the standard feature extraction from now on; the six meshes still at zoom 1
+  only (the chair pairs' meshes and the two depth-scaled synthetic cows) are queued. The pipeline
+  still loses 20 points of PCK@2 against the nearest neighbour; that is the next thing to change.
+
+## 2026-10-24 — Generate-then-match, step 1: full meshes from the photos and their alignment
+
+- Supervisor (23 Oct, evening): try single-image-to-3D generation (TRELLIS.2, Hunyuan3D) and
+  "generate the full 3D first, then match". Server: Hunyuan3D-2.1 (shape 56 s + paint 52–71 s,
+  14 GB; keeps the photo's frame approximately) and TRELLIS.2 at its 512 setting (22–35 s, 12 GB;
+  canonical pose, photo camera fitted by silhouette IoU) on the 14 photos that have a relief
+  (`results/diff3f/gen3d/`, meshes on the temporary branch gen3d-tmp and in
+  `outputs/diff3f/gen3d/`). All 28 meshes are plausible with sensible backs; known flaws: the
+  dragon's flame as a flat card (Hunyuan3D), colour shifts on the chairs (TRELLIS.2). Hunyuan3D's
+  licence forbids training other models on its outputs; TRELLIS.2 is MIT.
+- `align_generated.py` registers the relief (the photo's frame) to the generated mesh: camera
+  rotation from the fitted view, similarity in x, y from the silhouettes, depth offset from the
+  generated front surface under each relief pixel, ICP with the relief's depth factor. Over the
+  28 meshes (`results/diff3f/gen3d/alignment.csv`): relief vertices within 2 % of the diagonal
+  of the generated front surface 80–98 % (Hunyuan3D fire_dragon and superman 61–62 %), ICP rms
+  1–6 % of the diagonal (TRELLIS.2 1–2 %), rotations mostly below 10° (okapi 40–57°: the fitted
+  camera was off and ICP recovered it). The relief's keypoints land on the generated mesh with
+  snap distances below 0.11 of the diagonal (median 0.019; 48 % of the keypoints snap by more
+  than 2 %, which matters at the 2 % scale of the benchmark, see 25 Oct), and the photo's albedo is
+  projected onto the visible side (58–100 % of the front faces). So the generated mesh can take
+  the relief's place as the source with the keypoint benchmark intact; its zoom-2 Diff3F features
+  are being computed on the server (28 meshes, 7–9 h) for the full-to-full matching.
+
+## 2026-10-24 — Generate-then-match, step 3: Hunyuan3D sources lose the fine scale
+
+- Setting: source = the Hunyuan3D-2.1 mesh generated from the photo, aligned to the relief
+  (`align_generated.py`), with the photo's albedo baked into its atlas (`bake_albedo.py`) and
+  the relief's keypoints carried onto it (`gen_keypoints.py`); zoom-2 Diff3F features of the
+  welded generated mesh computed on the server (commit c8d58a1: 100 views all around, 320 tiles,
+  15 000 points; the relief's features, commit 61b4c84, used `--front_only`: 314 tiles from the
+  front hemisphere). Target and keypoints as in the keypoint benchmark. Driver
+  `eval_generated.py` (recommended refinement setting, anchor-derived camera, `--source_glb`).
+- Result (`results/diff3f/generated_hunyuan3d.csv`), PCK@2 = keypoints within 2 % of the source
+  diagonal, 13 same-category pairs: nearest neighbour 17 %, pipeline 16 %; with the relief as
+  source (zoom 2, `results/diff3f/kp_variants/keypoint_accuracy_zoom2_all.csv`) 63 % / 43 %.
+  The two cross-category pairs with keypoints are near zero with either source. Per pair the
+  generated source is worse on 12 of 13 (cat is equal at 71 % after refinement). Texture-space
+  measures (mirrored area, conformal distortion) are not comparable for an atlas texture: the
+  GLB's uv charts have their own orientation and scale, so `uv_metrics.py` reports 30–70 %
+  "mirrored" area that is chart orientation, not a mirrored mapping. Triangle span within 2 %
+  is 0.62 on the same-category pairs.
+- Why (`keypoint_rank.py`, `results/diff3f/keypoint_rank_{relief,hunyuan3d}.csv`): for every
+  target keypoint, the rank of the true source location among all source points by feature
+  similarity (0 = the nearest neighbour is right) and whether the nearest neighbour faces the
+  photo's camera. Relief: median rank 4–51 on 9 of 13 same-category pairs (cat_lion 79, dragon
+  82, labubu_man 294,
+  bird 105), nearest neighbours on the photo's side by construction. Generated mesh: median rank
+  57–1969, and 0–57 % of the nearest neighbours land on the side the photo never saw (the
+  other ear or hoof, the back). The similarity at the true location is as high or higher for
+  the generated source on the animals (cat 0.83 against 0.77) but lower on the faces
+  (superman_man 0.63 against 0.78): on the animals the generated features are less distinctive
+  (many points score as high), on the faces the generator's smooth geometry does not carry the
+  photo's facial structure that the relief's normals do. The alignment is not the cause: the
+  carried keypoints sit on the right parts (`outputs/diff3f/13_generated/*/check.png`).
+- Hybrid source (`hybrid_features.py`: the relief's features on the camera-visible points of
+  the generated mesh through the alignment, 33–55 % of the points; the generated features
+  elsewhere; `results/diff3f/generated_hunyuan3d_hybrid.csv`): nearest neighbour 18 %,
+  pipeline 20 %. The generated-style features score systematically higher similarity to the
+  target than the relief's (best similarity to a generated-feature point 0.77–0.90, to a
+  relief-feature point 0.65–0.80, on 12 of 15 pairs), so the unreplaced side takes the match
+  (nearest neighbour on a replaced point 0–71 % per pair). Restricted to the replaced points
+  the nearest neighbour reaches 14–57 % per pair, below the relief's own 63 %, because the
+  carried features inherit the alignment error (ICP rms 2.8–6.3 % of the diagonal for the
+  Hunyuan3D meshes; the 1–2 % figure is TRELLIS.2's).
+- Standing: the generated full mesh does not replace the relief as the matching source at the
+  fine scale with Diff3F features; it remains the candidate for the geometry and the unseen
+  side. Open: the same evaluation with the TRELLIS.2 sources (features in progress on the
+  server), and the view-sampling confound (generated features with `--front_only`, queued
+  on the server), which separates fewer front views from the smoother geometry.
+- Commands (repository root, `mesh` environment, this commit):
+  `python scripts/idarb/eval_generated.py --model hunyuan3d --gen_features outputs/diff3f/features_zoom2_gen --feature_dir outputs/diff3f/features_zoom2 --out_dir outputs/diff3f/14_generated_match/hunyuan3d --csv results/diff3f/generated_hunyuan3d.csv --threads 3`;
+  `python scripts/idarb/hybrid_features.py --model hunyuan3d --out outputs/diff3f/features_zoom2_gen_hybrid`
+  followed by the same driver with `--gen_features outputs/diff3f/features_zoom2_gen_hybrid`
+  and `--csv results/diff3f/generated_hunyuan3d_hybrid.csv`;
+  `python scripts/idarb/keypoint_rank.py --source relief --csv results/diff3f/keypoint_rank_relief.csv`
+  and `--source hunyuan3d --csv results/diff3f/keypoint_rank_hunyuan3d.csv`.
+
+## 2026-10-24 — Owner: try every open item, cheapest first; two-sided texture; held-out split
+
+- The owner's instruction (evening): try all the open items, ordered by time cost from small to
+  large: (1) the two-sided texture (photo through the relief on the seen side, the generated
+  mesh's texture on the rest), (2) a held-out split of the keypoint benchmark, (3) a Hunyuan3D-
+  Paint baseline (target white mesh + photo), (4) DINOv3 inside Diff3F, (5) GeoAware-SC
+  features inside Diff3F, (6) a DenseMatcher baseline, (7) dataset phase B features, (8) a
+  locally injective image-plane map with a chirality filter, (9) method 1 redone (SAM2 +
+  PartField + VLM naming), (10) method 2. Standing rule from the same evening: no CPU runs on
+  the Mac; every run goes to the Windows laptop, GPU work to the server.
+- (1) `merge_sides.py` + `eval_generated.py --merge`: the faces the texture camera sees take
+  the relief's image through the relief correspondence (keypoint-oriented setting, anchor
+  camera), every other face takes the generated mesh's atlas (photo albedo baked into the seen
+  side) through the generated-mesh correspondence; both images packed into one texture, one
+  OBJ. Cat pair (Mac, before the rule): 4 401 front faces from the photo, 10 009 from the
+  generated mesh, no grey face left; the far flank continues the stripes plausibly, the seam
+  along the silhouette shows colour and pattern jumps on the face and chest. All 15 pairs
+  (Windows laptop, 621 s; `results/diff3f/generated_hunyuan3d_merge.csv`, contact sheet
+  `results/diff3f/generated_merge/hunyuan3d_merged_sheet.png`): every face is textured (same-
+  category pairs: on average 10 053 faces from the generated mesh against 6 892 from the photo),
+  the seen side keeps the relief's keypoint accuracy (43.2 % PCK@2 on the 13 same-category
+  pairs, the generated source 15.5 %). The unseen side is only as good as the generated-mesh
+  correspondence: plausible where the texture is uniform or random (cat flanks, bird, dragon),
+  a patchwork where parts matter (superman's cape and belt on the man's back, the chair's
+  back, the okapi stripes on the camel), and the seam along the photo's silhouette is visible
+  on every pair (head-on views of the cats and the panda are split down the middle). So the
+  two-sided texture is complete but the unseen side is not usable as it stands; the next
+  candidate for that side is the Hunyuan3D-Paint of the target itself (item 3), which needs no
+  correspondence.
+- (2) `keypoint_split.py`: a seeded split of the 15 annotated pairs, stored in
+  `results/diff3f/keypoints/split.json`: tuning = cat, cat_lion, dragon_lizard, labubu_lion,
+  okapi1_camel, okapi_camel, superman_man; held out = bird_bird, cat5_cat, chair1_armchair,
+  cow, labubu_camel, labubu_man, panda_panda, superman_posed. From now on setting decisions use
+  the tuning half; the held-out half is reported. Per half (`split_accuracy.csv`; mean PCK@2
+  over pairs with a 95 % bootstrap interval): zoom 2 nearest neighbour tuning 61 % [46, 80],
+  held out 51 % [30, 73]; zoom 2 pipeline 45 % [30, 60] and 32 % [13, 55]; zoom 1 nearest
+  neighbour 49 % and 47 %, three-level setting 41 % and 33 %. The held-out half is the harder
+  one (bird, chair, cow, Labubu → camel). With 7–8 pairs per half the intervals are about ±15
+  to 20 points wide, so differences of a few points between settings (the 37–43 % range of the
+  refinement variants) are within noise, while nearest neighbour against the pipeline and the
+  relief against the generated source (63 % against 17 %) are not.
+- (3) and (4) are specified for the server (Hunyuan3D-Paint on the 15 pairs; `--dino dinov3`
+  in `diff3f_features.py`, tested on five meshes); the server session was unreachable when they
+  were sent, so they wait for the owner to reopen it.
+
+## 2026-10-24 — Literature search widened for the new direction (evening)
+
+- Asked by the owner after the two-sided texture result. Found and recorded on the site's
+  papers page, grouped by what they would serve: fine-scale features on the 2D side (Geometry
+  Matters, arXiv 2605.30093: PartField descriptors rendered into the image plane + a light
+  adapter on DINO/SD features, geodesic pseudo-label filtering, code not released; the TPAMI
+  2025 unified benchmark with a DINOv2 baseline at 85.1 % on SPair-71k, weights public;
+  DistillDIFT, WACV 2025, DINOv2 + SDXL-Turbo distilled, code public); cross-category 3D
+  features (SGSoft, arXiv 2605.18039; HNSR, SIGGRAPH Asia 2025, no code); ground truth for a
+  benchmark (KeypointNet, MIT, 16 rigid categories; Animal3D; HouseCorr3D; SOCO as the 2D
+  cross-category protocol); partial matching baselines (EchoMatch, CVPR 2025; the 2026 non-rigid
+  correspondence survey); texturing the target from the photo without correspondence
+  (TRELLIS.2 texturing mode, RomanTex, MVPaint) and completing the unseen side from a partial
+  texture (TEXGen, NaTex; the 2026 mesh-texturing survey); normal-bridged image-to-geometry
+  (Hi3DGen, code public) as a counterpart of the relief; seam handling for the two-sided
+  texture (Waechter 2014, Wang 2024).
+- Added to the server queue: the TRELLIS.2 texturing mode on the 15 pairs as a second paint
+  baseline, and DistillDIFT as a per-view feature extractor inside Diff3F after the DINOv3
+  test. Placed in the owner's cost-ordered list: TRELLIS.2 texturing with item 3, DistillDIFT
+  after item 4, TEXGen completion of the unseen side after item 3, KeypointNet / Animal3D
+  ground truth with item 7.
+
+## 2026-10-25 — Speed-ups on the server; the laptop's GPU joins; Diff3F run-to-run noise measured
+
+- Owner (night of 24/25 Oct): the queue is too slow. Server changes (features-3d-tmp 63ea23e,
+  merged into this branch at 25efa8b): (1) the queue reordered so the short, decision-relevant
+  jobs run first (paint baselines, DINOv3 test, DistillDIFT) and the front-only ablation last;
+  (2) `--save_views` / `--views_from`: the painted views are cached once, so a DINO-only
+  extractor variant (DistillDIFT) reruns in 10 s instead of 71 s on the cow_synth test; the SD
+  UNet branch still needs the diffusion pass; (3) Diff3F rasterised with `bin_size=0`, which was
+  30 % of a relief run; 64-px bins give identical fragments and 8–12× faster rasterisation (cat
+  relief, 12 zoom-2 views: 111 → 80 s); (4) batching the painting was not done: Diff3F reseeds the
+  generator before every view and DDIM with eta = 1 draws noise per step, so a batch would not
+  reproduce the sequential result. Profile of a zoom-2 run: painting 55–90 % of the time, lifting
+  22 % on reliefs (unproject + ball query + CPU accumulation), rendering now negligible; fp16 SD and
+  ControlNets with PyTorch SDPA attention, DINOv2 in fp32. Two feature jobs at once on the GPU
+  are being timed on the DINOv3 test (cat_full + lion_full); below 0.75 of the sum of single-run
+  times, the remaining batches run two at a time.
+- Diff3F's lifting is not run-to-run deterministic (GPU ball_query returns neighbours in varying
+  order and the upstream `acc[idx] += ...` keeps one write per duplicated vertex): two runs on the
+  same painted views differ by max |diff| 0.05, min cosine 0.977 (cow_synth). This is the noise
+  floor of every feature comparison in this project; differences of that size between feature
+  variants are not evidence.
+- The owner's Windows laptop (RTX 4080 12 GB, WSL2 Ubuntu, 48 GB RAM) is being set up as a second
+  GPU with the recipe in `scripts/idarb/requirements-diff3f.txt`. Validation (cat_full, zoom 2,
+  CPU offload on because the 12 GB card leaves 0.7 GB free): features agree with the server's
+  file at mean cosine 0.9997 (min 0.987, identical vertex subsample, 318 views used), 30 min
+  against the server's 15.6 min; torch peak 5.9 GB, nvidia-smi 11.6 GB. It then took the
+  front-only Hunyuan3D batch (14 meshes, 15–30 min each, pushed on its own branch
+  features-front-tmp), and the server dropped that batch. Rule from the owner: CPU batch work and GPU feature work both go to
+  the laptop; the Mac only edits, tests and publishes.
+
+## 2026-10-25 — Second independent review (Opus): corrections and a re-ranked plan
+
+- Asked by the owner. The reviewer read the records and recomputed from the CSVs; it changed
+  nothing. Corrections it found, now applied above: 109 keypoints, not 93; the keypoints
+  carried onto the generated meshes snap by a median 1.9 % of the diagonal and 48 % of them by
+  more than 2 %, so the generated-source numbers at the 2 % scale are confounded by the carried
+  ground truth (where the snap is under 1 % the generated source gets 6 of 20 right against the
+  relief's 8; where it is over 2 %, 7 of 42 against 30); Hunyuan3D's ICP rms is 2.8–6.3 %; the
+  median-rank range holds on 9 of 13 pairs; `align_generated.py`'s albedo fraction can exceed
+  1 (up to 1.18, a counting bug to fix); the tuning/held-out split shares reliefs (superman,
+  labubu) and targets (cat, man, camel) between halves and the bootstrap is unpaired, so
+  leave-one-source-out and paired per-keypoint tests are the right tools; and the nearest
+  neighbour's facing test checks the normal's sign, not visibility, so front-side left-right
+  swaps are not detected by it.
+- Its reading of the fine-scale loss: the smoothing sweep covers one family (L2 data term +
+  Laplacian/ARAP, field read-out); the pipeline's mean error equals the nearest neighbour's
+  (0.0481 vs 0.0483 at zoom 2) while its PCK@2 is 20 points lower, so it removes gross errors
+  and blurs fine ones; `--keep_confident` used soft weights, never hard constraints. Untried:
+  Dirichlet constraints on a consistency-checked confident set with ARAP elsewhere, a final
+  re-match within 2 % of the field, a truncated data term; and the error measured in the image
+  plane as well as in 3D.
+- Its reading of the generated source: the target's features also use all-around views, so
+  the generated source is the matched condition and the front-only ablation is expected to
+  show little; the loss concentrates where the generated surface departs from the photo; the
+  features were computed on the 40 k-face remesh. Cheaper checks: nearest neighbour restricted
+  to the photo-visible points, and keypoints annotated directly on the generated meshes.
+- Its main proposal: match on the 2D side. Render the target from the anchor camera (and its
+  mirror, ±20–30°), compute GeoAware-SC / DINOv3 / DistillDIFT features at 840 px or more with
+  window soft-argmax against the photo itself, keep mutual pixel matches that do not cross relief
+  depth jumps, lift through the rasteriser, and feed the result as constraints to the map; the
+  relief stays for occlusion, regularisation and evaluation. Minutes of GPU per pair, 3–5 days
+  of work; close to SemTex's design, so the lifting and the flip-free map carry the novelty.
+- Its ranking: (1) evaluation fixes (paired tests, leave-one-source-out, image-plane error,
+  keypoints on the generated meshes, a second annotator); (2) hard constraints + final re-match
+  on the existing features (expected 43 → 55–60 %); (3) the 2D route; (4) the injective
+  image-plane map fed by (2) or (3) as the core contribution; (5) the paint baselines plus a
+  correspondence-free metric; (6) larger ground truth (Animal3D, KeypointNet); (7) route (b)
+  with a full-to-full matcher (ZoomOut) or a "completed relief" (generated mesh deformed onto
+  the relief by non-rigid ICP, closed, front vertices = photo pixels) for the unseen side;
+  (8) atlas fixes, TEXGen; (9) TRELLIS.2 source, front-only last; (10) DenseMatcher. Drop
+  GeoAware-SC inside Diff3F (use it in the 2D route); defer DINOv3 / DistillDIFT inside Diff3F
+  until the 2D route has a result, then run on all meshes rather than five.
+- Adopted now: the corrections; (1) and (2) start on the existing features (code on the Mac,
+  runs on the laptop); the 2D route is designed next. The server queue already running
+  tonight (paint baselines, DINOv3 and DistillDIFT five-mesh tests, front-only on the laptop)
+  is left to finish since its GPU time is otherwise idle.
+
+## 2026-10-25 — Hard constraints and re-match (sweep 1); the 2D route's first run
+
+- Sweep 1 (Windows laptop, zoom-2 features, keypoint-oriented setting with the anchor camera,
+  all 28 pairs; `results/diff3f/hard_sweep/`): keypoints on the 13 same-category pairs, PCK@2
+  (3D / image plane): nearest neighbour 63 / 64 %; the chain without the new options 43 %;
+  hard constraints alone (`--hard_confident 0.5–0.7`, with or without `--hard_radius`)
+  48–49 / 49–50 %; `--final_rematch 0.02` 49 %; `--final_rematch 0.05` 54 / 58 % (the best for
+  keypoints; paired against the nearest neighbour −8.7 points [−16.5, −2.5], 8 losses, 1 win,
+  6 ties, sign test p 0.039, against −17.7 for the old chain); with three coarse-to-fine levels
+  plus hard constraints plus re-match 0.02 (`c2f_h7r5_rm2`) 50 % with the best texture numbers
+  so far (16 same-category pairs: within 2 % 73.6 % against 71.6 %, mirrored area 9.5 % against
+  10.7 %; cross 68.2 % / 9.8 %). So the second review's reading holds in part: pinning and
+  re-matching recover about half of the gap to the nearest neighbour without losing texture
+  coherence; the hard set alone (23–34 % of the vertices) is not enough, the re-match near the
+  field is what helps, and 5 % is the useful radius. Synthetic ground truth within 1 %:
+  re-match 0.02 57.3 % (best), the others 52–56 %. Sweep 2 (larger radii, several rounds, a
+  higher re-match weight, no-ARAP and coarse-to-fine combinations) queued.
+- The 2D route, first run (`match2d.py`, DINOv2 ViT-B/14 at 518 px on the CPU, 13–20 s per
+  pair, three views, all matches kept; `results/diff3f/match2d/`): PCK@2 23 % (image plane
+  25 %), far below both the nearest neighbour and the chain. The previews show two faults of
+  the first version: the photo side was the texture image whose background is filled with
+  stretched edge colours (no foreground mask), and the object fills the photo while the render
+  shows the target at a third of the frame, so the patch features compare different scales.
+  Version 2 (white background, square crops around the object on both sides, mutual matches
+  only) is written; its run at 518 and 840 px is queued, DINOv3 after the owner's token is on
+  the laptop.
+
+## 2026-10-25 — Generate-then-match with TRELLIS.2 sources
+
+- Same pipeline as the Hunyuan3D run (alignment, bake, `eval_generated.py --merge`, Windows
+  laptop; `results/diff3f/generated_trellis2_merge.csv`, `keypoint_rank_trellis2.csv`,
+  `generated_merge/trellis2_merged_sheet.png`). Keypoints, 13 same-category pairs, PCK@2:
+  pipeline 17.2 %, nearest neighbour 18.4 % (Hunyuan3D 15.5 % / 17.3 %; the relief 43.2 % /
+  63 %). The two generators are equivalent as matching sources and both fail at the fine scale
+  for the same reasons (true-location rank median 41–448 per pair, 0–83 % of nearest
+  neighbours away from the camera, carried-keypoint snap error). The texture-space numbers of
+  the TRELLIS.2 run (within 5 % 44.6 %, median distortion 11.5) are an atlas artefact, not a
+  worse map: its 2048-px texture is cut into many small charts, and a target triangle whose
+  corners land in different charts spans the atlas; the merged previews show the generated side
+  broken into fragments for the same reason. Per-texel baking onto a target atlas (the second
+  review's point) would remove it; the keypoint numbers are the comparison that counts.
+
+## 2026-10-25 — Profile of a zoom-2 run after the rasteriser fix; concurrency measured
+
+- Server, single jobs, seconds per stage (render / lift / paint / DINO): cat relief, 382
+  views: 39 / 1043 / 783 / 29 (1904 s); labubu relief, 300 views: 49 / 690 / 615 / 18; camel
+  full mesh, 370 views: 4 / 135 / 762 / 23 (932 s). Painting is 2.1 s per view; on reliefs the
+  lifting (CPU half-precision accumulation of 2048-d features over every pixel-neighbour pair)
+  is now the largest stage at 2.3–2.7 s per view. Two zoom-2 jobs at once: 1649 s against
+  1848 s for the two single runs (ratio 0.89), so the GPU is already saturated and jobs run one
+  at a time. Approved as an option to be validated against the current files: lifting on the
+  GPU with a proper average over duplicate contributions (deterministic, about half the relief
+  time); it changes the features slightly, so it becomes the default only if it agrees with the
+  present files at the measured noise floor.
+- DINOv3 inside Diff3F: the five test meshes are computed (`features_zoom2_dinov3/`, 8.2 GB
+  peak), with the painted views cached for the DistillDIFT run; keypoint evaluation on the
+  four pairs they cover is running on the laptop.
+
+## 2026-10-25 — Hunyuan3D-Paint baseline: the target painted from the photo with no correspondence
+
+- Server (`gen3d_paint_baseline.py`, paint-baseline-tmp ca9986d): for each of the 15 annotated
+  pairs the target white mesh, turned into the photo's frame with the pair's registration
+  rotation, is painted by Hunyuan3D-2.1's paint model with the photo as the reference image
+  (38–47 s per pair, 14 GB), then turned back; the painted mesh is remeshed by the painter but
+  lies on the target (surface distance 0–1e-6 of the diagonal). Renders and timings in
+  `results/diff3f/paint_baseline/<pair>/`, meshes on the branch. Same-category pairs look
+  convincing (the cat's stripes on the lion, the okapi's coat and striped legs on the camel,
+  panda, superman, cow); dragon → lizard plain orange; the cross pairs fail as expected
+  (jeans and a shirt on the lion, a wrong face on the man). It is a texture-only baseline (no
+  correspondence, so no keypoint number) and the natural source for the unseen side of the
+  two-sided texture: `merge_sides.py --back_identity --back_glb <painted target>` reads it at
+  the target's own positions. TRELLIS.2's texturing mode (photo frame and canonical frame) and
+  the GPU-lift test follow on the server.
+
+## 2026-10-25 — Re-match sweep 2: the chain reaches the nearest neighbour's fine accuracy
+
+- Windows laptop, zoom-2 features, anchor camera, all 28 pairs
+  (`results/diff3f/hard_sweep2/`). Keypoints on the 13 same-category pairs, PCK@2 (3D / image
+  plane) and mean error: nearest neighbour 63 / 64 %, 0.048; re-match 0.05 three rounds
+  (`rm5x3`) 61 / 62 %, 0.038; re-match 0.08 two rounds (`rm8x2`) 60 / 63 %, 0.037; two
+  rounds at 0.05 59 / 61 %; one round at 0.08 59 / 61 %; with three coarse-to-fine levels
+  (`c2f_rm5`) 57 / 60 %, 0.041. Paired against the nearest neighbour over the 15 pairs:
+  rm5x3 −2.4 points [−6.2, +1.2], 10 ties (p 0.38); rm8x2 −2.7 [−6.9, +1.6]; and the mean
+  error is lower (rm8x2 −0.011 [−0.023, −0.001]). So the 20-point loss of the old chain is
+  gone: the refined map now keeps the nearest neighbour's fine accuracy within noise while
+  removing its gross errors. Texture (16 same-category pairs, within 2 % / within 5 % /
+  mirrored area): rm5x3 68.3 / 96.8 / 11.3 %; rm8x2 66.4 / 94.6 / 12.8 %; c2f_rm5 73.0 / 98.7 /
+  9.7 % (the best texture, 57 % keypoints); the old chain 71.6 / 98.0 / 10.7 %. A higher
+  re-match weight (10) hurts both, no-ARAP hurts texture badly (distortion 6.2), the hard
+  constraints add nothing on top of the re-match. Synthetic within 1 %: 54–56 %, c2f_rm5 55.7 %.
+- Standing settings from now on: keypoint-oriented = `--w_view 0.3 --anchor_filter rigid:0.1
+  --view_from_anchors --final_rematch 0.05 --rematch_rounds 3`; texture-oriented = the same
+  with `--coarse_to_fine 3 --coarse_factor 4` and one re-match round. The remaining gap to
+  "eye to eye" is the nearest neighbour's own 63 %, which only better features move.
+- DINOv3 and DistillDIFT inside Diff3F, five test meshes, four pairs (`results/diff3f/dinov3/`,
+  `results/diff3f/distilldift/`): nearest-neighbour PCK@2 with DINOv3 cat 57 % (DINOv2 71 %),
+  cat_lion 27 % (45 %), labubu_camel 0 (0), labubu_lion 20 % (20 %); through the chain 57 / 36 /
+  10 / 40 % against 71 / 55 / 0 / 10 %. DistillDIFT (768-d) nearest neighbour cat 43 %,
+  cat_lion 45 %, the cross pairs 0 and 20 %; chain 57 / 45 / 0 / 10 %. Neither beats DINOv2 on
+  the same-category pairs; DINOv3 looks better on the two cross pairs; with 2 + 2 pairs this is
+  at noise level. Not adopted; a full run on the 23 benchmark meshes would be the test, queued
+  on the server at low priority with the painted views cached.
+
+## 2026-10-25 — Two-sided texture with the painted target as the unseen side
+
+- Windows laptop (`merge_sides.py --back_identity`, the Hunyuan3D-painted copy of each target
+  read at the vertex's own position for every face the photo's camera does not see; the seen
+  side unchanged, the photo through the relief correspondence):
+  `results/diff3f/generated_merge/painted_hunyuan3d_merged_sheet.png`. The unseen side is now
+  one continuous texture that follows the photo's colours and pattern (the cat's stripes on
+  the far flank and the back of the head, the suit and belt on the man's back, the okapi's coat
+  on the camel), where the generated-mesh correspondence gave a patchwork; the face splits
+  are the same as before (same-category pairs: on average 6 892 faces from the photo, 10 053
+  from the painted copy). What remains: the seam along the photo's silhouette (colour and
+  pattern differences between the photo's albedo and the painted texture) and thin outlines
+  where a target triangle's corners fall in different atlas charts (per-vertex uv lookup into
+  the painter's multi-chart atlas). Both are the engineering items of the second review:
+  per-texel baking onto one target atlas with chart dilation, a visibility margin at the
+  silhouette and Waechter-style colour levelling. Of the three sources for the unseen side
+  tried today, this is the usable one; the generated-mesh correspondence is not.
+
+## 2026-10-25 — The 2D route, version 2: resolution is the lever
+
+- `match2d.py` with a white background and square crops around the object on both sides,
+  mutual matches only, DINOv2 ViT-B/14 on the CPU, three views
+  (`results/diff3f/match2d_v2/keypoint_accuracy.csv`): keypoints on the 13 same-category
+  pairs, PCK@2 (3D / image plane): 518 px 28 / 30 %, 840 px 47 / 49 % (version 1 at 518 px with
+  the filled background: 23 %); mean error 0.051 and 0.056 against the nearest neighbour's
+  0.048; the two cross pairs 15 % and 10 %. Every match is on the object now. 840 px takes
+  18–27 s per pair on the laptop's CPU. So the photo matched directly against the target's
+  renders already beats the old refinement chain (43 %) and the resolution of the 2D features
+  is what moves it; next: 1120 px, five views (turned and tilted), DINOv3 once the owner's
+  token is on the laptop, and the matches as a second opinion next to the Diff3F field.
+
+## 2026-10-25 — Baking the target atlas (laptop run) and the 2D route, version 3
+
+- `bake_target_atlas.py` over the 15 pairs on the laptop (Hunyuan3D-painted target as the unseen
+  side, 2048² atlas, xatlas on every pair, painted colours levelled to the photo, 22–46 s per
+  pair; `results/diff3f/generated_merge/baked_hunyuan3d_sheet.png`, per-pair previews on the data
+  branch `baked-win-tmp`): the smears and chart outlines of the painted merge are gone from the
+  side and back views and the texture is continuous everywhere (okapi → camel's back and side
+  stripes are clean). What remains is the content of the painted copy, not seams: superman → man
+  has a dark purple region over the lower back and the arms with a soft photo-to-paint transition
+  in the left view; cat has a dark blot on the rump. Per pair the faces split roughly 1 photo :
+  0.2 blend : 2 paint (cow 2097 / 403 / 3217 of 5500; the stats line counted faces with
+  0.5 ≤ w < 1 twice until 325b0954).
+- The 2D route, version 3 (`match2d.py`, DINOv2 ViT-B/14 on the CPU, mutual matches;
+  `results/diff3f/match2d_v3/keypoint_accuracy.csv`): 1120 px with three views gives PCK@2
+  44 % (3D) / 45 % (image plane) on the 13 same-category pairs, below version 2's 47 % at 840 px,
+  so resolution stops helping at 840 px; 840 px with five views (two extra tilted views) gives
+  50 / 52 %, mean error 0.053. Both stay under the nearest neighbour's 63 % and the 3D chain's
+  61 % (re-match sweep 2). Cross pairs: 15 % and 10 %, mean error 0.14–0.17 against the nearest
+  neighbour's 0.08. Matches per pair 589–2109 (1120 px) and 741–2480 (five views); 35–46 s and
+  28–40 s per pair at 8 threads. Reading: the 2D route alone will not pass the 3D chain; its use
+  is as a second opinion (anchors) next to the Diff3F field, which is the next run.
+
+## 2026-10-25 — TRELLIS.2 texturing baseline: faster and cheaper than Hunyuan3D-Paint, but blurrier
+
+- Server (`gen3d_paint_baseline.py --painter trellis2`, paint-baseline-tmp ea04345b): the same
+  15 targets painted by TRELLIS.2's texturing mode (1024 texture flow, 2048 px texture, seed 0)
+  with the photo as reference, in the photo frame and in TRELLIS.2's own canonical frame
+  (`results/diff3f/paint_baseline_trellis2/`, `paint_baseline_trellis2_canonical/`; meshes on
+  the branch). Cost per pair: median 17 s (11–31 s) and 6.3–10 GB of GPU memory, against
+  Hunyuan3D-Paint's 44 s (39–47 s) and 14 GB; every painted mesh lies on the target (surface
+  distance 0).
+- Quality, from the renders: panda, bird and dragon → lizard are good (the lizard gets the
+  orange back and cream belly that Hunyuan3D-Paint flattened to plain orange); cat → lion and
+  okapi → camel lose the photo's pattern (no leopard spots, no leg stripes: a blurred,
+  low-contrast mottled coat, where Hunyuan3D-Paint keeps stripes, tail rings and the white
+  patches); superman → man is speckled with red-and-white noise over the whole suit and the
+  emblem is smeared onto both the chest and the crotch, where Hunyuan3D-Paint gives a clean
+  suit with belt and emblem; the cross pair labubu → camel fails as expected (grey camel with
+  faint pink patches). The canonical frame changes nothing visible on cat → lion, okapi → camel
+  and superman → man, so the photo frame is the setting for the baseline table.
+- Standing: Hunyuan3D-Paint remains the painter for the unseen side of the two-sided texture;
+  TRELLIS.2 texturing is the second painting-baseline row (faster, half the memory, blurrier,
+  loses fine patterns).
+
+## 2026-10-25 — 2D matches as anchors of the 3D chain (laptop run): overridden, not wrong
+
+- `refine_correspondence.py --landmarks <match2d v3, 840 px, five views> --add_mutual` on top
+  of the standing re-match settings, 400 landmarks per pair (307 for labubu → camel) and a
+  farthest-point thinning to 100 (`results/diff3f/lm2d/keypoint_accuracy.csv`, 30 runs in
+  356 s on the laptop). Keypoints on the 13 same-category pairs, PCK@2 (3D / image plane) and
+  mean error: the chain without landmarks 61 / 62 %, 0.038; with 400 landmarks 60 / 62 %,
+  0.039; with 100 landmarks 60 / 61 %, 0.042; nearest neighbour 63 / 64 %, 0.048. Cross pairs
+  5 → 10 % with a higher mean error. Per pair the only changes are one keypoint up or down on
+  okapi, okapi1, cat5 → cat, cat → lion and the two cross pairs.
+- Why nothing moved: the landmarks were pinned only in the discrete stage; in the field they
+  had data weight 10 among thousands of vertices, the ARAP solve smoothed over them, and the
+  three re-match rounds re-pinned only the mutual anchors. Measured on the final map, 75 % of
+  the 400 landmark vertices sit more than 2 % of the diagonal from their 2D source point
+  (median 3.6 %), and the chain run without landmarks puts the same vertices at the same
+  distances (cat 0.0336 both ways). So the 2D matches and the 3D chain disagree by about 3 % at
+  the median, and the chain simply wins.
+- Change for the next run: landmarks are now re-pinned in every re-match round like the
+  anchors, and `--landmarks_hard` makes them Dirichlet constraints of the final field and the
+  re-match solves (the same mechanism as `--hard_confident`). This separates "the 2D matches
+  are overridden" from "the 2D matches are wrong": if pinning them exactly lowers PCK@2 toward
+  the 2D route's 50 %, the 2D matches are worse than the chain at the keypoints and the 2D
+  route is closed as an anchor source.
+
+## 2026-10-25 — Diff3F lifting on the GPU (server run), and three scripts merged from the data branches
+
+- `diff3f_features.py --lift gpu` (server, features-3d-tmp a34e073,
+  `results/diff3f/features_zoom2_liftgpu/`): the per-view lift of the 2D features onto the
+  mesh points, formerly a CPU ball query at 2.3–2.7 s per relief view, runs on the GPU in
+  about 0.13 s per view. Checked on four meshes against the CPU files: synthetic cat, GT
+  accuracy within 1 % 49.5 → 51.2 %, within 5 % 96.8 → 94.9 %, median error 0.0101 → 0.0096;
+  mutual-nearest-neighbour fraction 0.121 → 0.119 (cat_partial → cat_full 0.0099 → 0.0117,
+  cat_partial → lion 0.0100 → 0.0103); cosine to the CPU features 0.93–0.97 mean. Whole-mesh
+  times 665 / 679 / 910 / 755 s against 796 / 937 / 2284 / 912 s, so painting (the UNet pass
+  per view, 610–780 s) is now the only large stage. Keypoint check on cat and cat → lion is
+  for the laptop (see the next entry: it failed, so the GPU lift is not adopted yet; the stored
+  zoom-2 features stay the CPU ones).
+- Code that lived only on data branches is now on `diff3f-registration`: `diff3f_features.py`
+  with `--lift gpu` (from features-3d-tmp), `gen3d_hunyuan.py` with `paint_pipeline()` (from
+  paint-baseline-tmp; `gen3d_paint_baseline.py` imports it, so the paint baseline was not
+  runnable from this branch before) and `make_partial_dataset.py` (from dataset-tmp). The
+  server compared every other script blob by blob: identical. Those branches can go once the
+  Windows archive has verified its copies.
+
+## 2026-10-25 — 2D matches pinned exactly (laptop run): the 2D route adds nothing as an anchor source
+
+- `refine_correspondence.py` at 9799a67 with the match2d v3 landmarks (840 px, five views),
+  three variants over the 15 pairs (`results/diff3f/lm2d_v2/keypoint_accuracy.csv`, 45 runs in
+  569 s): soft re-pin in every re-match round (400 landmarks), `--landmarks_hard` with 400 and
+  with 100 farthest-point-thinned landmarks. The hard variants hold every landmark exactly
+  (distance 0 on all 5907 / 1500 landmark vertices); the soft re-pin halves the drift of the
+  previous run (over 2 % of the diagonal: 75 → 41 %, median 3.6 → 1.7 %).
+- Keypoints on the 13 same-category pairs, PCK@2 (3D / image plane) and mean error: the chain
+  61 / 62 %, 0.038; soft 400 59 / 63 %, 0.041; hard 400 60 / 64 %, 0.043; hard 100 59 / 62 %,
+  0.045; nearest neighbour 63 / 64 %, 0.048. Cross pairs: mean error 0.086 → 0.13–0.16 with
+  landmarks. Per pair the landmarks gain on okapi1 → camel (+2 keypoints with hard pinning) and
+  panda (+1) and lose on superman posed, okapi → camel, cat5 → cat and cat → lion (−1 each,
+  okapi → camel −2 with 100 hard landmarks).
+- Reading: with the override removed, the 2D matches still do not lift the chain; they carry no
+  keypoint accuracy beyond the 3D chain's and some are wrong, so pinning them hurts single
+  pairs and the cross pairs' mean error. The 2D route is closed as an anchor source for the 3D
+  chain (its own best is 50 % PCK@2). `--landmarks_hard` stays as the way to use manual or
+  ground-truth landmarks exactly. The chain (61 %) and the nearest neighbour (63 %) are both
+  limited by the features; the next candidates are the DINOv3 and DistillDIFT full runs on the
+  server.
+
+## 2026-10-25 — GPU-lift features fail the keypoint check (laptop run): not adopted, cause to be separated
+
+- Batch 16 on the laptop (`results/diff3f/liftgpu/`, liftgpu-win-tmp 5ec745e): the
+  `--lift gpu` files of features-3d-tmp a34e073 (made at 5a02292) against the stored CPU-lift
+  zoom-2 files (made at 1f37fe3), same vertex indices and views. Keypoints, PCK@2 / mean error:
+  cat nearest neighbour 71 % / 0.055 against 71 % / 0.022 (CPU); cat → lion nearest neighbour
+  27 % / 0.096 against 45 % / 0.031, chain 27 % / 0.037 against 36 % / 0.038. Synthetic cat GT
+  within 1 %: nearest neighbour 51.5 against 57.2 %, chain 56.0 against 62.1 %. Feature cosine
+  GPU against CPU per mesh: mean 0.93–0.97, minimum 0.72–0.88, where the laptop-against-server
+  reproduction of the same commit gives mean 0.9997 and the server's run-to-run minimum is
+  about 0.977. So the two files differ 10–30 times more than run-to-run noise and the keypoints
+  move by several points, not by one.
+- Caveat: the two files also differ in commit (5a02292 against 1f37fe3, which spans the
+  rasteriser-bin change), and the server's own check (a different matching protocol) saw
+  similar GT accuracy. Next: a `--lift cpu` run at the current commit on lion_full and
+  cat_partial, compared with both files, to separate the lift from the other changes. Until
+  then `--lift gpu` is not the standard; the standard extraction stays `--zoom 2` with the CPU
+  lift.
+
+## 2026-10-25 — Generated mesh as source with front-only features (laptop extraction, Mac evaluation): the line stays closed
+
+- Front-only zoom-2 Diff3F features of the 14 Hunyuan3D meshes (laptop GPU, 7 h in all,
+  23–40 min per mesh; branch features-front-tmp 31a99a2, archived on Windows), evaluated with
+  `eval_generated.py --model hunyuan3d --gen_features outputs/diff3f/features_zoom2_gen_front`
+  (`results/diff3f/generated_hunyuan3d_front.csv`, outputs in
+  `outputs/diff3f/14_generated_match/hunyuan3d_front/`). Keypoint PCK@2 on the 13 same-category
+  pairs: nearest neighbour 23.2 % (full-mesh features 17.3 %, hybrid 18.1 %), pipeline 14.4 %
+  (15.5 %, 19.9 %); mean error 0.056. The relief source gives 63 % / 61 % (chain with re-match).
+- Reading: removing the unseen side's features does take some stolen matches back (nearest
+  neighbour +6 points), so the back did compete, but the generated mesh's features remain far
+  below the relief's even on its visible side (its shape and texture are the generator's, not
+  the photo's), and the pipeline gains nothing. Generate-then-match stays closed as a source for
+  correspondence; its remaining use is the painted target for the unseen side.
+
+## 2026-10-25 — The GPU lift was a different algorithm; rewritten to Diff3F's semantics
+
+- Laptop A/B (`lift-ab-win-tmp` d4b6942, archived): lion_full extracted twice at e11dca0 on one
+  machine with only `--lift` changed. CPU against the stored CPU file: cosine mean 0.9997,
+  minimum 0.988; GPU against the server's GPU file: 1.0000; CPU against GPU: mean 0.933,
+  minimum 0.767, share above 0.95 only 34 %. Keypoints on cat → lion with the stored CPU
+  cat_partial as source: nearest neighbour 45 % PCK@2 / 0.031 with any CPU lion_full, 27 % /
+  0.094 with either GPU one; the chain 36 → 27 %. The commits between 1f37fe3, 5a02292 and
+  e11dca0 change nothing measurable; the lift alone does.
+- Cause, from the code: Diff3F's lifting does `acc[q[mask]] += feature` and
+  `count[q[mask]] += 1` with duplicate vertex indices, which on the CPU keeps one pixel per
+  vertex and view (the last (pixel, k) pair in row-major order) and counts the view once, so a
+  vertex's feature is the mean over views of one pixel each. The GPU path summed every (pixel,
+  vertex) pair in the ball and divided by the number of pairs: a spatial blur within each view
+  with the views weighted by their pixel counts, which is what cost the keypoints.
+- Fix: the GPU path now selects exactly Diff3F's pair per vertex (`last_pair_per_vertex`, stable
+  sort by vertex, last entry of each group) and counts the view once; `tests/test_diff3f_lift.py`
+  checks the selection against the fancy-index write (skipped where torch is absent). Pass mark
+  for the laptop's confirmation run on lion_full (the CPU path itself is only reproducible to a
+  minimum cosine of about 0.98, because the winning pixel depends on ball-query order): mean
+  cosine about 0.9997 against the stored CPU file, share above 0.95 of 1.00, cat → lion nearest
+  neighbour 45 % PCK@2. Until that passes, the standard extraction stays the CPU lift.
+
+## 2026-10-25 — The fixed GPU lift passes: `--zoom 2 --lift gpu` is the standard extraction
+
+- Laptop confirmation (`lift-ab2-win-tmp` 34c8c5d, archived): lion_full at e07b147 with
+  `--lift gpu`, same settings as the A/B. Cosine against the CPU file of the same commit mean
+  0.9996, median 0.9998, minimum 0.992, every vertex above 0.95; against the stored CPU file
+  0.9997 / 0.9999 / 0.979, the same as the CPU path against itself (0.9997 / 0.9999 / 0.988).
+  Keypoints on cat → lion identical to the CPU files: nearest neighbour 45 % PCK@2 / 0.031,
+  chain 36 % / 0.038; texture measures within 0.005. The unit test passes in a torch
+  environment (laptop and server).
+- Standard from now on: `diff3f_features.py --zoom 2 --lift gpu` at e07b147 or later. The
+  saving is in the lift stage (2.3–2.7 s to 0.13 s per view; on the server's DINOv3 run the
+  CPU lift was 535–1134 s of 1288–2022 s per relief); with CPU offload on, as on the laptop,
+  the whole run gains little (1349 against 1399 s) because the painting dominates there.
+
+## 2026-10-25 — DINOv3 on the full keypoint set (laptop run): no case for switching; concatenation lifts the nearest neighbour only
+
+- DINOv3 zoom-2 features for all 23 keypoint-benchmark meshes (server, features-3d-tmp
+  a6c6d6e, same sample points as the Diff3F files), evaluated alone and concatenated with
+  Diff3F at equal weight (`fuse_features.py --w 0.5`, 4096-d), nearest neighbour and the chain
+  (`results/diff3f/dinov3_full/`). Keypoints on the 13 same-category pairs, PCK@2 (3D) and mean
+  error: Diff3F 63 % / 0.048 (nearest neighbour), 61 % / 0.038 (chain); DINOv3 59 % / 0.072,
+  58 % / 0.042; concatenation 65 % / 0.049, 60 % / 0.038. Cross pairs unchanged at 10 / 5 %.
+  Synthetic GT within 1 %: cat 57.2 / 62.1 (Diff3F), 54.4 / 57.0 (DINOv3), 57.0 / 60.9
+  (concatenation); cow 41.7 / 48.3, 40.3 / 50.5, 41.0 / 49.1. Texture measures within noise.
+- Per pair DINOv3 alone helps okapi → camel and panda and hurts cow, cat, cat → lion, dragon →
+  lizard and chair1 (chain 50 → 17 %); the concatenation's nearest-neighbour gain is one keypoint
+  each on okapi → camel and bird against one lost on cat → lion, and the chain does not keep it.
+- Standing: Diff3F stays the feature; the concatenation's 65 % is the best nearest-neighbour
+  number so far but within two keypoints of Diff3F and not carried through the chain. The
+  five-mesh test of 2026-10-24 is confirmed on the full set. DistillDIFT on the same 23 meshes is
+  next.
+
+## 2026-10-25 — DistillDIFT on the full keypoint set (laptop run): below Diff3F and DINOv3; the drop-in feature search is closed
+
+- DistillDIFT features for all 23 keypoint-benchmark meshes (server, 768-d, `--lift gpu`,
+  features-3d-tmp d502bcf, 23 min for all), alone and concatenated with Diff3F at equal weight
+  (`results/diff3f/distilldift_full/`). Keypoints on the 13 same-category pairs, PCK@2 (3D) and
+  mean error: Diff3F 63 % / 0.048 (nearest neighbour), 61 % / 0.038 (chain); DistillDIFT 56 % /
+  0.049, 56 % / 0.039; concatenation 58 % / 0.054, 59 % / 0.040. Synthetic GT within 1 %: cat
+  44.5 / 53.8 (DistillDIFT), 53.7 / 58.8 (concatenation) against Diff3F's 57.2 / 62.1; cow 35.2 /
+  42.6 and 40.5 / 47.2 against 41.7 / 48.3. Texture measures within noise. Per pair it helps cow
+  and okapi1 → camel and hurts cat, both superman pairs, chair1 and dragon → lizard.
+- Standing after this and the DINOv3 run: Diff3F at zoom 2 with the re-match chain stays the
+  feature and the setting. Every drop-in replacement or addition tried since 2026-10-22 (MeshFM,
+  SigLIP2, SAM anti-aliasing, albedo render, DINOv3, DistillDIFT, fusions and concatenations)
+  is at or below Diff3F on the keypoints; the only gains came from the extraction itself (zoom
+  2: nearest neighbour 54 → 63 %) and the chain (re-match: 43 → 61 %). Concatenating DINOv3
+  gives the best nearest-neighbour number (65 %) but the chain does not keep it. The remaining
+  ideas are structural, not drop-in features: left-right disambiguation of the symmetric
+  matches (the 20–30 % mirrored area on real pairs), part-level constraints, and an adapter
+  trained on the partial-to-full dataset (phase B), which need the owner's and supervisor's
+  decision.
+
+## 2026-10-26 — Left-right disambiguation (owner's choice 1): mirroring is not what the chain gets wrong
+
+- Mechanism added to `refine_correspondence.py`: the target's symmetry plane (the coordinate
+  plane through the centroid that mirrors the mesh best, `symmetry_plane`; residual 0.0000–0.007
+  of the diagonal on the animals and the man, 0.05 on the posed human), the relief's side of it
+  from the filtered mutual anchors' similarity transform (`side_coordinates`), and `--w_side`,
+  a penalty on candidates on the other side than the vertex beyond `--side_band` (0.03).
+  Unit-tested (`test_symmetry_plane_and_side_penalty`).
+- Diagnostic (`scripts/idarb/mirror_diagnostic.py`, `results/diff3f/mirror_diagnostic.csv`, 13
+  same-category pairs, 89 keypoints, chain = the standing re-match settings run on the Mac):
+  the plain nearest neighbour sends 18–39 % of the target samples (mean 30 %) to the other side
+  of the plane, so the features do confuse left and right; a side-constrained nearest neighbour
+  removes the gross errors (mean error 0.081 → 0.070 on the samples; cow 0.119 → 0.058, superman
+  0.054 → 0.017, chair 0.099 → 0.044) but moves PCK@2 only 46 → 47 % (sample-level numbers, not
+  the 63 % of the vertex-level table). In the chain, `--w_side 1` on cat → lion changes not a
+  single vertex: the anchor filter and the position prior already exclude the other-side
+  candidates. Of the chain's 35 misses, 2 land on a left-right partner's position (only 15
+  keypoints have an annotated partner, so the test is weak); by distance the misses are 15 near
+  (2–5 %), 12 medium (5–10 %) and 8 gross (over 10 %).
+- Reading: the left-right problem of the 2D features is real but the 3D chain already solves it
+  with geometry (that is where the mirrored texture area went from 24 to 7 % on 2026-10-23); a
+  Telling-Left-from-Right-style pose alignment has no headroom here. The remaining misses are
+  mostly near and medium misses of localisation, not swaps. `--w_side` stays as an option.
+
+## 2026-10-26 — Coarse-to-fine localisation in the photo (laptop run): the patch grid is too coarse to sharpen the chain
+
+- `match2d.py --prior` (41fd57b): each render cell searches the photo only within a window
+  around the cell where the chain's correspondence puts its target vertex, DINOv2 at 840 px,
+  the vertices no render reaches keep the chain's answer. Three variants on the 15 keypoint
+  pairs (`results/diff3f/local2d/keypoint_accuracy.csv`, 30–43 s per pair, 53–90 s with three
+  views): front view with a 4 % or 8 % window, three views with 6 %. Keypoints on the 13
+  same-category pairs: PCK@2 61 / 61 / 58 % against the chain's 61 % and mean error 0.038
+  unchanged, but only 5–25 % of the vertices are touched (one per render cell, 400–1300 cells
+  against 15 000 vertices), and the annotated keypoints are almost never among them.
+- Measured on the keypoints that did move: 4 at 840 px with one view (2 better, 2 worse;
+  bad ones 0.040–0.045 → 0.012–0.028, good ones 0.007–0.010 → 0.014–0.039), 13 with three
+  views (6 better, 7 worse, inside 2 % 9 → 6). The matches spread over the whole window (median
+  move about half the window, 46–95 % of touched vertices shifted by more than 2 %): the patch
+  features, one cell per 14 px, cannot localise finer than the chain already does. A run at
+  1120 px with 2.5 % and 4 % windows (batch 21) decides whether a finer grid changes that.
+
+## 2026-10-26 — Coarse-to-fine localisation at 1120 px (laptop run): the first setting above the nearest neighbour
+
+- Batch 20 corrected with all 89 keypoints (cat → lion's are in `results/diff3f/landmarks/`):
+  at 840 px the moved keypoints are 5 (2 better, 3 worse) with a 4 % window, 5 (3 / 2) with 8 %,
+  16 (9 / 7, inside 2 % 10 → 8) with three views: a coin toss, as read.
+- `match2d.py --prior` at 1120 px, front view only (`results/diff3f/local2d2/keypoint_accuracy.csv`,
+  59–71 s per pair): with a 4 % window 14 keypoints move, 10 better and 4 worse, inside 2 %
+  5 → 9, median error of the moved ones 0.025 → 0.017; PCK@2 on the 13 same-category pairs
+  65 % (image plane 67 %), against the chain's 61 % and the nearest neighbour's 63 %, mean error
+  0.038 → 0.037; +1 keypoint on okapi1 → camel, labubu → man and panda, +2 on cat → lion, −1 on
+  okapi → camel (0.010 → 0.021). A 2.5 % window is weaker (8 / 6, 63 %). The 80 × 80 cell grid
+  is what changes it against 840 px (60 × 60): finer cells and more vertices reached.
+- Caveat: still one vertex per render cell, so 14 of 89 keypoints are touched and the gain is
+  +4 keypoints net on six pairs. Next: every visible vertex searches (`--per_vertex`, its feature
+  interpolated from the render grid), evaluated on all 28 pairs with the texture numbers.
+
+## 2026-10-26 — Every visible vertex searching on its own (laptop run): noise, not localisation
+
+- `match2d.py --prior --per_vertex` at 1120 px, 4 % window, front view, on the 26 real pairs
+  (`results/diff3f/local2d3/`, 19–27 s per pair plus the texture step; the two synthetic pairs
+  cannot run, their partials are not pixel grids): keypoints on the 13 same-category pairs
+  PCK@2 54 % against the chain's 61 % and the per-cell 65 %; 66 of 89 keypoints move, 21
+  better and 45 worse, inside 2 % 41 → 35. Texture, same-category means: within 2 % 0.51
+  against 0.68, within 5 % 0.86 against 0.97, flipped area 0.29 against 0.11, conformal
+  distortion median 7.2 against 3.2; every one of the 26 pairs is worse.
+- Reading: each vertex moves by about one cell (median shift 2 % of the diagonal) in its own
+  direction, which breaks the smooth map; the per-cell gain of batch 21 came from the strongest
+  match per cell, and densifying the search adds mostly noise. The standing setting stays the
+  re-match chain. Next: the local matches as soft data of one more field solve inside the chain
+  (`refine_correspondence.py --local_npz`, the confident half by similarity at weight 3), so the
+  field keeps what agrees with its neighbours and smooths the rest away.
+
+## 2026-10-26 — Photo-window matches as soft data of the field (laptop run): the texture holds, the keypoint gain does not
+
+- `refine_correspondence.py --local_npz` (3532b57) on the 26 real pairs with the per-vertex
+  1120 px matches of batch 22 (`results/diff3f/local2d4/`; a base run at this commit
+  reproduces batch 7 exactly). Texture, same-category means (within 2 % / within 5 % /
+  conformal median / flipped area): chain 0.683 / 0.968 / 3.22 / 0.113; top half at weight 3
+  0.685 / 0.978 / 3.19 / 0.114; top quarter at weight 3 0.693 / 0.981 / 2.98 / 0.106 (better on
+  every measure, cross pairs too: 0.576 / 0.951 / 3.08 / 0.142 against 0.552 / 0.930 / 3.44 /
+  0.165); top half at weight 10 worse. Keypoints on the 13 same-category pairs: PCK@2 55 / 57 /
+  57 % against the chain's 61 %; 73–80 of 89 keypoints move by 1–2 %, more often for the worse
+  (42–52 worse against 28–31 better).
+- Reading: the field takes the noise out of the per-vertex matches (flips and distortion back
+  at or below the chain's), but the local data still pulls most keypoints slightly the wrong
+  way; the per-cell gain of batch 21 (65 %) is not reproduced through the field. The top-quarter
+  variant is the smoothest texture so far at a cost of three keypoints net (cow, posed superman,
+  bird and dragon → lizard lose one each, panda gains one); the chain stays the
+  standing setting for keypoints. What remains of the line: the per-cell 1120 px mode's texture
+  effect, and the per-cell matches (few, strong) as the field's soft data.
+
+## 2026-10-26 — Coarse-to-fine localisation closed: the 65 % comes with uncoupled vertex moves
+
+- Per-cell 1120 px, 4 % window on the 26 real pairs with the texture numbers
+  (`results/diff3f/local2d5/`): keypoints reproduce batch 21 exactly (65 % PCK@2 on the 13
+  same-category pairs, 10 of 14 moved keypoints better), but the texture pays for every moved
+  vertex folding its neighbours around it: same-category within 2 % 0.68 → 0.48, within 5 %
+  0.97 → 0.89, conformal median 3.2 → 5.5, flipped area 0.11 → 0.33 (cross pairs the same way),
+  almost the per-vertex damage of batch 22.
+- The per-cell matches as the field's soft data (`--local_npz` with the per-cell file, all
+  matches, weight 3 or 10): texture at the chain's level (weight 3: 0.686 / 0.976 / 3.08 / 0.124)
+  or slightly worse (weight 10), keypoints 59 % and 62 % against 61 %, with 72–73 keypoints
+  moved and the balance even (37–38 better against 35 worse); cat → lion and panda keep their
+  gains, posed superman and bird lose. The two cross keypoint pairs go 5 → 20 % in every local
+  variant, on 2 pairs.
+- Standing: the re-match chain stays the single correspondence for keypoints and texture. The
+  photo-window refinement gives +4 keypoints only as an uncoupled, keypoint-only map, and
+  through the field it comes out at the baseline; two different maps for one pair would be a
+  reporting trick, not a method. The line is closed with the code kept (`match2d.py --prior`,
+  `--per_vertex`, `refine_correspondence.py --local_npz`) and the top-quarter field variant
+  noted as the smoothest texture setting (at three keypoints' cost).
+
+## 2026-10-27 — Candidate upper bound: the right answer is usually among the candidates
+
+- `scripts/idarb/candidate_bound.py` (`results/diff3f/candidate_bound.csv`), 89 keypoints on
+  the 13 same-category pairs, Diff3F zoom-2 features: the share of keypoints for which some
+  relief sample within 2 % of the annotation is among the k most similar samples of the
+  target keypoint's sample: k = 1 63 %, 4 67 %, 16 70 %, 64 81 %, 256 91 %, 1024 97 %; the
+  first correct candidate has median rank 1 and 75th percentile 34; every keypoint has one
+  somewhere (the correct region holds 21–55 samples per keypoint).
+- Reading: at the chain's k = 64 the correct region is in the candidate set for 81 % of the
+  keypoints, yet the chain's choice (prior + smoothing + re-match) ends at 61 %, the nearest
+  neighbour's level. A chooser that used context (the neighbours' candidates, the part, the
+  relief's layout) has up to 20 points of headroom on this set; smoothing alone does not
+  convert it. This is the measurement behind the outside review's advice (an external model
+  consulted by the owner on 2026-10-27) to compare re-ranking against feature replacement.
+- The same review's other points, applied to `train_adapter.py` before any training: an
+  InfoNCE in the evaluation's direction (full → partial within the batch); the near-copy
+  negative mask restricted to far-away copies (symmetric counterparts, beyond 15 % of the
+  diagonal) so that near copies at 2–10 % stay as the hard negatives of localisation, with the
+  masked share in that band logged; an optional soft-label cross-entropy over the candidates
+  (Gaussian in the distance to the true vertex); an optional residual penalty; validation also
+  at 2 % of the partial's diagonal (the real task's threshold) with the share of points correct
+  before the adapter and wrong after it; identity weights saved when no epoch beats the
+  unadapted features. Validation tiers agreed: A = dataset cuts (the pilot), B = reliefs made by
+  the real decomposition pipeline from renders of the full mesh (ground truth through the
+  render), C = the real pairs. GeoLoRA (arXiv 2610.21802, DINOv3 LoRA trained on partial
+  cuts with a geodesic PointInfoNCE) is the closest published method and a drop-in test for
+  the server after the pilot.
+
+## 2026-10-27 — Neighbour voting over the candidates (Mac run): consistency alone cannot take the headroom
+
+- `scripts/idarb/vote_chooser.py` (`results/diff3f/vote_chooser.csv`): every candidate of a
+  target sample scores its similarity plus λ times the mean support its 12 nearest target
+  samples' candidate lists give to a relief position near it (Gaussian, σ = 3 % of the relief
+  diagonal), then optional rounds where the neighbours' chosen positions vote. Keypoint PCK@2
+  on the 13 same-category pairs: λ = 0 (nearest neighbour) 62.9 %; λ = 0.5 / 1 / 2 / 4 one
+  shot 60.7 / 60.7 / 59.6 / 58.4 %, after two rounds 56.2 % for every λ.
+- Reading: the correct region sits among the top 64 candidates for 81 % of the keypoints
+  (candidate_bound.py), but neither the chain's smooth field nor this softer vote over the
+  candidate distributions picks it: local consistency carries no information about which
+  candidate is right, and the more of it is used the more the choice drifts. Taking the headroom
+  needs information about correctness itself, that is better features (the adapter) or a chooser
+  trained with ground truth; geometry-only post-processing is exhausted on this benchmark.
+
+## 2026-10-28 — Early adapters on the real pairs (Mac run): the dataset gain does not carry to the reliefs
+
+- Early pilot training on hpc02 (`train_adapter.py` at c94c442, 20 epochs, 40 validation pairs):
+  run A with the defaults (regression + InfoNCE both ways) on the first 80 train pairs, run B
+  with the soft-label loss (`--w_soft 1 --w_nce 0`) on 82. Dataset validation (full → partial,
+  within 1 % of the full diagonal): identity 0.307, A 0.355 (epoch 16), B 0.361 (epoch 12);
+  partial → full 0.326 → 0.359 / 0.370; 22–26 % of the points correct before the adapter are
+  wrong after it (lost_share). Weights, logs and memory samples: features-dataset-tmp 44b54b4,
+  `results/diff3f/adapter/`.
+- Real pairs on the Mac: `apply_adapter.py` on the relief side of the zoom-2 features, then the
+  standing keypoint-oriented chain (`eval_features.py --groups same --variants nn arap --view
+  anchors --refine_args "--w_view 0.3 --anchor_filter rigid:0.1 --final_rematch 0.05
+  --rematch_rounds 3"`, `outputs/diff3f/18_adapter_early/{A,B}`) and `keypoint_table.py`
+  (`results/diff3f/adapter_early/`). Keypoints, 13 same-category pairs, 89 keypoints, PCK@2 as
+  the per-pair mean with the keypoint count in brackets: nearest neighbour 63 % (56) → A 55 %
+  (49), B 57 % (51), mean error 0.048 → 0.072 / 0.079; chain 61 % (54) → A 58 % (50), B 60 %
+  (53), mean error 0.038 → 0.039 / 0.041. Per pair the changes are one keypoint either way;
+  cat → lion loses two in A's chain (4 → 2), okapi1 → camel gains two in B's (4 → 6). Texture
+  (16 same-category pairs, chain, within 2 % / within 5 % / conformal median / mirrored area /
+  mutual anchors): 68.3 / 96.8 / 3.22 / 11.3 % / 123 → A 68.4 / 96.5 / 3.24 / 7.3 % / 152,
+  B 68.8 / 96.7 / 3.27 / 7.9 % / 156.
+- Reading: the +4–5 points on the dataset cuts do not carry to the real reliefs. The nearest
+  neighbour loses 6–8 points, the chain loses 1–3 (inside the one-keypoint-per-pair noise), the
+  texture is unchanged, with a smaller mirrored area and a quarter more mutual anchors. The
+  criterion for keeping an adapter (+3 points PCK@2 over 63 / 61 %, texture not worse) is not
+  met by either run. B is at or above A on every measure. These adapters saw 80 training pairs;
+  the full pilot training on all 196 train pairs follows once the 275 partials are extracted.
+
+## 2026-10-29 — Full pilot training of the adapter (B, C, A): C matches the baseline chain, none beats it
+
+- Training on all 196 train pairs of the pilot (140 objects, 275 partials; the last Diff3F
+  features finished at 05:09 on hpc02 and hpc01 with the laptop's 33 stems), `train_adapter.py`
+  at c94c442, 20 epochs, the same 40 validation pairs as the early runs (val_before identical):
+  run B (`--w_soft 1 --w_nce 0`) on hpc02, 2739 s; runs C (`--w_soft 1 --w_nce 0 --w_resid 1`)
+  and A (defaults) in parallel on hpc01 with the training features copied over (10.8 GB), 7259 s
+  each. Dataset validation (full → partial within 1 %): identity 0.307 → B 0.372 (epoch 20),
+  C 0.381 (epoch 5; epoch 20 0.374), A 0.368 (epoch 15); the early runs reached 0.361 / 0.355 on
+  80–82 pairs, so doubling the training pairs adds about one point. C's residual penalty lowers
+  lost_share a little (0.19–0.23 against 0.21–0.25). Weights, logs, samples, run scripts and
+  SHA256SUMS: features-dataset-tmp 92bc439 (B) and 6fd1333 (C, A), `results/diff3f/adapter/`.
+- Real pairs on the Mac, the same test as on 10-28 (`apply_adapter.py` on the relief side of
+  the zoom-2 features, the standing keypoint-oriented chain into
+  `outputs/diff3f/18_adapter_full/{B,C,A}`, `keypoint_table.py`; CSVs in
+  `results/diff3f/adapter_full/`). 13 same-category pairs, 89 keypoints, PCK@2 as the per-pair
+  mean with the pooled count in brackets, then the mean error:
+  nearest neighbour 63 % (56) 0.048 → B 59 % (51) 0.057, C 62 % (54) 0.055, A 57 % (50) 0.066;
+  chain 61 % (54) 0.038 → B 58 % (50) 0.036, C 61 % (54) 0.038, A 58 % (50) 0.037.
+  Texture (16 same-category pairs, chain, within 2 % / within 5 % / mirrored area):
+  68.3 / 96.8 / 11.3 % → B 70.2 / 96.5 / 7.6 %, C 68.0 / 96.6 / 7.8 %, A 69.9 / 96.5 / 7.5 %.
+- Reading: no full run meets the criterion (+3 points PCK@2 over 63 / 61 %, texture not worse).
+  C, the run kept closest to the identity by the residual penalty, is the only one that does
+  not hurt the chain (54 of 89 either way) and loses the least on the nearest neighbour; A, the
+  run farthest from the identity, loses the most. The damage orders with the distance from the
+  identity, which says the shift the adapter learns on the dataset cuts is not the shift of the
+  real reliefs: the cuts are clean geometry seen from the front, the reliefs are normal
+  integrations with depth error, and the gain on the cuts (+6.5 points) buys nothing on the
+  reliefs with twice the data. What is left of this line is tier B (the 40 reliefs made by the
+  real pipeline from renders of full meshes, features extracting on hpc02, about 17 h): it
+  measures the loss the real pipeline itself causes with ground truth, and is the first
+  training material of the reliefs' kind. The three full adapters are kept as the record of
+  the adapter line; the standing chain stays unadapted.
+
+## 2026-10-29 — Full-to-full baseline: functional maps on the generated mesh (Mac run): 0–1 % at the fine scale, and spectral refinement erases the nearest neighbour's matches
+
+- Question (supervisor, 10-29): Hunyuan3D and TRELLIS.2 give a full mesh from the photo and
+  good 3D-to-3D correspondence papers exist, so why is the correspondence still bad; is it
+  semantic? Until now only our own partial-to-full chain had been run on the generated meshes
+  (10-24, 10-25: nearest neighbour 17–23 %, chain 14–20 %). This entry runs the standard
+  full-to-full method of that literature, functional maps (Ovsjanikov et al. 2012) with
+  ZoomOut refinement (Melzi et al. 2019), on generated mesh → target mesh, with the same 13
+  same-category pairs and 89 keypoints as the keypoint benchmark.
+- Method (`functional_map_match.py`, implemented from scratch on robust_laplacian and scipy):
+  cotangent (intrinsic Delaunay) Laplace–Beltrami eigenbasis of each mesh's largest connected
+  component, point-cloud Laplacian where the mesh is not one piece (5 of 13 targets, 3 of 13
+  partial meshes), mass matrix normalised to unit area so the eigenvalues are comparable;
+  descriptors = the zoom-2 Diff3F features at the vertices (nearest sampled point), jointly
+  PCA-reduced and whitened; C solved row by row in closed form from descriptor preservation
+  plus Laplacian commutativity; point map by nearest neighbour in the spectral embedding;
+  ZoomOut from k to k_zoomout in steps of 5. Four maps per pair: `fmap` (solved C), `zoomout`
+  (its refinement), `nn` (vertex-feature nearest neighbour, no spectral part) and
+  `nn_zoomout` (ZoomOut started from the nearest-neighbour map, the usual spectral
+  post-processing of a feature matching). Sanity check: cat → cat with its own features maps
+  every keypoint within 2 %.
+- Result, pooled PCK@2 over the 89 keypoints (count in brackets), then PCK@5 and mean error:
+  - Hunyuan3D source, k 50 → 120, 40 descriptor dimensions (`results/diff3f/fmap_hunyuan3d.csv`):
+    fmap 0 % (0) / 9.0 % / 0.269, zoomout 0 % (0) / 7.9 % / 0.262, nn 18.0 % (16) / 51.7 % /
+    0.095, nn_zoomout 9.0 % (8) / 42.7 % / 0.094.
+  - Hunyuan3D source, k 80 → 200, 100 dimensions (`fmap_hunyuan3d_k200.csv`): fmap 1.1 % (1)
+    / 15.7 % / 0.321, zoomout 1.1 % (1) / 14.6 % / 0.327, nn 18.0 % (16), nn_zoomout 12.4 %
+    (11) / 52.8 % / 0.088.
+  - Partial mesh (relief) source, k 50 → 120, 40 dimensions (`fmap_relief.csv`): fmap 3.4 % (3)
+    / 7.9 % / 0.282, zoomout 2.2 % (2) / 9.0 % / 0.267, nn 64.0 % (57) / 77.5 % / 0.046,
+    nn_zoomout 14.6 % (13) / 52.8 % / 0.093.
+  - For comparison the standing numbers: nearest neighbour on the sampled points 63 % (56),
+    chain 61 % (54); the vertex-level nearest neighbour here (64 %) is the same matching.
+- Reading: (1) the functional map solved from the descriptors fails on every source, 0–3 %:
+  projecting the descriptors onto 40–100 smooth eigenfunctions keeps only their low-frequency
+  part, and the commutativity prior assumes the two shapes are near-isometric, which a
+  generated mesh and a different object of the same category (or an open partial sheet and a
+  closed mesh) are not. (2) Spectral refinement of a good point map makes it worse at the fine
+  scale: ZoomOut takes the partial mesh's nearest neighbour from 64 % to 15 % and the
+  generated mesh's from 18 % to 9–12 %, while PCK@5 stays about where it was (52–53 % on the
+  Hunyuan3D k 200 setting, nearest neighbour 52 %): the refinement keeps the coarse map and
+  smooths away the eye-to-eye matches the keypoint benchmark asks for. (3) On the generated
+  mesh the gap to the partial mesh is the features' (18 % against 64 % with the same matching),
+  as 10-24 found; the full-to-full machinery adds nothing on top. So the answer to the
+  question: on this benchmark the generate-then-match route is not rescued by the standard
+  3D-to-3D method; the fine-scale failure is in the features on the generated surface, and the
+  spectral prior those methods rely on works against fine-scale matching between objects that
+  are not near-isometric. These rows (Diff3F + functional maps, with either source) go into the
+  baseline table. DenseMatcher (a learned full-to-full matcher on 2 000-vertex remeshes whose
+  final map is a functional map of its features) is left as a later baseline row, not set up
+  now: ~10 GB of downloads and a day of builds for a method of the same family.
+- Cost: on the Mac, after replacing the k-d tree in the 50- to 2048-dimensional nearest
+  neighbour searches by a chunked matrix product (results unchanged, 132 s → 14 s on cow),
+  the three batches took 21, 31 and 52 min. Per-pair maps in
+  `outputs/diff3f/22_functional_maps/{hunyuan3d,hunyuan3d_k200,relief}/<pair>.npz`.
+- Commands (repository root, `mesh` environment, this commit):
+  `python scripts/idarb/functional_map_match.py --model hunyuan3d --groups same --k 50 --k_zoomout 120 --descr_dim 40 --out_dir outputs/diff3f/22_functional_maps/hunyuan3d --csv results/diff3f/fmap_hunyuan3d.csv`;
+  the same with `--k 80 --k_zoomout 200 --descr_dim 100 --out_dir outputs/diff3f/22_functional_maps/hunyuan3d_k200 --csv results/diff3f/fmap_hunyuan3d_k200.csv`;
+  `python scripts/idarb/functional_map_match.py --model relief --groups same --k 50 --k_zoomout 120 --descr_dim 40 --out_dir outputs/diff3f/22_functional_maps/relief --csv results/diff3f/fmap_relief.csv`.
+
+## 2026-10-30 — Tier B measured: the real pipeline halves the fine-scale accuracy of the clean cuts, and the adapter's gain shrinks with it
+
+- Inputs: the 40 tier-B reliefs (`make_relief_gt.py`, 10-28: renders of the 40 validation
+  objects' full meshes from the tier-A cutting camera, through IDArb, `estimate_depth.py` and
+  `normal_to_mesh.py`; every relief vertex carries the full-mesh vertex behind its pixel as
+  ground truth), zoom-2 front-only Diff3F features extracted on hpc02 (18.9 h, 25–34 min per
+  relief, 6000 samples each; features-dataset-tmp 91198a3 / ac34ff2, the renders, buffers,
+  reliefs and ground-truth files 620e605, `results/diff3f/relief_gt/<uid>/`).
+- Measurement (`eval_relief_tierb.py`, 149 s on hpc02, `results/diff3f/relief_gt/tierb_metrics.csv`):
+  train_adapter.py's validation metric reused through `adapter_data.pair_arrays`, nearest
+  neighbour by feature similarity, errors as fractions of the full mesh's diagonal; p2f =
+  partial samples to the full mesh, f2p = full samples near the partial to the partial; mean
+  over pairs as train_adapter reports it (pooled values in the CSV differ by at most 0.02).
+  Check: on the training run's 40 validation pairs it reproduces val_before exactly
+  (p2f 0.3257 / 0.7067 / 0.5259, f2p 0.3066 / 0.6372 / 0.4760) and adapter B's epoch-20 value.
+  Columns: within 1 % / within 5 % / within 2 % of the partial's diagonal / mean error.
+  - Tier B, 40 reliefs, unadapted: p2f 0.147 / 0.578 / 0.305 / 0.097, f2p 0.164 / 0.634 /
+    0.364 / 0.087. With adapter B: p2f 0.168 / 0.615 / 0.340 / 0.093, f2p 0.208 / 0.675 /
+    0.415 / 0.079.
+  - Tier A, the 79 validation cuts of the same 40 objects, unadapted: p2f 0.302 / 0.704 /
+    0.506 / 0.081, f2p 0.283 / 0.642 / 0.457 / 0.089. With adapter B: p2f 0.359 / 0.770 /
+    0.581 / 0.067, f2p 0.351 / 0.729 / 0.551 / 0.074.
+- Reading: with the same objects, views and features, going through the real pipeline instead
+  of cutting the mesh halves the fine-scale accuracy (within 1 %: 0.16 against 0.28 f2p, 0.15
+  against 0.30 p2f) while the coarse accuracy (within 5 %) drops only 0.06–0.13: the loss the
+  pipeline causes is at the fine scale, which is the scale the keypoint benchmark measures. This
+  is the first number for the gap that 10-28 and 10-29 inferred from the adapters' failure on
+  the real pairs. Adapter B still helps on the reliefs, but less: +4.4 points f2p within 1 %
+  (+6.8 on the cuts), +2.1 p2f (+5.7), +5.1 within 2 % of the partial (+9.4); the shift it
+  learned on clean cuts is partly, not fully, the shift the reliefs need. Tier B is therefore
+  both the right validation set for the adapter line and the first training material of the
+  reliefs' kind; training on reliefs of this kind (a dataset of them for the train split) is
+  the open question of that line, not started.
+- Command (hpc02, `idarb` environment, this commit's script; the run used the same code at
+  c94c442 with `--code ~/semtex/wt_train`):
+  `python scripts/idarb/eval_relief_tierb.py --root ~/semtex/dataset --feature_dir ~/semtex/features_train --relief_features ~/semtex/wt_fdata/results/diff3f/features_dataset --relief_gt ~/semtex/relief_gt --weights B=~/semtex/wt_train/outputs/adapter/pilot_full_B.npz --out results/diff3f/relief_gt/tierb_metrics.csv`.
+
+## 2026-11-17 — Sensitivity of the chain to the anchor-filter threshold: flat from 0.1 to 0.2
+
+- Question (owner, for the group meeting): how the 0.1 in `--anchor_filter rigid:0.1` was
+  chosen. The 2026-10-23 entry only compares 0.1 with no filter, so the threshold alone is
+  varied here under the standing keypoint-oriented setting (zoom-2 Diff3F features,
+  `--w_view 0.3 --view_from_anchors --final_rematch 0.05 --rematch_rounds 3`); nothing else
+  changes. The filter keeps the mutual nearest-neighbour anchors that lie within the threshold
+  (a fraction of the source diagonal) of a similarity transform fitted to the anchors by RANSAC.
+- Result (`results/diff3f/anchor_filter_sweep/summary.csv`, per pair in `per_pair.csv`; hpc02,
+  CPU, 3236 s). Anchors: mean over the 16 same-category pairs, 158.3 mutual pairs before the
+  filter. Keypoints: 89 on 13 pairs, PCK@2 pooled. Texture: 16 pairs, triangles within 2 % /
+  5 % and mirrored area. Difference: pooled PCK@2 minus the 0.1 row, 95 % interval from a
+  bootstrap over pairs.
+
+  | threshold | anchors kept | PCK@2 hits | PCK@2 % | mean error | within 2 % | within 5 % | mirrored % | diff vs 0.1 |
+  |---|---|---|---|---|---|---|---|---|
+  | none | 158.3 | 50 | 56.2 | 0.0470 | 65.2 | 95.9 | 12.5 | −4.5 [−12.2, 0.0] |
+  | 0.05 | 82.4 | 49 | 55.1 | 0.0446 | 68.3 | 97.3 | 10.9 | −5.6 [−11.2, −1.1] |
+  | 0.075 | 105.3 | 51 | 57.3 | 0.0433 | 68.5 | 97.1 | 10.8 | −3.4 [−8.7, 0.0] |
+  | 0.1 | 122.8 | 54 | 60.7 | 0.0376 | 68.3 | 96.8 | 11.3 | control |
+  | 0.15 | 135.8 | 54 | 60.7 | 0.0372 | 68.4 | 97.0 | 11.1 | 0.0 [0.0, 0.0] |
+  | 0.2 | 142.9 | 53 | 59.6 | 0.0372 | 67.5 | 96.7 | 11.9 | −1.1 [−3.5, 0.0] |
+  | 0.3 | 153.2 | 52 | 58.4 | 0.0430 | 66.0 | 96.4 | 11.9 | −2.2 [−5.6, 0.0] |
+
+  The 0.1 row reproduces the standing chain exactly (54 of 89, mean error 0.038, texture
+  68.3 / 96.8 / 11.3).
+- Reading. The result does not depend on the exact value: 0.1 and 0.15 give the same
+  keypoint count on every pair, 0.2 differs by one keypoint, and the texture numbers stay within
+  one point from 0.05 to 0.2. Outside that range the chain degrades on both sides: a loose
+  or absent filter raises the mean error (0.043–0.047 against 0.037) and lowers the texture
+  measures, a tight one (0.05) removes half the anchors and loses 5 keypoints. One keypoint
+  is 1.1 points, and only the 0.05 row's interval excludes zero.
+- The keypoint differences come from few pairs (`per_pair.csv`): chair1_armchair has 0 of 6
+  without the filter, 1 at 0.05–0.075, 3 at 0.1–0.2 and 2 at 0.3; okapi_camel 4 of 7 without
+  it and at 0.2–0.3, 5 at 0.075–0.15; superman_man and cat5_cat lose one keypoint each at 0.05
+  (cat5_cat also at 0.075). The other nine pairs have the same count at every threshold. So
+  the table shows that 0.1 sits on a plateau, not that it is an optimum; with 89 keypoints a
+  finer choice inside 0.1–0.2 cannot be told apart.
+- Command (hpc02, `diff3f` environment, commit b4a7670; features from the temporary branch
+  features-zoom2-tmp 1237660, identical to the files of the standing results):
+  `python scripts/idarb/sweep_anchor_filter.py --thresholds none 0.05 0.075 0.1 0.15 0.2 0.3 --jobs 2 --threads 3 --feature_dir <features_zoom2>`;
+  the tables alone: the same script with `--summarise_only`.
+
+## 2026-11-18 — Feature debiasing and an oracle test of the re-match step: hubs are real but not the cause; the re-match returns a correct map to the features' own peak
+
+- Question. An outside review (Gemini 4 through the owner's subscription, method and numbers
+  only; notes in `outputs/handoff/method-scout/`) attributed the 61–63 % plateau to two things:
+  hub points (source points similar to everything, which attract matches) and a similarity peak
+  displaced between individuals, to which the final 5 % re-match returns whatever prior it is
+  given. Both are measurable on the stored zoom-2 Diff3F features without any new model.
+- Code (8fc4f9c): `feature_debias.py` (per-pair centering, PCA whitening, CSLS hub correction),
+  `debias_check.py` (keypoint level, no chain), `refine_correspondence.py --debias` and
+  `--landmarks_release`, `eval_features.py --landmarks_from`, `sweep_debias.py`. Run on hpc02,
+  CPU, 281 s and 1681 s; commands in `results/diff3f/debias_check/run.json` and
+  `results/diff3f/debias_chain/run.json`. 89 keypoints on the 13 annotated same-category pairs.
+- Keypoint level (`results/diff3f/debias_check/summary.csv`). nn: nearest-neighbour PCK@2.
+  rematch from truth: the most similar of the 64 candidates within 5 % of the TRUE source
+  point (what the chain's re-match would pick from a perfect field; the 9 keypoints with no
+  such candidate keep the true position and count as hits). peak 5 %: the most similar of all
+  source samples within 5 % of the true point. hub share: target samples whose nearest
+  neighbour is one of the 1 % most chosen source samples.
+
+  | variant | nn hits | nn % | diff vs none | in top 64 % | rematch from truth % | peak 5 % | hub share % |
+  |---|---|---|---|---|---|---|---|
+  | none | 56 | 62.9 | | 80.9 | 76.4 | 67.4 | 45.4 |
+  | center | 53 | 59.6 | −3.4 [−7.4, 1.2] | 77.5 | 74.2 | 64.0 | 40.9 |
+  | whiten:64:1 | 48 | 53.9 | −9.0 [−15.9, −2.2] | 75.3 | 78.7 | 67.4 | 39.6 |
+  | whiten:256:1 | 37 | 41.6 | −21.3 [−29.8, −14.4] | 60.7 | 77.5 | 64.0 | 31.4 |
+  | whiten:256:0.5 | 50 | 56.2 | −6.7 [−14.1, 2.2] | 78.7 | 74.2 | 68.5 | 32.0 |
+  | whiten:1024:0.5 | 52 | 58.4 | −4.5 [−15.5, 6.8] | 80.9 | 74.2 | 67.4 | 28.6 |
+  | csls:10 | 54 | 60.7 | −2.2 [−5.2, 0.0] | 82.0 | 75.3 | 68.5 | 39.6 |
+  | center+csls:10 | 51 | 57.3 | −5.6 [−12.2, 1.2] | 82.0 | 73.0 | 65.2 | 36.7 |
+  | whiten:256:1+csls:10 | 32 | 36.0 | −27.0 [−33.3, −20.0] | 58.4 | 84.3 | 64.0 | 20.2 |
+
+- Chain (`results/diff3f/debias_chain/summary.csv`), the standing setting with `--debias`, and
+  the oracle: the annotated keypoints as exact constraints of the field before the re-match
+  (`--landmarks_hard`), then released for the three re-match rounds.
+
+  | configuration | PCK@2 hits | PCK@2 % | mean error | anchors | within 2 % | within 5 % | mirrored % | diff vs none |
+  |---|---|---|---|---|---|---|---|---|
+  | none | 54 | 60.7 | 0.0376 | 122.6 | 68.2 | 96.7 | 11.6 | control |
+  | center | 49 | 55.1 | 0.0412 | 139.2 | 68.5 | 97.2 | 11.5 | −5.6 [−10.1, 0.0] |
+  | csls:10 | 50 | 56.2 | 0.0384 | 256.2 | 67.4 | 97.0 | 12.0 | −4.5 [−12.0, 3.5] |
+  | center+csls:10 | 51 | 57.3 | 0.0381 | 263.2 | 67.9 | 97.7 | 11.5 | −3.4 [−11.0, 4.7] |
+  | whiten:256:1 | 42 | 47.2 | 0.1142 | 134.8 | 68.0 | 99.1 | 16.9 | −13.5 [−23.3, −4.7] |
+  | oracle (13 pairs) | 57 | 64.0 | 0.0300 | 140.9 | 69.8 | 97.2 | 11.7 | +3.4 [0.0, 6.6] |
+
+  Oracle, distance of the keypoint vertices from their true source points: before the re-match
+  0 for all (100 % within 2 %); after the three rounds median 2.07 %, mean 3.0 %, 63.8 % within
+  2 %. Per pair the oracle gains one keypoint on cat, cat → lion and okapi → camel and changes
+  nothing on the other ten.
+- Reading.
+  1. Hubs exist: 1 % of the source samples receive 45 % of all nearest-neighbour matches. They
+     are not what the keypoints get wrong: every correction lowers the hub share (to 20–41 %)
+     and none raises the keypoint accuracy, at the nearest neighbour or in the chain; CSLS
+     doubles the mutual anchors (123 → 256) without one more keypoint. Wrong keypoint matches
+     land on hubs at about the base rate (39 % against 45 %). Debiasing is closed.
+  2. The displaced-peak diagnosis holds. Given the true neighbourhood, the most similar sample
+     within 5 % of the true point is within 2 % of it for only 67 % of the keypoints, the
+     nearest neighbour's level (63 %). In the chain, a map that is exactly right at all 89
+     keypoints ends at 64 % after the re-match rounds, three keypoints above the control: the
+     re-match moves a third of them more than 2 % away again.
+  3. Consequence for every method that supplies a better position prior to this chain (2D
+     matches, parts, a generated proxy): with the Diff3F re-match as the last step its result
+     is bounded near 64 % on this set, whatever the prior. This matches the earlier closed
+     lines (2D landmarks pinned or soft, neighbour voting, photo-window matches). A gain has to
+     come from the similarity used in the last step itself (other features, a trained chooser),
+     or from a last step that does not re-match on Diff3F; a candidate matcher is to be judged
+     on its own matches and as the re-match similarity, not as a prior.
+- Reproducibility note from the server: the texture numbers of the control differ from the
+  2026-11-17 row in the third decimal (68.2 / 96.7 / 11.6 against 68.3 / 96.8 / 11.3; anchors
+  122.6 against 122.8) because this run used `--threads 2` and that one `--threads 3`; a re-run
+  of chairgen → armchair with three threads reproduces the 11-17 row exactly. BLAS summation
+  order changes which near-tied samples become mutual anchors. The keypoint counts are
+  identical. Comparisons between runs should use the same `--threads`.
+
+## 2026-11-18 — MARCO as the 2D matcher (stage 2): above DINOv2, below the Diff3F nearest neighbour
+
+- Why: after the oracle test above, a candidate matcher is judged on its own matches. MARCO
+  (CVPR 2026, github.com/visinf/MARCO at 1ec16b9, Apache-2.0, see `NOTICE.md`) is a DINOv2
+  ViT-L/14-reg with adapters trained on annotated keypoint pairs (AP-10K, SPair-71k) and an
+  upsampling head: 1024 channels, one cell per 3.5 px. Smoke test on hpc02: weights load with
+  all keys matched, `forward_backbone` returns one tensor (1, 2, 1024, 220, 220) at 770 px,
+  0.26 s per image, about 3.6 GB of GPU memory.
+- Run (hpc02, commit b29df8b, `results/diff3f/match2d_marco/`, 855 s):
+  `python scripts/idarb/sweep_match2d.py --configs marco:770:3 marco:840:5 dinov2:840:5
+  --view_root outputs/diff3f/24_debias/none --feature_dir <features_zoom2>`: the photo against
+  shaded grey renders of the target (`match2d.py`, mutual matches, features L2-normalised),
+  89 keypoints on the 13 annotated same-category pairs, 3D error (image-plane error in
+  brackets).
+
+  | method | hits PCK@2 | PCK@2 % | PCK@5 % | PCK@10 % | mean error | vs nearest neighbour [95 %] |
+  |---|---|---|---|---|---|---|
+  | Diff3F nearest neighbour | 56 (57) | 62.9 (64.0) | 77.5 | 89.9 | 0.0483 | |
+  | MARCO 770 px, 3 views | 52 (53) | 58.4 (59.6) | 75.3 | 92.1 | 0.0412 | −4.5 [−15.3, 5.8] |
+  | MARCO 840 px, 5 views | 48 (52) | 53.9 (58.4) | 76.4 | 91.0 | 0.0360 | −9.0 [−20.2, 2.4] |
+  | DINOv2 ViT-B/14 840 px, 5 views | 41 (45) | 46.1 (50.6) | 75.3 | 87.6 | 0.0497 | −16.9 [−25.9, −8.1] |
+
+  The DINOv2 control reproduces the 50 % (image plane) of 2026-10-25.
+- By pair (hits of the nearest neighbour / MARCO 770 px): cow 4 / 5, cat 5 / 6, cat5 → cat
+  6 / 6, cat → lion 5 / 4, chair1 → armchair 4 / 4, bird 1 / 2, superman → man 7 / 5,
+  superman → posed 6 / 3, okapi → camel 5 / 3, okapi1 → camel 5 / 6, labubu → man 2 / 2,
+  panda 3 / 4, dragon → lizard 3 / 2. On the eight pairs whose categories are in MARCO's
+  training sets (56 keypoints) 38 against 35; on the other five (33 keypoints) 18 against 17.
+  The two superman pairs lose 5 of 13.
+- Other numbers: 15–31 s per pair at 770 px including the model build; 4 000–17 000 mutual
+  matches per pair against 750–2 400 for DINOv2.
+- Reading. As a 2D matcher against untextured renders MARCO gains 7–11 keypoints over DINOv2
+  ViT-B and has the lowest mean error of all rows (fewer far-off matches, PCK@10 92 %), but at
+  the 2 % threshold it stays under the Diff3F nearest neighbour and far under the 70 % line.
+  No difference to the nearest neighbour is outside its interval. The 2D route with this
+  matcher is not a replacement for the chain. Still open from the plan: MARCO features lifted
+  onto the samples and used as the similarity of the last step (stage 3).
+
+## 2026-11-18 — The anchor filter on cross-category pairs: rigid:0.1 empties regions when the body layouts differ, and the non-rigid mode does not keep them better
+
+- Why: the threshold sweep of 2026-11-17 covered same-category pairs only. One similarity
+  transform cannot carry an upright toy onto a quadruped, so correct anchors on some parts may
+  be dropped and leave the prior without anchors there.
+- Runs (hpc02, commit ac6af00, `results/diff3f/anchor_filter_cross/`):
+  `python scripts/idarb/anchor_filter_regions.py --groups cross --settings none rigid:0.1
+  rigid:0.2 rigid:0.3 loo:0.1 loo:0.2 --csv .../regions.csv --figure_dir .../figures` (the
+  chain's mutual anchors rebuilt per pair; the target cut into 12 unnamed spatial regions) and
+  `python scripts/idarb/sweep_anchor_filter.py --groups cross --thresholds none 0.1 0.2 0.3
+  loo:0.1 loo:0.2 --control 0.1 --jobs 2 --threads 3` (the standing chain otherwise).
+- Anchors kept of those before the filter, and target regions left without an anchor of the
+  regions that had one:
+
+  | pair | before | rigid:0.1 | rigid:0.2 | rigid:0.3 | loo:0.1 | loo:0.2 |
+  |---|---|---|---|---|---|---|
+  | labubu → camel | 43 | 12, 4 of 11 | 21, 3 | 36, 0 | 18, 5 | 30, 3 |
+  | labubu → cow | 49 | 17, 3 of 10 | 32, 3 | 36, 2 | 22, 5 | 34, 2 |
+  | labubu → lion | 59 | 28, 6 of 10 | 40, 5 | 51, 3 | 43, 4 | 54, 3 |
+  | superman → camel | 61 | 33, 5 of 10 | 51, 2 | 57, 0 | 46, 3 | 55, 1 |
+  | panda → man | 132 | 74, 4 of 11 | 119, 0 | 129, 0 | 120, 0 | 129, 0 |
+  | cat → man | 67 | 32, 5 of 11 | 44, 2 | 57, 0 | 34, 3 | 49, 1 |
+  | cow → camel | 167 | 136, 0 of 10 | 165, 0 | 167, 0 | 160, 0 | 166, 0 |
+  | fire dragon → man | 86 | 45, 2 of 12 | 70, 0 | 84, 0 | 66, 1 | 83, 1 |
+  | bird → cat | 28 | 18, 4 of 8 | 24, 0 | 25, 0 | 16, 4 | 23, 2 |
+  | chair1 → cow | 53 | 18, 5 of 11 | 29, 4 | 42, 3 | 15, 5 | 28, 3 |
+  | reference: okapi → camel | 152 | 133, 1 of 11 | 151, 0 | 152, 0 | 148, 0 | 151, 0 |
+  | reference: cat → lion | 150 | 136, 2 of 12 | 147, 1 | 147, 1 | 149, 0 | 150, 0 |
+  | reference: labubu → man | 106 | 74, 2 of 10 | 91, 0 | 104, 0 | 93, 1 | 104, 1 |
+
+  The largest distance from a target sample to its nearest kept anchor (fraction of the
+  target's diagonal) grows under rigid:0.1 from 0.14 to 0.28 on labubu → camel and from 0.20
+  to 0.69 on labubu → lion. In the figures of these two pairs the dropped anchors are whole
+  clusters: on the camel the central body and hump, on the lion the underside of the front
+  body and the tail end, on the Labubu the ears and the feet.
+- Chain on the cross pairs (keypoints: 20, on labubu → camel and labubu → lion only; texture:
+  ten pairs; nearest neighbour alone 2 hits, mean error 0.079):
+
+  | setting | anchors kept (of 74.5) | hits of 20 | mean error | within 2 % | within 5 % | mirrored area % |
+  |---|---|---|---|---|---|---|
+  | none | 74.5 | 3 | 0.0713 | 52.3 | 89.7 | 19.4 |
+  | rigid:0.1 (standing) | 41.3 | 1 | 0.0862 | 55.2 | 93.0 | 16.5 |
+  | rigid:0.2 | 59.5 | 2 | 0.0680 | 54.8 | 92.1 | 16.3 |
+  | rigid:0.3 | 68.4 | 3 | 0.0706 | 53.1 | 90.8 | 19.3 |
+  | loo:0.1 | 54.0 | 1 | 0.0890 | 54.5 | 91.2 | 16.3 |
+  | loo:0.2 | 65.1 | 1 | 0.0817 | 52.5 | 90.3 | 20.8 |
+
+  labubu → camel: 2 hits and mean error 0.055 without the filter, 0 hits and 0.104 with
+  rigid:0.1. labubu → lion: 1 hit in every setting, mean error 0.087 without and 0.069 with
+  rigid:0.1.
+- Reading. On pairs whose body layouts differ, rigid:0.1 keeps 28–64 % of the anchors and
+  leaves 3–6 target regions without one (cow → camel, two quadrupeds, excepted); on the
+  same-category reference pairs it keeps 70–91 % and empties 1–2. The leave-one-out mode is
+  not a remedy: at 0.1 it empties as many regions or more on four of the ten pairs and only
+  approaches the unfiltered set at 0.2. The outcome numbers pull in two directions: the
+  texture measures and the mirrored area are best at rigid:0.1–0.2, the keypoints of
+  labubu → camel are best without the filter. With 20 keypoints on two pairs no setting can be
+  called better on keypoints; every interval touches zero. The standing setting is unchanged.
+  What the measurement establishes is the mechanism: on dissimilar pairs the rigid filter
+  removes anchors by region, so the prior extrapolates there. The regions are spatial, not
+  named parts; a part-level measure needs part names on both meshes, which do not exist yet.
+
+## 2026-11-18 — MARCO lifted onto the samples (stage 3): fused with Diff3F the chain gains texture consistency clearly and keypoints within noise
+
+- What: `marco_features.py` writes MARCO features for the same 15 000 samples as the Diff3F
+  files (partial mesh: the photo's own pixels; full mesh: the mean over 24 shaded grey renders,
+  elevations −30 / 0 / 30 × 8 azimuths, no painting model), so they can serve as the similarity
+  everywhere. 25 meshes, 609 s on hpc02, 537 MB kept on the server (`~/semtex/features_marco`);
+  97–100 % of the samples of a full mesh are seen by a view (armchair, roundchair, lizard
+  88–89 %, panda 68 %; the rest take the nearest seen sample). One fix from the server
+  (75597b9): `man_full.npz` numbers the 41 320 corners of `man.obj`, so points are found by
+  position when the indices do not fit.
+- Runs (hpc02, code 3e4f755 plus the fix, `results/diff3f/marco_lifted/`): `rerank_check.py
+  --a <features_zoom2> --b <features_marco>`; `debias_check.py --feature_dir <features_marco>
+  --variants none`; the standing chain through `sweep_debias.py --configs none --jobs 4
+  --threads 2` on `features_marco` and on `fuse_features.py --a <features_zoom2> --b
+  <features_marco> --w 0.25`; `compare_chain_runs.py --base results/diff3f/debias_chain
+  --other results/diff3f/marco_lifted/chain_fused` (and `chain_marco`) for the paired rows.
+- At the keypoints, without the chain (89 keypoints, 13 pairs; A = Diff3F, B = MARCO):
+
+  | method | hits | PCK@2 % | mean error | vs Diff3F nearest neighbour [95 %] |
+  |---|---|---|---|---|
+  | Diff3F nearest neighbour | 56 | 62.9 | 0.0483 | |
+  | MARCO nearest neighbour | 51 | 57.3 | 0.0350 | −5.6 [−12.1, 1.2] |
+  | MARCO choosing among Diff3F's top 64 | 51 | 57.3 | 0.0439 | −5.6 [−12.0, 1.1] |
+  | Diff3F choosing among MARCO's top 64 | 57 | 64.0 | 0.0289 | +1.1 [−5.3, 6.5] |
+  | fused, weight 0.25 on Diff3F | 60 | 67.4 | 0.0305 | +4.5 [−4.1, 13.1] |
+  | fused, weight 0.5 | 56 | 62.9 | 0.0302 | 0.0 [−6.2, 5.8] |
+  | fused, weight 0.75 | 56 | 62.9 | 0.0383 | 0.0 [−3.0, 3.4] |
+
+  A sample within 2 % of the truth is among the top 64 for 80.9 % (Diff3F) and 85.4 % (MARCO)
+  of the keypoints. Peak check of the MARCO features (Diff3F in brackets): most similar sample
+  within 5 % of the true point is within 2 % for 64.0 % (67.4 %); the re-match from the truth
+  70.8 % (76.4 %); hub share 61.0 % (45.4 %), wrong matches on a hub 73.7 % (39.4 %).
+- The chain (standing setting, same `--jobs` and `--threads` as the control):
+
+  | features | hits of 89 | PCK@2 % | PCK@5 / @10 hits | mean error | anchors | within 2 % | within 5 % | mirrored area % |
+  |---|---|---|---|---|---|---|---|---|
+  | Diff3F (control of this date) | 54 | 60.7 | 69 / 81 | 0.0376 | 122.6 | 68.2 | 96.7 | 11.6 |
+  | MARCO lifted | 50 | 56.2 | 74 / 85 | 0.0320 | 254.8 | 74.0 | 97.4 | 7.1 |
+  | fused, weight 0.25 on Diff3F | 57 | 64.0 | 75 / 86 | 0.0273 | 193.1 | 74.2 | 97.4 | 6.3 |
+
+  Paired against the control (bootstrap over pairs): fused, keypoints +3.4 points [−3.7, 10.6];
+  triangles within 2 % +6.0 points [3.6, 8.6], up on 14 of 16 pairs; mirrored area −5.3 points
+  [−7.9, −3.0], down on 14 of 16. MARCO alone: keypoints −4.5 [−11.4, 2.5]; within 2 % +5.8
+  [3.7, 8.2]; mirrored area −4.5 [−6.9, −2.3]. Per pair the fused chain gains on cow, cat,
+  cat5 → cat, okapi1 → camel, chair1 → armchair, panda and dragon → lizard (one keypoint each)
+  and loses one on okapi → camel, cat → lion, labubu → man and bird. The two annotated cross
+  pairs (20 keypoints, nearest neighbour only): Diff3F 2 hits, MARCO 5, fused 6.
+- Reading.
+  1. MARCO's similarity is coarser than Diff3F's at the 2 % threshold (fewer hits, a lower
+     peak-5 value, more hubs) and better beyond it (lowest mean errors, more hits at 5 % and
+     10 %, a larger candidate bound). The two sets fail on different keypoints, so the fused
+     similarity is the first variant whose mean error and PCK@5 / @10 are better than both.
+  2. The texture measures move outside their intervals with either MARCO or the fused set:
+     about 6 points more triangles within 2 % and the mirrored area roughly halved (11.6 to
+     6.3 %), on 14 of 16 pairs. MARCO gives twice the mutual anchors of Diff3F.
+  3. The keypoint gain at 2 % (54 to 57, 64.0 %) is inside its interval and under the 70 %
+     line, and the weight 0.25 was chosen on these same 89 keypoints out of three, so the 60
+     of the fused nearest neighbour is an optimistic figure. The texture measures were not
+     used for the choice.
+  4. Caveats: MARCO was trained on AP-10K and SPair-71k, whose categories include cat, cow,
+     chair, bird and person; the full meshes are seen untextured. The standing setting is not
+     changed by this entry.
+
+## 2026-11-18 — A vision-language model as the matcher at the keypoints (trial)
+
+- Question (owner): can a vision-language model that looks at the photo decide where the
+  points of the full mesh belong, instead of the features?
+- Set-up. `scripts/idarb/vlm_keypoint_trial.py make` renders the full mesh in grey with a
+  numbered mark at every annotated keypoint (the pair's view, turned left and right by 40
+  degrees, then the same from behind; a keypoint is marked in the first view that sees it) and
+  writes the photo behind the partial mesh, cropped square at 1000 pixels with ruler lines.
+  The model (Claude Fable 5.2, one pass, no keypoint names, no zoom) answers pixel coordinates
+  in the photo; `score` takes the partial-mesh vertex at the nearest object pixel and measures
+  it as `keypoint_table.py` does. No feature of the chain is used. The answers of 13 pairs were
+  given by subagents that saw only the images. Commands:
+  `python scripts/idarb/vlm_keypoint_trial.py make` and
+  `python scripts/idarb/vlm_keypoint_trial.py score --csv_dir results/diff3f/vlm_keypoints`;
+  answers and crop boxes are in `results/diff3f/vlm_keypoints/answers/`.
+- Pilot (cat, labubu → camel; not blind). The first photo had a 36-pixel border for the ruler
+  numbers and every answer came back shifted by the border: the model reports the pixel
+  position in the file, not the ruler value. The border was removed; the two pilot pairs are
+  kept with the shift subtracted and marked `blind = 0`.
+- Result, blind, 12 same-category pairs. Six of the 82 keypoints are seen in none of the six
+  views and count as misses.
+
+  | method | hits at 2 % of 82 | at 5 % | at 10 % |
+  |---|---|---|---|
+  | model, one pass | 56 (68.3 %) | 67 | 73 |
+  | Diff3F nearest neighbour | 51 | 63 | 73 |
+  | chain, standing setting | 49 | 63 | 74 |
+  | chain, fused Diff3F + MARCO | 51 | 68 | 79 |
+
+  Paired against the nearest neighbour at 2 %: +6.1 points [−7.5, 21.3]; against the chain
+  +8.5 [−4.9, 22.2]. Of the 76 keypoints answered, 56 are within 2 % and the median error is
+  0.0097; in the image plane 58.
+- Where it fails. The misses are not small offsets but a wrong side or a wrong part: on cow,
+  the ear and two hooves (errors 0.15 to 0.33); far-side legs on the cats and camels; marks on
+  featureless surface (back, flank) placed by proportion. bird 4 of 5 (nearest neighbour 0),
+  cat → lion 6 of 11 (3), labubu → man 5 of 7 (3); cow 3 of 7 (5).
+- Cross pairs. labubu → lion, blind: 4 of 10 at 2 % (nearest neighbour 3), 7 at 5 %.
+  labubu → camel, not blind: 3 of 9. The limbs decide: the annotation puts the quadruped's
+  front and hind feet on the toy's two feet, the model put the front feet on the hands.
+- Reading. On the points it can see and name, the model is as precise as the features or more
+  (median error under 1 %), and its total is above every feature-based variant at 2 %, inside
+  the interval. Its errors are of another kind (side and part confusions), and it answers
+  sparse points only, about 20 s per pair; it does not give a dense map. Open: marks on
+  hidden or featureless places, the left-right convention, and whether its answers used as
+  anchors or as a prior improve the chain. The standing setting is not changed.
+
+## 2026-11-18 — Colouring the full mesh by regions named by a vision-language model (trial)
+
+- The owner's idea as stated: the model looks at the points of the mesh, decides which part
+  each belongs to, looks up what colour that part has in the photo, and colours it.
+- Set-up. `scripts/idarb/vlm_part_colour.py make` cuts the full mesh into 48 regions
+  (farthest-point seeds, every vertex to its nearest seed) and renders six views with a
+  numbered mark at each seed; the model (Claude, a subagent that sees only the images, one
+  pass) names the part under every mark and gives the place of that part in the photo, with
+  hidden-side marks sent to the visible mirror place. `colour` writes two meshes: flat (every
+  region in the median photo colour around its answer) and smooth (the 48 answers as anchors
+  of an affine plus radial-basis map from the mesh into the photo plane, every vertex taking
+  the colour at its own mapped pixel). No feature of the chain is used. Commands:
+  `python scripts/idarb/vlm_part_colour.py make --pairs cat cat_lion labubu_man` and
+  `python scripts/idarb/vlm_part_colour.py colour`; answers with the part names are in
+  `results/diff3f/vlm_part_colour/answers/`, previews in `results/diff3f/vlm_part_colour/`.
+- Result (three pairs, by eye; no measure yet). All regions were answered (47 of 48 on the
+  man, one seed is seen in no view), about 90 s per pair. The parts land on the right parts:
+  cat → cat and cat → lion have the dark tail tip, the pink ear, the lighter legs and belly;
+  labubu → man has the shirt on the torso and arms, the shorts on the legs, the shoes on the
+  feet, the skin colour on the hands. The flat version is blotchy on patterned fur (a median
+  over a few stripes) and has no detail inside a region; on the man's face one region took
+  the colour of the toy's nose. The smooth version carries the stripes and the eyes along,
+  stretched where the anchors are sparse, and paints the face on both sides of the head,
+  because the map goes into the photo plane and both sides of the mesh fall on the same
+  pixels.
+- Open: a measure (the keypoints, and the texture measures of the chain, on the smooth map);
+  more regions on the head; the back side; the answers as anchors of the chain instead of
+  the mutual feature anchors. The standing setting is not changed.
+
+## 2026-11-18 — The model's answers made dense and textured through the chain's texture step
+
+- The owner found the region colouring poor ("花纹都没了") and asked for point-by-point
+  colouring. Independent answers per vertex are not affordable (48 answers take a subagent
+  about 90 s) and would not keep a pattern, since neighbouring answers err independently by
+  about 1 %. Tried instead on cat → cat: 288 seeds in six batches of 48
+  (`vlm_part_colour.py make --pairs cat --batches 6 --out outputs/diff3f/29_vlm_dense`), six
+  subagents, 285 answers; 7 dropped by the leave-one-out test (`--loo 0.08`), the rest joined
+  by the smooth map with more regularisation (`--ridge 0.1`).
+- Finding 1: with vertex colours the stripes stay blurred at 288 answers as at 48. The mesh
+  has 7 207 vertices, so a colour per vertex cannot hold the stripes whatever the map is.
+- Finding 2: the same map written as a correspondence file (`vlm_map.npz`) and passed to
+  `transfer_texture.py --correspondence`, which makes a UV texture as the chain does, gives a
+  striped cat: triangles within 2 % 76.6 %, within 5 % 99.6 %, source used 71.4 %. The
+  standing chain on this pair has 77.2 % within 2 % (`results/diff3f/debias_chain/none.csv`).
+  One pair, no feature used on the model's side; mirrored area and keypoints not measured.
+  Files: `results/diff3f/vlm_part_colour/dense_cat/`.
+- The standing setting is not changed.
+
+## 2026-11-18 — The untuned defaults of the candidate-choice stage, one at a time
+
+- Question (owner, through the teaching session): the prior width 0.25, the neighbour weight
+  0.3, the two smoothing passes, the position scale 0.05 and the 64 candidates were fixed on
+  2026-10-21 (93dc83c) without a comparison on the present features. Is each standing value in
+  a flat region, or is another value better beyond noise?
+- Set-up. `scripts/idarb/sweep_chain_defaults.py` (a04985d), standing setting otherwise, 13
+  same-category pairs / 89 keypoints, texture measures over 16 pairs, hpc02, 24 runs in
+  6628 s. `refine_correspondence.py` got `--prior_sigma` for this (0: affine part alone).
+  Command: `python scripts/idarb/sweep_chain_defaults.py --jobs 4 --threads 2 --feature_dir
+  ~/semtex/wt_fz2/outputs/diff3f/features_zoom2 --out_root ~/semtex/chain_defaults/out
+  --csv_dir results/diff3f/chain_defaults_sweep`. Results:
+  `results/diff3f/chain_defaults_sweep/` (summary.csv, one CSV per run, run.json). The standing
+  run reproduces the control: 54 of 89, within 2 % 68.2, mirrored area 11.6.
+- Result (hits of 89; paired PCK@2 difference against the standing run with its interval;
+  within 2 % in per cent):
+
+  | parameter | values | hits | reading |
+  |---|---|---|---|
+  | prior width | 0.05, 0.1 | 51, 51 | −3.4 [−6.7, 0.0] |
+  | | 0.15, affine alone | 52, 52 | −2.2, interval reaches 0 |
+  | | **0.25**, 0.4, 0.6, 1.0 | 54 each | flat; mean error 0.0376 to 0.0363 |
+  | neighbour weight | 0, 0.1, **0.3**, 0.6, 1.0, 3.0 | 54 each | no keypoint moves; texture within 0.2 |
+  | smoothing passes | 0, 1, **2**, 4 | 54 each | no change |
+  | position scale | 0.025, **0.05**, 0.075, 0.1, 0.2 | 54 each | no keypoint moves; texture within 0.2 |
+  | candidates | 8 | 49 | −5.6 [−11.2, −1.1]; within 2 % −2.5 [−3.5, −1.6] |
+  | | 16 | 47 | −7.9 [−15.7, −2.1]; within 2 % −1.8 [−2.9, −0.9] |
+  | | 32 | 53 | −1.1 [−3.5, 0.0]; within 2 % −0.9 [−1.7, −0.3] |
+  | | **64** | 54 | |
+  | | 128 | 52 | −2.2 [−5.6, 0.0]; within 2 % +1.6 [0.7, 2.5]; mirrored area −0.6 [−1.5, 0.0] |
+
+- Reading.
+  1. The neighbour weight, the number of smoothing passes and the position scale do nothing
+     measurable in the standing chain: with zero passes or zero weight the result is the same
+     54 keypoints and the same texture numbers. The smoothing step of the candidate choice is
+     inert here; what follows it (field, ARAP, re-match) decides the result.
+  2. The prior width is flat from 0.25 upwards and loses 2 to 3 keypoints below 0.15 and
+     without the radial part; the standing 0.25 sits at the lower edge of the flat region.
+  3. The number of candidates is the one that matters: fewer than 32 is worse beyond noise on
+     both measures. 128 gives more triangles within 2 % beyond noise and two fewer keypoints
+     inside the interval.
+  4. No value is better than the standing one beyond noise on the keypoints. The standing
+     setting is not changed.

@@ -1,0 +1,16 @@
+{
+ "faces": 14410,
+ "textured_faces": 4491,
+ "span_median": 0.01,
+ "within_2pct": 0.8058,
+ "within_5pct": 0.9924,
+ "source_used": 0.678,
+ "all_within_2pct": 0.8232,
+ "all_within_5pct": 0.9826,
+ "all_source_used": 0.746,
+ "covered_faces": 3828,
+ "covered_within_2pct": 0.82,
+ "covered_within_5pct": 0.9984,
+ "source": "outputs/diff3f/features/cat5_partial.npz",
+ "target": "outputs/diff3f/features/cat_full.npz"
+}

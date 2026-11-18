@@ -1,0 +1,27 @@
+# GPU server environment for scripts/idarb/diff3f_features.py (code in third_party/Diff3F).
+# Versions follow third_party/Diff3F/environment.yaml; Diff3F ships its own copies of two diffusers
+# 0.21 modules, so the diffusers pin matters. Python 3.10, CUDA 11.8 (NVIDIA A40):
+#
+#   conda create -n diff3f python=3.10 -y && conda activate diff3f
+#   pip install torch==2.1.0 torchvision==0.16.0 --index-url https://download.pytorch.org/whl/cu118
+#   pip install fvcore iopath   # pytorch3d's dependencies; --no-index below would block them
+#   pip install --no-index pytorch3d \
+#       -f https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/py310_cu118_pyt210/download.html
+#   pip install -r scripts/idarb/requirements-diff3f.txt
+#
+# First run downloads about 4 GB of weights into ~/.cache: Stable Diffusion 1.5 (fp16 files from the
+# stable-diffusion-v1-5/stable-diffusion-v1-5 mirror), ControlNet depth and normal (fp16) and
+# DINOv2 ViT-B/14 (through torch.hub, needs github.com).
+diffusers==0.21.4
+transformers==4.34.1
+huggingface-hub==0.17.3
+accelerate==0.23.0     # pipe.enable_model_cpu_offload() in Diff3F needs it
+safetensors
+einops==0.7.0
+opencv-python-headless==4.8.1.78
+plyfile==1.0.1
+trimesh==4.0.0
+numpy<2
+scipy
+matplotlib             # preview.png of register_partial.py
+tqdm

@@ -1,0 +1,52 @@
+{
+ "seed": 0,
+ "held_out_fraction": 0.5,
+ "tune": [
+  "cat",
+  "cat_lion",
+  "dragon_lizard",
+  "labubu_lion",
+  "okapi1_camel",
+  "okapi_camel",
+  "superman_man"
+ ],
+ "held_out": [
+  "bird_bird",
+  "cat5_cat",
+  "chair1_armchair",
+  "cow",
+  "labubu_camel",
+  "labubu_man",
+  "panda_panda",
+  "superman_posed"
+ ],
+ "components": [
+  [
+   "cat",
+   "cat5_cat",
+   "cat_lion",
+   "labubu_camel",
+   "labubu_lion",
+   "labubu_man",
+   "okapi1_camel",
+   "okapi_camel",
+   "superman_man",
+   "superman_posed"
+  ],
+  [
+   "bird_bird"
+  ],
+  [
+   "chair1_armchair"
+  ],
+  [
+   "cow"
+  ],
+  [
+   "dragon_lizard"
+  ],
+  [
+   "panda_panda"
+  ]
+ ]
+}

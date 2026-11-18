@@ -1,0 +1,159 @@
+{
+ "source": "outputs/diff3f/fire_dragon_partial.npz",
+ "target": "outputs/diff3f/lizard_full.npz",
+ "feature": "full",
+ "scale": 0.5874079913740626,
+ "rotation": [
+  [
+   0.9845698390365026,
+   0.029790389928069417,
+   0.17243771260246174
+  ],
+  [
+   -0.08174973782117337,
+   0.9495670317982517,
+   0.30272005630289334
+  ],
+  [
+   -0.15472301840968933,
+   -0.3121457749029948,
+   0.9373504162181847
+  ]
+ ],
+ "translation": [
+  0.06611367267895144,
+  0.2050635174546683,
+  0.24658209871199702
+ ],
+ "depth_factor": 1.0,
+ "matrix": [
+  [
+   0.5783441915159162,
+   0.017499113109897362,
+   0.10129129039694994,
+   0.06611367267895144
+  ],
+  [
+   -0.04802044928889169,
+   0.5577832628236418,
+   0.17782018022152574,
+   0.2050635174546683
+  ],
+  [
+   -0.09088553746336772,
+   -0.18335692265166845,
+   0.5506071252043655,
+   0.24658209871199702
+  ],
+  [
+   0.0,
+   0.0,
+   0.0,
+   1.0
+  ]
+ ],
+ "coarse_matrix": [
+  [
+   0.40183111894749624,
+   -0.11663416483478452,
+   0.41228190812695903,
+   0.09071692882327859
+  ],
+  [
+   0.03366046471835607,
+   0.5720717061619138,
+   0.12903133128838068,
+   0.23852021642386498
+  ],
+  [
+   -0.42713800262966345,
+   -0.06464195953403525,
+   0.3980234818540895,
+   0.23260208961411688
+  ],
+  [
+   0.0,
+   0.0,
+   0.0,
+   1.0
+  ]
+ ],
+ "selected_candidate": 2,
+ "options": {
+  "inlier_dist": 0.05,
+  "icp_dist": 0.05,
+  "n_iter": 5000,
+  "seeds": [
+   0
+  ],
+  "match_mode": "both",
+  "consensus": false,
+  "n_candidates": 8,
+  "refine": "icp",
+  "n_joint": 3,
+  "joint_refit_scale": false,
+  "depth_grid": [
+   0.5,
+   0.7,
+   1.0,
+   1.4,
+   2.0
+  ],
+  "n_depth": 3,
+  "scale_low": 0.5,
+  "scale_high": 2.5,
+  "scale_bands": [
+   [
+    0.5,
+    0.8
+   ],
+   [
+    0.8,
+    1.3
+   ],
+   [
+    1.3,
+    2.5
+   ]
+  ],
+  "min_coverage": 0.2,
+  "piecewise": true,
+  "part_scale_range": [
+   0.8,
+   1.25
+  ],
+  "part_max_rot": 15.0,
+  "blend_sigma": 0.05,
+  "normals": false,
+  "depth_scale": false,
+  "n_parts": 6
+ },
+ "source_meta": {
+  "command": "scripts/idarb/diff3f_features.py --mesh outputs/mesh_depth/fire_dragon/relief.ply --prompt cartoon dragon --front_only --no_cpu_offload --out outputs/diff3f/fire_dragon_partial.npz",
+  "commit": "085b1c8",
+  "mesh": "outputs/mesh_depth/fire_dragon/relief.ply",
+  "prompt": "cartoon dragon",
+  "num_views": 100,
+  "front_only": true,
+  "tolerance": 0.004,
+  "seed": 0,
+  "sd_repo": "stable-diffusion-v1-5/stable-diffusion-v1-5",
+  "n_vertices": 78668,
+  "n_features": 15000,
+  "seconds": 587.2
+ },
+ "target_meta": {
+  "command": "scripts/idarb/diff3f_features.py --mesh results/diff3f/targets/lizard.ply --prompt cartoon lizard --no_cpu_offload --out outputs/diff3f/lizard_full.npz",
+  "commit": "085b1c8",
+  "mesh": "results/diff3f/targets/lizard.ply",
+  "prompt": "cartoon lizard",
+  "num_views": 100,
+  "front_only": false,
+  "tolerance": 0.004,
+  "seed": 0,
+  "sd_repo": "stable-diffusion-v1-5/stable-diffusion-v1-5",
+  "n_vertices": 20032,
+  "n_features": 15000,
+  "seconds": 333.9
+ }
+}

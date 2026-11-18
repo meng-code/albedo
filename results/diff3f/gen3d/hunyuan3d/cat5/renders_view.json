@@ -1,0 +1,8 @@
+{
+ "mesh": "/home/24/23010524/semtex/gen3d/hunyuan3d/cat5/textured_vc.ply",
+ "image": "/home/24/23010524/IDArb/mydata/my_single/cat5.png",
+ "iou_best": 0.7304,
+ "azimuth": 0.0,
+ "elevation": 10.0,
+ "iou": 0.7304
+}

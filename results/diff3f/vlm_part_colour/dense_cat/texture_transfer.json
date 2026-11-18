@@ -1,0 +1,13 @@
+{
+ "faces": 14410,
+ "textured_faces": 4339,
+ "span_median": 0.0112,
+ "within_2pct": 0.7656,
+ "within_5pct": 0.9963,
+ "source_used": 0.7137,
+ "all_within_2pct": 0.8285,
+ "all_within_5pct": 0.9983,
+ "all_source_used": 0.7592,
+ "source": "outputs/diff3f/features_zoom2/cat_partial.npz",
+ "target": "outputs/diff3f/features_zoom2/cat_full.npz"
+}

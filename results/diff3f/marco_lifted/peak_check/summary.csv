@@ -1,0 +1,2 @@
+variant,pairs,keypoints,hits_nn,pck2_nn,mean_err_nn,diff_vs_none,ci_low,ci_high,bound_64,rematch_truth,rematch_none,rematch_median_err,peak_5,peak_5_median_err,peak_10,peak_10_median_err,hub_share,wrong_on_hub
+none,13,89,51,57.3,0.0347,,,,85.4,70.8,6,0.0119,64.0,0.0138,60.7,0.014,61.0,73.7

@@ -1,0 +1,28 @@
+{
+ "pair": "labubu_man",
+ "keypoints": 7,
+ "box": [
+  -31,
+  -125,
+  449
+ ],
+ "photo_size": 1000,
+ "renders": {
+  "target_0.png": [
+   5,
+   7
+  ],
+  "target_2.png": [
+   4
+  ],
+  "target_3.png": [
+   1,
+   2,
+   3,
+   6
+  ]
+ },
+ "unseen": [],
+ "commit": "a04985d507204f025258958dfb659b1ed7dfc932",
+ "command": "scripts/idarb/vlm_keypoint_trial.py make"
+}

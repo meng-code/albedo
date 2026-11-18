@@ -1,0 +1,16 @@
+{
+ "faces": 13776,
+ "textured_faces": 5481,
+ "span_median": 0.0218,
+ "within_2pct": 0.4609,
+ "within_5pct": 0.9383,
+ "source_used": 0.5253,
+ "all_within_2pct": 0.5789,
+ "all_within_5pct": 0.9564,
+ "all_source_used": 0.5875,
+ "covered_faces": 4671,
+ "covered_within_2pct": 0.4573,
+ "covered_within_5pct": 0.9377,
+ "source": "outputs/diff3f/features/labubu_partial.npz",
+ "target": "outputs/diff3f/features/man_full.npz"
+}

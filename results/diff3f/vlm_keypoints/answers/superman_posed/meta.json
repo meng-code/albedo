@@ -1,0 +1,26 @@
+{
+ "pair": "superman_posed",
+ "keypoints": 6,
+ "box": [
+  -37,
+  -95,
+  543
+ ],
+ "photo_size": 1000,
+ "renders": {
+  "target_0.png": [
+   1,
+   2,
+   3,
+   6
+  ],
+  "target_1.png": [
+   4
+  ]
+ },
+ "unseen": [
+  5
+ ],
+ "commit": "a04985d507204f025258958dfb659b1ed7dfc932",
+ "command": "scripts/idarb/vlm_keypoint_trial.py make"
+}

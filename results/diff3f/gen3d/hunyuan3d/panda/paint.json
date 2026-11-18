@@ -1,0 +1,14 @@
+{
+ "stage": "paint",
+ "input": "/home/24/23010524/IDArb/mydata/my_single/panda.png",
+ "max_num_view": 6,
+ "resolution": 512,
+ "seed": 0,
+ "seconds": 54.9,
+ "peak_gpu_mib": 14133,
+ "n_vertices": 22628,
+ "n_faces": 40000,
+ "repo_commit": "82920d6",
+ "git_commit": "f5d8e8e",
+ "command": "scripts/idarb/gen3d_hunyuan.py --stage paint --inputs /home/24/23010524/IDArb/mydata/my_single/bird.png /home/24/23010524/IDArb/mydata/my_single/cat.png /home/24/23010524/IDArb/mydata/my_single/cat5.png /home/24/23010524/IDArb/mydata/my_single/chair.png /home/24/23010524/IDArb/mydata/my_single/chair1.png /home/24/23010524/IDArb/mydata/my_single/chair10.png /home/24/23010524/IDArb/mydata/my_single/cow.png /home/24/23010524/IDArb/mydata/my_single/fire_dragon.png /home/24/23010524/IDArb/mydata/my_single/ipadapter_result_00_chair.png /home/24/23010524/IDArb/mydata/my_single/labubu.png /home/24/23010524/IDArb/mydata/my_single/okapi.png /home/24/23010524/IDArb/mydata/my_single/okapi1.png /home/24/23010524/IDArb/mydata/my_single/panda.png /home/24/23010524/IDArb/mydata/my_single/superman.png --out_root /home/24/23010524/semtex/gen3d/hunyuan3d"
+}

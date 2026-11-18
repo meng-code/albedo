@@ -1,0 +1,26 @@
+{
+ "pair": "bird_bird",
+ "keypoints": 5,
+ "box": [
+  -56,
+  -26,
+  372
+ ],
+ "photo_size": 1000,
+ "renders": {
+  "target_0.png": [
+   1,
+   2,
+   4
+  ],
+  "target_1.png": [
+   5
+  ],
+  "target_2.png": [
+   3
+  ]
+ },
+ "unseen": [],
+ "commit": "a04985d507204f025258958dfb659b1ed7dfc932",
+ "command": "scripts/idarb/vlm_keypoint_trial.py make"
+}

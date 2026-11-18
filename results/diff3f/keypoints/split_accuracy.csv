@@ -1,0 +1,13 @@
+file,method,split,group,pairs,keypoints,mean_pck_2,mean_pck_5,pooled_pck_2,ci95_low,ci95_high
+keypoint_accuracy_zoom2_all.csv,nearest_neighbour,tune,all,7,55,0.6139,0.7951,0.5818,0.455,0.7959
+keypoint_accuracy_zoom2_all.csv,nearest_neighbour,tune,same,6,45,0.6829,0.8276,0.6667,0.5487,0.8214
+keypoint_accuracy_zoom2_all.csv,nearest_neighbour,tune,cross,1,10,0.2,0.6,0.2,0.2,0.2
+keypoint_accuracy_zoom2_all.csv,nearest_neighbour,held_out,all,8,54,0.5101,0.6928,0.4815,0.3,0.7321
+keypoint_accuracy_zoom2_all.csv,nearest_neighbour,held_out,same,7,44,0.583,0.7204,0.5909,0.4007,0.7721
+keypoint_accuracy_zoom2_all.csv,nearest_neighbour,held_out,cross,1,10,0.0,0.5,0.0,0.0,0.0
+keypoint_accuracy_zoom2_all.csv,zoom2_v1,tune,all,7,55,0.446,0.7481,0.4364,0.3038,0.6024
+keypoint_accuracy_zoom2_all.csv,zoom2_v1,tune,same,6,45,0.5036,0.7561,0.5111,0.373,0.6386
+keypoint_accuracy_zoom2_all.csv,zoom2_v1,tune,cross,1,10,0.1,0.7,0.1,0.1,0.1
+keypoint_accuracy_zoom2_all.csv,zoom2_v1,held_out,all,8,54,0.3244,0.5595,0.3148,0.131,0.5446
+keypoint_accuracy_zoom2_all.csv,zoom2_v1,held_out,same,7,44,0.3707,0.6252,0.3864,0.1497,0.5884
+keypoint_accuracy_zoom2_all.csv,zoom2_v1,held_out,cross,1,10,0.0,0.1,0.0,0.0,0.0

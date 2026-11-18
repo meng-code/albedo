@@ -1,0 +1,24 @@
+{
+ "pair": "chair1_armchair",
+ "keypoints": 6,
+ "box": [
+  -34,
+  -126,
+  491
+ ],
+ "photo_size": 1000,
+ "renders": {
+  "target_0.png": [
+   1,
+   3,
+   4,
+   5
+  ]
+ },
+ "unseen": [
+  2,
+  6
+ ],
+ "commit": "a04985d507204f025258958dfb659b1ed7dfc932",
+ "command": "scripts/idarb/vlm_keypoint_trial.py make"
+}

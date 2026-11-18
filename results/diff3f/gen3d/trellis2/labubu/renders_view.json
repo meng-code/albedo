@@ -1,0 +1,11 @@
+{
+ "mesh": "/home/24/23010524/semtex/gen3d/trellis2/labubu/textured_vc.ply",
+ "image": "/home/24/23010524/IDArb/mydata/my_single/labubu.png",
+ "iou_best": 0.924,
+ "iou_best_opposite_half": 0.8745,
+ "colour_error_best": 30.07,
+ "colour_error_opposite": 37.27,
+ "azimuth": 0.0,
+ "elevation": 10.0,
+ "iou": 0.924
+}

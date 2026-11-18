@@ -1,0 +1,16 @@
+{
+ "faces": 9996,
+ "textured_faces": 3666,
+ "span_median": 0.0114,
+ "within_2pct": 0.7368,
+ "within_5pct": 0.961,
+ "source_used": 0.6703,
+ "all_within_2pct": 0.7328,
+ "all_within_5pct": 0.9251,
+ "all_source_used": 0.7397,
+ "covered_faces": 2855,
+ "covered_within_2pct": 0.7212,
+ "covered_within_5pct": 0.9688,
+ "source": "outputs/diff3f/cat_partial.npz",
+ "target": "outputs/diff3f/lion_full.npz"
+}

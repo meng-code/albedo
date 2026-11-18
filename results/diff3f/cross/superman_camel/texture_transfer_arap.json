@@ -1,0 +1,13 @@
+{
+ "faces": 3576,
+ "textured_faces": 1628,
+ "span_median": 0.0244,
+ "within_2pct": 0.4177,
+ "within_5pct": 0.8428,
+ "source_used": 0.3379,
+ "all_within_2pct": 0.4485,
+ "all_within_5pct": 0.8602,
+ "all_source_used": 0.4454,
+ "source": "outputs/diff3f/features/superman_partial.npz",
+ "target": "outputs/diff3f/features/camel_full.npz"
+}

@@ -1,0 +1,7 @@
+{
+ "commit": "949ad2fec8d4c02d489f28a48db286160c64055d",
+ "command": "scripts/idarb/vlm_part_colour.py colour",
+ "regions": 48,
+ "answered": 47,
+ "model": "claude subagent, single pass"
+}

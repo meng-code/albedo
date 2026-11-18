@@ -1,0 +1,16 @@
+{
+ "faces": 5500,
+ "textured_faces": 2525,
+ "span_median": 0.0202,
+ "within_2pct": 0.4943,
+ "within_5pct": 0.9022,
+ "source_used": 0.6955,
+ "all_within_2pct": 0.4469,
+ "all_within_5pct": 0.8451,
+ "all_source_used": 0.7837,
+ "covered_faces": 1246,
+ "covered_within_2pct": 0.4125,
+ "covered_within_5pct": 0.878,
+ "source": "outputs/diff3f/cow_partial.npz",
+ "target": "outputs/diff3f/cow_full.npz"
+}

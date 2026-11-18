@@ -1,0 +1,13 @@
+{
+ "faces": 13776,
+ "textured_faces": 6451,
+ "span_median": 0.017,
+ "within_2pct": 0.6063,
+ "within_5pct": 0.9442,
+ "source_used": 0.7018,
+ "all_within_2pct": 0.4596,
+ "all_within_5pct": 0.8857,
+ "all_source_used": 0.719,
+ "source": "outputs/diff3f/features/panda_partial.npz",
+ "target": "outputs/diff3f/features/man_full.npz"
+}

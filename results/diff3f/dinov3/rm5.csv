@@ -1,0 +1,5 @@
+group,pair,variant,textured_faces,within_2pct,within_5pct,source_used,conformal_median,distortion_over_10,flipped,flipped_area,mutual_anchors,gt_acc_1pct,gt_acc_5pct,seconds
+same,cat,arap,5050,0.7982,0.9923,0.6356,3.089,0.1857,0.2291,0.0806,104,,,54.9
+same,cat_lion,arap,3678,0.7055,0.9494,0.5922,3.047,0.1738,0.2402,0.1242,116,,,44.7
+cross,labubu_camel,arap,1676,0.3938,0.864,0.358,3.543,0.1874,0.2653,0.1258,15,,,30.7
+cross,labubu_lion,arap,4899,0.6211,0.9596,0.5447,3.809,0.2188,0.2733,0.2293,27,,,48.3

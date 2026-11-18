@@ -1,0 +1,16 @@
+{
+ "faces": 10860,
+ "textured_faces": 4228,
+ "span_median": 0.02,
+ "within_2pct": 0.4993,
+ "within_5pct": 0.9009,
+ "source_used": 0.7543,
+ "all_within_2pct": 0.3789,
+ "all_within_5pct": 0.8904,
+ "all_source_used": 0.7991,
+ "covered_faces": 2603,
+ "covered_within_2pct": 0.5947,
+ "covered_within_5pct": 0.9155,
+ "source": "outputs/diff3f/features/chair1_partial.npz",
+ "target": "outputs/diff3f/features/armchair_full.npz"
+}

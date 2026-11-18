@@ -229,3 +229,6 @@ third_party/IDArb/mydata/
 third_party/IDArb/logs/
 # normal_to_mesh.py 默认的输出目录
 outputs/
+
+# third_party/Diff3F/pyFM ships two sample textures in a data/ folder; let them through as well
+!third_party/Diff3F/pyFM/mesh/data/

@@ -1,0 +1,22 @@
+{
+ "pair": "okapi1_camel",
+ "painter": "hunyuan3d",
+ "frame": "photo",
+ "frame_azimuth": 0.0,
+ "source_photo": "/home/24/23010524/IDArb/mydata/my_single/okapi1.png",
+ "target": "camel",
+ "target_mesh": "third_party/Diff3F/meshes/camel.obj",
+ "frame_from": "results/diff3f/okapi1_camel/transform.json",
+ "seed": 0,
+ "seconds": 42.3,
+ "peak_gpu_mib": 14072,
+ "n_vertices": 2746,
+ "n_faces": 3576,
+ "surface_distance_median": 0.0,
+ "surface_distance_max": 0.0,
+ "git_commit": "cce55de",
+ "command": "scripts/idarb/gen3d_paint_baseline.py",
+ "max_num_view": 6,
+ "resolution": 512,
+ "repo_commit": "82920d6"
+}

@@ -1,0 +1,159 @@
+{
+ "source": "outputs/diff3f/bird_partial.npz",
+ "target": "outputs/diff3f/bird_full.npz",
+ "feature": "full",
+ "scale": 0.9826828517106586,
+ "rotation": [
+  [
+   -0.12155616414489887,
+   -0.31888663370078074,
+   0.9399656450133496
+  ],
+  [
+   0.2138805657288824,
+   0.9163269956178699,
+   0.3385261300186749
+  ],
+  [
+   -0.9692673535005042,
+   0.24219032174905647,
+   -0.043181541070426016
+  ]
+ ],
+ "translation": [
+  0.3167966272898265,
+  0.14950077969339043,
+  0.19343200819469436
+ ],
+ "depth_factor": 1.0,
+ "matrix": [
+  [
+   -0.11945115802491812,
+   -0.3133644265774954,
+   0.923688120551767,
+   0.3167966272898265
+  ],
+  [
+   0.2101767642559471,
+   0.9004588251532286,
+   0.33266382282532464,
+   0.14950077969339043
+  ],
+  [
+   -0.9524824070079185,
+   0.23799627603308476,
+   -0.04243375992034716,
+   0.19343200819469436
+  ],
+  [
+   0.0,
+   0.0,
+   0.0,
+   1.0
+  ]
+ ],
+ "coarse_matrix": [
+  [
+   0.28998091063445725,
+   -0.2792119375811318,
+   0.896447071737084,
+   0.31720322251611277
+  ],
+  [
+   0.1761538146789947,
+   0.9377455228323105,
+   0.23509307737189267,
+   0.08167504205307123
+  ],
+  [
+   -0.9222507750540747,
+   0.09132149454722187,
+   0.3267712955447779,
+   0.32777220550605457
+  ],
+  [
+   0.0,
+   0.0,
+   0.0,
+   1.0
+  ]
+ ],
+ "selected_candidate": 1,
+ "options": {
+  "inlier_dist": 0.05,
+  "icp_dist": 0.05,
+  "n_iter": 5000,
+  "seeds": [
+   0
+  ],
+  "match_mode": "both",
+  "consensus": false,
+  "n_candidates": 8,
+  "refine": "icp",
+  "n_joint": 3,
+  "joint_refit_scale": false,
+  "depth_grid": [
+   0.5,
+   0.7,
+   1.0,
+   1.4,
+   2.0
+  ],
+  "n_depth": 3,
+  "scale_low": 0.5,
+  "scale_high": 2.5,
+  "scale_bands": [
+   [
+    0.5,
+    0.8
+   ],
+   [
+    0.8,
+    1.3
+   ],
+   [
+    1.3,
+    2.5
+   ]
+  ],
+  "min_coverage": 0.2,
+  "piecewise": true,
+  "part_scale_range": [
+   0.8,
+   1.25
+  ],
+  "part_max_rot": 15.0,
+  "blend_sigma": 0.05,
+  "normals": false,
+  "depth_scale": false,
+  "n_parts": 6
+ },
+ "source_meta": {
+  "command": "scripts/idarb/diff3f_features.py --mesh outputs/mesh_depth/bird/relief.ply --prompt bird --front_only --no_cpu_offload --out outputs/diff3f/bird_partial.npz",
+  "commit": "085b1c8",
+  "mesh": "outputs/mesh_depth/bird/relief.ply",
+  "prompt": "bird",
+  "num_views": 100,
+  "front_only": true,
+  "tolerance": 0.004,
+  "seed": 0,
+  "sd_repo": "stable-diffusion-v1-5/stable-diffusion-v1-5",
+  "n_vertices": 49622,
+  "n_features": 15000,
+  "seconds": 493.4
+ },
+ "target_meta": {
+  "command": "scripts/idarb/diff3f_features.py --mesh results/diff3f/targets/bird.ply --prompt bird --no_cpu_offload --out outputs/diff3f/bird_full.npz",
+  "commit": "085b1c8",
+  "mesh": "results/diff3f/targets/bird.ply",
+  "prompt": "bird",
+  "num_views": 100,
+  "front_only": false,
+  "tolerance": 0.004,
+  "seed": 0,
+  "sd_repo": "stable-diffusion-v1-5/stable-diffusion-v1-5",
+  "n_vertices": 20006,
+  "n_features": 15000,
+  "seconds": 337.7
+ }
+}

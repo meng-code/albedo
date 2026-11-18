@@ -1,0 +1,159 @@
+{
+ "source": "outputs/diff3f/chair_partial.npz",
+ "target": "outputs/diff3f/armchair_full.npz",
+ "feature": "full",
+ "scale": 0.785933266632358,
+ "rotation": [
+  [
+   0.9997293560105579,
+   -0.012120302479865886,
+   -0.019857315994643982
+  ],
+  [
+   0.022066785937867525,
+   0.764338460837244,
+   0.6444375642708339
+  ],
+  [
+   0.0073669321353544825,
+   -0.6447013382588481,
+   0.7643990533472447
+  ]
+ ],
+ "translation": [
+  0.006054814940248168,
+  -0.043649557335850506,
+  -0.013508047133853632
+ ],
+ "depth_factor": 1.0,
+ "matrix": [
+  [
+   0.7857205585176413,
+   -0.009525748920573266,
+   -0.015606525226221515,
+   0.006054814940248168
+  ],
+  [
+   0.017343021156225207,
+   0.6007190233385638,
+   0.5064849200279766,
+   -0.043649557335850506
+  ],
+  [
+   0.0057899170381980405,
+   -0.5066922287800293,
+   0.600766645007882,
+   -0.013508047133853632
+  ],
+  [
+   0.0,
+   0.0,
+   0.0,
+   1.0
+  ]
+ ],
+ "coarse_matrix": [
+  [
+   0.783928036732135,
+   -0.03886258063914973,
+   0.04046767414585228,
+   0.017620061789097953
+  ],
+  [
+   0.014202487585081252,
+   0.685855397728124,
+   0.38352543899068986,
+   -0.013197376993620738
+  ],
+  [
+   -0.05427911358068536,
+   -0.38181562675284936,
+   0.6848077866055793,
+   -0.01690815352743938
+  ],
+  [
+   0.0,
+   0.0,
+   0.0,
+   1.0
+  ]
+ ],
+ "selected_candidate": 6,
+ "options": {
+  "inlier_dist": 0.05,
+  "icp_dist": 0.05,
+  "n_iter": 5000,
+  "seeds": [
+   0
+  ],
+  "match_mode": "both",
+  "consensus": false,
+  "n_candidates": 8,
+  "refine": "icp",
+  "n_joint": 3,
+  "joint_refit_scale": false,
+  "depth_grid": [
+   0.5,
+   0.7,
+   1.0,
+   1.4,
+   2.0
+  ],
+  "n_depth": 3,
+  "scale_low": 0.5,
+  "scale_high": 2.5,
+  "scale_bands": [
+   [
+    0.5,
+    0.8
+   ],
+   [
+    0.8,
+    1.3
+   ],
+   [
+    1.3,
+    2.5
+   ]
+  ],
+  "min_coverage": 0.2,
+  "piecewise": true,
+  "part_scale_range": [
+   0.8,
+   1.25
+  ],
+  "part_max_rot": 15.0,
+  "blend_sigma": 0.05,
+  "normals": false,
+  "depth_scale": false,
+  "n_parts": 6
+ },
+ "source_meta": {
+  "command": "scripts/idarb/diff3f_features.py --mesh outputs/mesh_depth/chair/relief.ply --prompt chair --front_only --no_cpu_offload --out outputs/diff3f/chair_partial.npz",
+  "commit": "085b1c8",
+  "mesh": "outputs/mesh_depth/chair/relief.ply",
+  "prompt": "chair",
+  "num_views": 100,
+  "front_only": true,
+  "tolerance": 0.004,
+  "seed": 0,
+  "sd_repo": "stable-diffusion-v1-5/stable-diffusion-v1-5",
+  "n_vertices": 61146,
+  "n_features": 15000,
+  "seconds": 535.1
+ },
+ "target_meta": {
+  "command": "scripts/idarb/diff3f_features.py --mesh results/diff3f/targets/armchair.ply --prompt chair --no_cpu_offload --out outputs/diff3f/armchair_full.npz",
+  "commit": "085b1c8",
+  "mesh": "results/diff3f/targets/armchair.ply",
+  "prompt": "chair",
+  "num_views": 100,
+  "front_only": false,
+  "tolerance": 0.004,
+  "seed": 0,
+  "sd_repo": "stable-diffusion-v1-5/stable-diffusion-v1-5",
+  "n_vertices": 5442,
+  "n_features": 5442,
+  "seconds": 274.8
+ }
+}

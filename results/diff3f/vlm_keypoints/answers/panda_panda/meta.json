@@ -1,0 +1,25 @@
+{
+ "pair": "panda_panda",
+ "keypoints": 6,
+ "box": [
+  -34,
+  -100,
+  480
+ ],
+ "photo_size": 1000,
+ "renders": {
+  "target_0.png": [
+   1,
+   2,
+   3,
+   4,
+   6
+  ],
+  "target_1.png": [
+   5
+  ]
+ },
+ "unseen": [],
+ "commit": "a04985d507204f025258958dfb659b1ed7dfc932",
+ "command": "scripts/idarb/vlm_keypoint_trial.py make"
+}

@@ -1,0 +1,75 @@
+{
+ "pair": "cat_lion",
+ "regions": 48,
+ "box": [
+  -26,
+  -31,
+  364
+ ],
+ "photo_size": 1000,
+ "renders": {
+  "target_0.png": [
+   5,
+   9,
+   10,
+   11,
+   12,
+   23,
+   26,
+   32,
+   35,
+   39,
+   46,
+   47,
+   48
+  ],
+  "target_1.png": [
+   2,
+   4,
+   19,
+   21,
+   34,
+   41,
+   43,
+   44
+  ],
+  "target_2.png": [
+   3,
+   7,
+   22,
+   31,
+   40,
+   45
+  ],
+  "target_3.png": [
+   1,
+   6,
+   8,
+   14,
+   15,
+   16,
+   18,
+   27,
+   30,
+   36,
+   37,
+   38,
+   42
+  ],
+  "target_4.png": [
+   17,
+   20,
+   24,
+   33
+  ],
+  "target_5.png": [
+   13,
+   25,
+   28,
+   29
+  ]
+ },
+ "unseen": [],
+ "commit": "949ad2fec8d4c02d489f28a48db286160c64055d",
+ "command": "scripts/idarb/vlm_part_colour.py make --pairs cat cat_lion labubu_man"
+}
